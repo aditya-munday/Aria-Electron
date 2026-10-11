@@ -11,6 +11,7 @@ import {
 } from './window.js';
 import { ORB_RIGHT_MARGIN } from './placement.js';
 import { ORB_WINDOW_SIZE } from '../orb/window-options.js';
+import { planOrbBackdrop } from '../orb/backdrop.js';
 import {
   FakePlatform,
   FakeShellRuntime,
@@ -21,7 +22,10 @@ function key(kind: KeyEvent['kind'], repeat = false): KeyEvent {
   return { key: DEFAULT_KEY_REPERTOIRE.pushToTalk, kind, repeat };
 }
 
-function build(initial: ShellSettings = DEFAULT_SETTINGS) {
+function build(
+  initial: ShellSettings = DEFAULT_SETTINGS,
+  backdrop?: import('../orb/backdrop.js').OrbBackdropPlan,
+) {
   const platform = new FakePlatform();
   const runtime = new FakeShellRuntime();
   const voice = new FakeVoiceRuntime();
@@ -36,7 +40,7 @@ function build(initial: ShellSettings = DEFAULT_SETTINGS) {
     }),
     runtime: interactionRuntime,
   });
-  const shell = new AriaShell({ platform, runtime, interaction, settings });
+  const shell = new AriaShell({ platform, runtime, interaction, settings, backdrop });
   return { platform, runtime, voice, interactionRuntime, settings, shell };
 }
 
@@ -292,6 +296,52 @@ describe('orb window geometry and options', () => {
   it('ignores interactivity toggles before the orb exists', () => {
     const { shell } = build();
     expect(() => shell.setOrbInteractive(true)).not.toThrow();
+  });
+});
+
+describe('orb backdrop', () => {
+  it('shows the backdrop under the orb when the platform supports it', async () => {
+    const plan = planOrbBackdrop('darwin', { x: 0, y: 0, width: 2560, height: 1440 });
+    const { shell, platform } = build(DEFAULT_SETTINGS, plan);
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    const backdrop = platform.windows.handle('orb_backdrop');
+    expect(backdrop?.visible).toBe(true);
+    expect(backdrop?.options.vibrancy).toBe('under-window');
+    expect(backdrop?.options.bounds).toEqual({ x: 0, y: 0, width: 2560, height: 1440 });
+    expect(backdrop?.focused).toBe(0);
+  });
+
+  it('does not create a fake blur when the platform reports unsupported', async () => {
+    const plan = planOrbBackdrop('linux', { x: 0, y: 0, width: 1920, height: 1080 });
+    const { shell, platform } = build(DEFAULT_SETTINGS, plan);
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(platform.windows.handle('orb_backdrop')).toBeUndefined();
+    expect(shell.orbBackdrop().supported).toBe(false);
+    expect(shell.orbBackdrop().reason).toBeDefined();
+  });
+
+  it('hides the backdrop again when the orb closes', async () => {
+    const plan = planOrbBackdrop('win32', { x: 0, y: 0, width: 1920, height: 1080 });
+    const { shell, platform } = build(DEFAULT_SETTINGS, plan);
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    shell.hide('orb');
+    expect(platform.windows.handle('orb_backdrop')?.visible).toBe(false);
+  });
+
+  it('never persists the transient backdrop among the open windows', async () => {
+    const plan = planOrbBackdrop('darwin', { x: 0, y: 0, width: 2560, height: 1440 });
+    const { shell, platform, settings } = build(DEFAULT_SETTINGS, plan);
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(settings.load().openWindows).not.toContain('orb_backdrop');
+    expect(settings.load().openWindows).not.toContain('orb');
   });
 });
 

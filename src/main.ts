@@ -1,10 +1,11 @@
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, screen } from 'electron';
 
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
 import { InteractionController } from './interaction/interaction-controller.js';
 import { AriaRuntime } from './runtime.js';
 import { AriaShell } from './shell/aria-shell.js';
+import { planOrbBackdrop } from './orb/backdrop.js';
 import { createVoiceInteractionRuntime, type VoiceRuntimeLike } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
@@ -52,6 +53,7 @@ function main(): void {
     runtime,
     interaction,
     settings,
+    backdrop: planOrbBackdrop(process.platform, screen.getPrimaryDisplay().bounds),
   });
 
   const controlCenter = new ControlCenterService({

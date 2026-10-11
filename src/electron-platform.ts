@@ -105,7 +105,11 @@ class ElectronWindowHandle implements WindowHandle {
 
 class ElectronScreenProvider implements ScreenProvider {
   private info(display: Electron.Display): ScreenInfo {
-    return { workArea: display.workArea, primary: display.id === screen.getPrimaryDisplay().id };
+    return {
+      workArea: display.workArea,
+      bounds: display.bounds,
+      primary: display.id === screen.getPrimaryDisplay().id,
+    };
   }
   primary(): ScreenInfo {
     return this.info(screen.getPrimaryDisplay());
@@ -137,6 +141,7 @@ class ElectronWindowFactory implements WindowFactory {
       hasShadow: options.hasShadow ?? true,
       skipTaskbar: options.skipTaskbar ?? kind === 'orb',
       ...(options.title !== undefined ? { title: options.title } : {}),
+      ...(options.vibrancy !== undefined ? { vibrancy: options.vibrancy as never } : {}),
       // A non-activating native panel is what lets the Orb float over the
       // active app without ever becoming its key window; `type` is only honored
       // on macOS and is ignored elsewhere.

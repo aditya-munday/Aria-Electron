@@ -301,6 +301,8 @@ export {
   ORB_WINDOW_SIZE,
   ORB_WINDOW_OPTIONS,
 } from './orb/window-options.js';
+export { orbHitTest } from './orb/hit-test.js';
+export { planOrbBackdrop, type OrbBackdropPlan, type OrbBackdropMaterial } from './orb/backdrop.js';
 export {
   ORB_CUE,
   ORB_LABEL,

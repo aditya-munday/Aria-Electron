@@ -48,6 +48,8 @@ export interface WindowOptions {
   readonly panel?: boolean;
   /** The always-on-top level, e.g. `screen-saver`, `floating`. */
   readonly alwaysOnTopLevel?: string;
+  /** A native translucent material, e.g. macOS `vibrancy` or Windows acrylic. */
+  readonly vibrancy?: string;
 }
 
 export interface WindowFactory {

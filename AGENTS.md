@@ -141,10 +141,19 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   deferred classic script, because Chromium refuses `file://` ES-module imports.
 - `electron-platform.ts`, `main.ts`, `preload.ts` are the only files that
   import `electron`; everything under `src/shell/` is dependency-free.
+- `orb/` — the floating presence. `window-options.ts` holds the frameless /
+  transparent / non-activating-panel options; `placement` (in `src/shell/`)
+  anchors it to the right edge at 2/6 of the work area against an injected
+  `ScreenProvider`. The renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`)
+  draws exactly one circle — core, halo, glow — and keeps the window
+  click-through except inside that circle via the `orbSetInteractive` channel
+  and the pure `orb/hit-test.ts`. `orb/backdrop.ts` plans a full-screen material
+  (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
+  rather than faking a blur with an opaque rectangle.
 
-Test baseline: 263 tests / 32 files. `src/shell/testing/doubles.ts` holds
-`FakePlatform`, `FakeWindowFactory`, `FakeKeyListener`, `FakeShellRuntime`,
-`FakeVoiceRuntime`.
+Test baseline: 350 tests / 39 files. `src/shell/testing/doubles.ts` holds
+`FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
+`FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
 
 ## Backend errors
 

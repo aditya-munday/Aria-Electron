@@ -35,6 +35,7 @@ export function orbCircle(bounds: Rect, diameter: number): Rect {
 
 export interface ScreenInfo {
   readonly workArea: Rect;
+  readonly bounds: Rect;
   readonly primary: boolean;
 }
 
