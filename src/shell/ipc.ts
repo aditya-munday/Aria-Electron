@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   accountSignIn: 'aria:control-center:sign-in',
   accountSignOut: 'aria:control-center:sign-out',
   orbState: 'aria:orb:state',
+  orbSetInteractive: 'aria:orb:set-interactive',
   chatState: 'aria:chat:state',
   chatDecideApproval: 'aria:chat:decide-approval',
   chatAnswerQuestion: 'aria:chat:answer-question',
@@ -45,6 +46,7 @@ export interface AriaBridge {
   signIn(input: unknown): Promise<SignInResult>;
   signOut(): Promise<SignInResult>;
   orbState(): Promise<OrbState>;
+  orbSetInteractive(interactive: boolean): Promise<void>;
   chatState(): Promise<ChatState>;
   decideApproval(input: unknown): Promise<ApprovalDecisionOutcome>;
   answerQuestion(input: unknown): Promise<ChatActionResult>;
@@ -65,6 +67,7 @@ export const BRIDGE_METHODS = [
   'signIn',
   'signOut',
   'orbState',
+  'orbSetInteractive',
   'chatState',
   'decideApproval',
   'answerQuestion',
@@ -114,6 +117,8 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
     signOut: (): Promise<SignInResult> =>
       ipc.invoke(IPC_CHANNELS.accountSignOut) as Promise<SignInResult>,
     orbState: (): Promise<OrbState> => ipc.invoke(IPC_CHANNELS.orbState) as Promise<OrbState>,
+    orbSetInteractive: (interactive: boolean): Promise<void> =>
+      ipc.invoke(IPC_CHANNELS.orbSetInteractive, interactive) as Promise<void>,
     chatState: (): Promise<ChatState> => ipc.invoke(IPC_CHANNELS.chatState) as Promise<ChatState>,
     decideApproval: (input: unknown): Promise<ApprovalDecisionOutcome> =>
       ipc.invoke(IPC_CHANNELS.chatDecideApproval, input) as Promise<ApprovalDecisionOutcome>,

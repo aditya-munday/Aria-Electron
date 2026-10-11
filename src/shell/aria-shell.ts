@@ -1,16 +1,25 @@
 import { InteractionController } from '../interaction/interaction-controller.js';
 import type { InteractionEnvironment, RoutedResult } from '../interaction/interaction-router.js';
+import { ORB_WINDOW_OPTIONS, ORB_WINDOW_SIZE } from '../orb/window-options.js';
+import type { OrbBackdropPlan } from '../orb/backdrop.js';
+import { placeOrb } from './placement.js';
 import {
   CHAT_SHORTCUT_ACCELERATOR,
   DEFAULT_KEY_REPERTOIRE,
-  ORB_WINDOW_OPTIONS,
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
   type WindowHandle,
   type WindowKind,
+  type WindowOptions,
 } from './window.js';
 import type { SettingsStore, ShellSettings } from './settings.js';
+
+function sizeFor(kind: WindowKind): { readonly width: number; readonly height: number } {
+  return kind === 'orb'
+    ? { width: ORB_WINDOW_SIZE, height: ORB_WINDOW_SIZE }
+    : { width: 0, height: 0 };
+}
 
 export interface ShellRuntime {
   start(): void;
@@ -22,6 +31,7 @@ export interface ShellDeps {
   readonly interaction: InteractionController;
   readonly settings: SettingsStore;
   readonly keys?: KeyRepertoire;
+  readonly backdrop?: OrbBackdropPlan;
 }
 
 export class AriaShell {
@@ -30,7 +40,9 @@ export class AriaShell {
   private readonly interaction: InteractionController;
   private readonly settings: SettingsStore;
   private readonly keys: KeyRepertoire;
+  private readonly backdrop: OrbBackdropPlan | undefined;
   private readonly windows = new Map<WindowKind, WindowHandle>();
+  private backdropOpen = false;
 
   private pttHeld = false;
   private started = false;
@@ -43,6 +55,7 @@ export class AriaShell {
     this.interaction = deps.interaction;
     this.settings = deps.settings;
     this.keys = deps.keys ?? DEFAULT_KEY_REPERTOIRE;
+    this.backdrop = deps.backdrop;
   }
 
   start(): void {
@@ -131,25 +144,70 @@ export class AriaShell {
 
   open(kind: WindowKind, persist = true): WindowHandle {
     const handle = this.windows.get(kind) ?? this.createWindow(kind);
+    if (kind === 'orb') {
+      handle.setBounds(placeOrb(this.platform.screen.primary().workArea, sizeFor(kind)));
+    }
     handle.show();
     // The Orb is a presence: borderless, always-on-top and click-through. It is
     // never focused, because taking focus would steal it from whatever the user
     // was doing when the capture activation fired.
     if (kind !== 'orb') handle.focus();
+    if (kind === 'orb') this.showBackdrop();
     if (persist) this.persistOpenWindows();
     return handle;
   }
 
   hide(kind: WindowKind): void {
     this.windows.get(kind)?.hide();
+    if (kind === 'orb') this.hideBackdrop();
     this.persistOpenWindows();
   }
 
-  private createWindow(kind: WindowKind): WindowHandle {
-    const handle = this.platform.windows.create(
-      kind,
-      kind === 'orb' ? ORB_WINDOW_OPTIONS : { startHidden: false },
-    );
+  /**
+   * The blur the user actually perceives is a separate full-screen window
+   * sitting under the Orb; the Orb itself stays a transparent circle. When the
+   * platform offers no real material, the plan says so and nothing is shown,
+   * rather than drawing an opaque rectangle and calling it a blur.
+   */
+  orbBackdrop(): OrbBackdropPlan {
+    return this.backdrop ?? { supported: false, material: 'none', reason: 'No backdrop configured.' };
+  }
+
+  private showBackdrop(): void {
+    if (this.backdrop?.supported !== true || this.backdropOpen) return;
+    const options = this.backdrop.options ?? ORB_WINDOW_OPTIONS;
+    const handle = this.windows.get('orb_backdrop') ?? this.createWindow('orb_backdrop', options);
+    handle.show();
+    this.backdropOpen = true;
+  }
+
+  private hideBackdrop(): void {
+    if (!this.backdropOpen) return;
+    this.windows.get('orb_backdrop')?.hide();
+    this.backdropOpen = false;
+  }
+
+  /**
+   * The Orb is click-through except on its painted circle. The renderer asks
+   * for interactivity only while the pointer is over the circle; everywhere
+   * else the window keeps forwarding clicks to whatever is beneath it.
+   */
+  setOrbInteractive(interactive: boolean): void {
+    const orb = this.windows.get('orb');
+    if (orb === undefined) return;
+    orb.setIgnoreMouseEvents(!interactive, { forward: true });
+  }
+
+  private createWindow(kind: WindowKind, override?: WindowOptions): WindowHandle {
+    const options =
+      override ??
+      (kind === 'orb'
+        ? {
+            ...ORB_WINDOW_OPTIONS,
+            bounds: placeOrb(this.platform.screen.primary().workArea, sizeFor(kind)),
+          }
+        : { startHidden: false });
+    const handle = this.platform.windows.create(kind, options);
     this.windows.set(kind, handle);
     return handle;
   }
@@ -158,7 +216,9 @@ export class AriaShell {
     const current = this.settings.load();
     const next: ShellSettings = {
       ...current,
-      openWindows: this.openWindows().filter((kind) => kind !== 'orb'),
+      openWindows: this.openWindows().filter(
+        (kind) => kind !== 'orb' && kind !== 'orb_backdrop',
+      ),
     };
     this.settings.save(next);
   }

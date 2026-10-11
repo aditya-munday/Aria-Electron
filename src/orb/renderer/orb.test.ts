@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 
-import { renderOrb } from './orb.js';
+import { renderOrb, wirePointerInteractivity, type OrbBridge } from './orb.js';
 import type { OrbState } from '../state.js';
+import { ORB_WINDOW_SIZE } from '../window-options.js';
 
 function state(overrides: Partial<OrbState['presence']> = {}): OrbState {
   return {
@@ -23,6 +24,21 @@ function render(value: OrbState): HTMLElement {
   return document.getElementById('orb') as HTMLElement;
 }
 
+function bridge(): OrbBridge & { interactivity: boolean[] } {
+  const interactivity: boolean[] = [];
+  return {
+    interactivity,
+    orbState: async () => state(),
+    orbSetInteractive: async (interactive: boolean) => {
+      interactivity.push(interactive);
+    },
+  };
+}
+
+function move(x: number, y: number): void {
+  document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }));
+}
+
 describe('orb renderer', () => {
   it('renders the presence label and cue as data attributes', () => {
     const root = render(state());
@@ -32,11 +48,20 @@ describe('orb renderer', () => {
     expect(root.querySelector('[data-testid="orb-label"]')?.textContent).toBe('Idle');
   });
 
-  it('renders the listening waveform cue', () => {
+  it('draws a single circle: a core with a halo and glow, no frame elements', () => {
+    const root = render(state());
+    expect(root.querySelectorAll('.core')).toHaveLength(1);
+    expect(root.querySelectorAll('.halo')).toHaveLength(1);
+    expect(root.querySelectorAll('.glow')).toHaveLength(1);
+    expect(root.querySelector('.panel')).toBeNull();
+    expect(root.querySelector('.frame')).toBeNull();
+  });
+
+  it('renders the listening waveform cue as a core', () => {
     const root = render(state({ presence: 'listening', cue: 'waveform', label: 'Listening' }));
     const orb = root.querySelector('.orb') as HTMLElement;
     expect(orb.getAttribute('data-cue')).toBe('waveform');
-    expect(root.querySelector('.cue-waveform')).not.toBeNull();
+    expect(root.querySelector('.core-waveform')).not.toBeNull();
   });
 
   it('renders the error cue and its detail', () => {
@@ -48,7 +73,7 @@ describe('orb renderer', () => {
         detail: 'Microphone access was denied.',
       }),
     );
-    expect(root.querySelector('.cue-alert')).not.toBeNull();
+    expect(root.querySelector('.core-alert')).not.toBeNull();
     expect(root.querySelector('[data-testid="orb-detail"]')?.textContent).toBe('Microphone access was denied.');
   });
 
@@ -56,7 +81,7 @@ describe('orb renderer', () => {
     const root = render(state({ presence: 'muted', cue: 'slash', label: 'Muted' }));
     const orb = root.querySelector('.orb') as HTMLElement;
     expect(orb.getAttribute('data-cue')).toBe('slash');
-    expect(root.querySelector('.cue-slash')).not.toBeNull();
+    expect(root.querySelector('.core-slash')).not.toBeNull();
   });
 
   it('exposes an accessible label combining the presence and detail', () => {
@@ -64,5 +89,38 @@ describe('orb renderer', () => {
     const orb = root.querySelector('.orb') as HTMLElement;
     expect(orb.getAttribute('role')).toBe('img');
     expect(orb.getAttribute('aria-label')).toContain('Thinking');
+  });
+});
+
+describe('orb pointer interactivity', () => {
+  it('accepts pointer input only inside the painted circle', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    const b = bridge();
+    wirePointerInteractivity(document, b);
+    const center = ORB_WINDOW_SIZE / 2;
+    move(center, center);
+    expect(b.interactivity).toEqual([true]);
+    move(4, 4);
+    expect(b.interactivity).toEqual([true, false]);
+  });
+
+  it('does not re-emit when the pointer stays inside the circle', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    const b = bridge();
+    wirePointerInteractivity(document, b);
+    const center = ORB_WINDOW_SIZE / 2;
+    move(center, center);
+    move(center + 2, center + 2);
+    expect(b.interactivity).toEqual([true]);
+  });
+
+  it('falls through again when the pointer leaves the window', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    const b = bridge();
+    wirePointerInteractivity(document, b);
+    const center = ORB_WINDOW_SIZE / 2;
+    move(center, center);
+    document.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(b.interactivity).toEqual([true, false]);
   });
 });

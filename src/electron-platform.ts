@@ -1,9 +1,11 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, globalShortcut } from 'electron';
+import { BrowserWindow, globalShortcut, screen } from 'electron';
 
 import { blockExternalNavigation, RENDERER_WEB_PREFERENCES } from './shell/security.js';
+import type { Rect } from './shell/geometry.js';
+import type { ScreenInfo, ScreenProvider } from './shell/placement.js';
 import type {
   KeyEvent,
   KeyListener,
@@ -23,6 +25,7 @@ const preloadPath = join(here, 'preload.js');
 const RENDERER_BY_KIND: Record<WindowKind, { file: string; width: number; height: number }> = {
   control_center: { file: 'control-center.html', width: 900, height: 640 },
   orb: { file: 'orb.html', width: 320, height: 320 },
+  orb_backdrop: { file: 'orb-backdrop.html', width: 900, height: 640 },
   chat: { file: 'chat.html', width: 760, height: 640 },
 };
 
@@ -66,7 +69,7 @@ class ElectronWindowHandle implements WindowHandle {
       void this.window.loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file));
       this.loaded = true;
     }
-    this.window.show();
+    this.window.showInactive();
   }
   focus(): void {
     this.window.focus();
@@ -76,6 +79,43 @@ class ElectronWindowHandle implements WindowHandle {
   }
   close(): void {
     this.window.close();
+  }
+  setBounds(bounds: Rect): void {
+    this.window.setBounds({
+      x: Math.round(bounds.x),
+      y: Math.round(bounds.y),
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+    });
+  }
+  setIgnoreMouseEvents(ignore: boolean, options?: { readonly forward?: boolean }): void {
+    if (options?.forward === true) {
+      this.window.setIgnoreMouseEvents(ignore, { forward: true });
+      return;
+    }
+    this.window.setIgnoreMouseEvents(ignore);
+  }
+  setVisibleOnAllWorkspaces(visible: boolean): void {
+    this.window.setVisibleOnAllWorkspaces(visible);
+  }
+  setAlwaysOnTop(alwaysOnTop: boolean, level?: string): void {
+    this.window.setAlwaysOnTop(alwaysOnTop, level as never);
+  }
+}
+
+class ElectronScreenProvider implements ScreenProvider {
+  private info(display: Electron.Display): ScreenInfo {
+    return {
+      workArea: display.workArea,
+      bounds: display.bounds,
+      primary: display.id === screen.getPrimaryDisplay().id,
+    };
+  }
+  primary(): ScreenInfo {
+    return this.info(screen.getPrimaryDisplay());
+  }
+  displayNearestPoint(point: { readonly x: number; readonly y: number }): ScreenInfo {
+    return this.info(screen.getDisplayNearestPoint(point));
   }
 }
 
@@ -88,15 +128,26 @@ class ElectronWindowFactory implements WindowFactory {
 
   create(kind: WindowKind, options: WindowOptions): WindowHandle {
     const spec = RENDERER_BY_KIND[kind];
+    const bounds = options.bounds;
     const window = new BrowserWindow({
-      width: spec.width,
-      height: spec.height,
+      width: Math.round(bounds?.width ?? spec.width),
+      height: Math.round(bounds?.height ?? spec.height),
+      ...(bounds !== undefined ? { x: Math.round(bounds.x), y: Math.round(bounds.y) } : {}),
       show: !options.startHidden,
       frame: options.frame ?? true,
       transparent: options.transparent ?? false,
       alwaysOnTop: options.alwaysOnTop ?? false,
       focusable: options.focusable ?? true,
-      skipTaskbar: kind === 'orb',
+      hasShadow: options.hasShadow ?? true,
+      skipTaskbar: options.skipTaskbar ?? kind === 'orb',
+      ...(options.title !== undefined ? { title: options.title } : {}),
+      ...(options.vibrancy !== undefined ? { vibrancy: options.vibrancy as never } : {}),
+      // A non-activating native panel is what lets the Orb float over the
+      // active app without ever becoming its key window; `type` is only honored
+      // on macOS and is ignored elsewhere.
+      ...(options.panel === true && process.platform === 'darwin'
+        ? { type: 'panel' as const }
+        : {}),
       webPreferences: {
         contextIsolation: RENDERER_WEB_PREFERENCES.contextIsolation,
         nodeIntegration: RENDERER_WEB_PREFERENCES.nodeIntegration,
@@ -105,10 +156,16 @@ class ElectronWindowFactory implements WindowFactory {
         preload: preloadPath,
       },
     });
+    if (options.alwaysOnTop === true && options.alwaysOnTopLevel !== undefined) {
+      window.setAlwaysOnTop(true, options.alwaysOnTopLevel as never);
+    }
     // A click-through presence must not swallow clicks aimed at the window
     // beneath it; input only reaches the Orb when it is not ignoring the mouse.
     if (options.clickThrough === true) {
       window.setIgnoreMouseEvents(true, { forward: true });
+    }
+    if (kind === 'orb' || kind === 'orb_backdrop') {
+      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     }
     blockExternalNavigation({
       willNavigate: (handler) => window.webContents.on('will-navigate', (event) => handler(event.url)),
@@ -141,5 +198,6 @@ export function createElectronPlatform(): Platform {
     windows: new ElectronWindowFactory(keys),
     keys,
     shortcuts: new ElectronShortcuts(),
+    screen: new ElectronScreenProvider(),
   };
 }

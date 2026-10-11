@@ -206,6 +206,22 @@ export {
   type WindowOptions,
 } from './shell/window.js';
 export {
+  clamp,
+  contains,
+  type Point,
+  type Size,
+  type Rect,
+} from './shell/geometry.js';
+export {
+  ORB_RIGHT_MARGIN,
+  ORB_VERTICAL_SIXTHS,
+  ORB_VERTICAL_DENOMINATOR,
+  placeOrb,
+  orbCircle,
+  type ScreenInfo,
+  type ScreenProvider,
+} from './shell/placement.js';
+export {
   VoiceInteractionRuntime,
   createVoiceInteractionRuntime,
   type VoiceRuntimeLike,
@@ -279,6 +295,14 @@ export {
   type OrbRuntime,
 } from './orb/orb-service.js';
 export { resolvePresence } from './orb/assemble.js';
+export {
+  ORB_DIAMETER,
+  ORB_WINDOW_PADDING,
+  ORB_WINDOW_SIZE,
+  ORB_WINDOW_OPTIONS,
+} from './orb/window-options.js';
+export { orbHitTest } from './orb/hit-test.js';
+export { planOrbBackdrop, type OrbBackdropPlan, type OrbBackdropMaterial } from './orb/backdrop.js';
 export {
   ORB_CUE,
   ORB_LABEL,
