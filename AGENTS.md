@@ -2,6 +2,15 @@
 
 Repository memory for agents working in this repo. Keep it current.
 
+## House rules
+
+- **Do not write comments in code.** No doc-comments, no block comments, no
+  inline explanations. The only exception is a comment that is genuinely
+  load-bearing (a non-obvious invariant, a workaround, a subtle ordering or
+  locking requirement, or a deliberate trade-off) — and even then, keep it to
+  the one line that states the thing the code cannot. Do not restate the code,
+  narrate a change, or describe non-local behavior.
+
 ## What this is
 
 Aria-Electron is the native desktop shell for Aria. It speaks the Aria `/v1`
@@ -87,6 +96,43 @@ Rules the router enforces, all with tests:
 'text'`) is reused as the vocabulary; the router's `VoiceInputPath` is that set
 minus `'text'` (text is a routing input, not a voice capture path), so the
 router does not introduce a conflicting enum.
+
+## Desktop shell (`src/shell/`, `src/main.ts`, `src/preload.ts`)
+
+The Electron foundation hosts the existing runtime; it does not reimplement it.
+
+- `aria-shell.ts` (`AriaShell`) — lifecycle over an injected `Platform`.
+  Builds exactly one `AriaRuntime` (in `main.ts`) and owns it for the session;
+  closing or hiding a window never stops the runtime or cancels work. Normal
+  launch opens only the Control Center; the Orb window starts hidden and is
+  surfaced by an activation (push-to-talk / wake word), never by launch or the
+  chat shortcut. Key events and the chat accelerator are routed through the
+  existing `InteractionController`, so the shell has no routing logic of its
+  own. `whenIdle()` resolves after queued input handlers settle — use it to
+  make key/shortcut tests deterministic.
+- `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
+  `Platform`) — the seam that keeps the shell testable without Electron.
+  `Platform = { windows, keys, shortcuts }`.
+- `interaction-runtime.ts` (`VoiceInteractionRuntime`) — adapts a
+  `VoiceRuntimeLike` to the controller's `InteractionRuntime` seam and counts
+  captures started, so tests can assert "a capture start is the only thing that
+  raises the Orb".
+- `ipc.ts` / `ipc-handlers.ts` / `security.ts` — the renderer boundary. The
+  bridge exposes exactly `status`, `sendText`, `stopPlayback`; no token,
+  capability or raw-`ipcRenderer` accessor crosses it. Renderer windows are
+  context-isolated, `nodeIntegration: false`, web-security on, and deny
+  external navigation and `window.open`. The main process registers a
+  `window-all-closed` handler on purpose so Electron does not quit when the last
+  window closes.
+- `settings.ts` / `settings-file.ts` — persisted shell state. Only window kinds
+  survive `normalizeSettings`; unknown kinds are dropped and an empty capture
+  device id is omitted.
+- `electron-platform.ts`, `main.ts`, `preload.ts` are the only files that
+  import `electron`; everything under `src/shell/` is dependency-free.
+
+Test baseline: 236 tests / 30 files. `src/shell/testing/doubles.ts` holds
+`FakePlatform`, `FakeWindowFactory`, `FakeKeyListener`, `FakeShellRuntime`,
+`FakeVoiceRuntime`.
 
 ## Backend errors
 
