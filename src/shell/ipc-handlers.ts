@@ -1,4 +1,5 @@
 import type { ControlCenterState } from '../control-center/state.js';
+import type { OrbState } from '../orb/state.js';
 import {
   IPC_CHANNELS,
   type IpcRegistrar,
@@ -15,6 +16,7 @@ export interface IpcHost {
   updateSettings(patch: unknown): SettingsUpdateResult | Promise<SettingsUpdateResult>;
   signIn(input: unknown): SignInResult | Promise<SignInResult>;
   signOut(): SignInResult | Promise<SignInResult>;
+  orbState(): OrbState | Promise<OrbState>;
 }
 
 export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
@@ -46,4 +48,5 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.accountSignOut,
     (): SignInResult | Promise<SignInResult> => host.signOut(),
   );
+  ipc.handle(IPC_CHANNELS.orbState, (): OrbState | Promise<OrbState> => host.orbState());
 }

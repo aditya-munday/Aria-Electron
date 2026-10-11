@@ -13,6 +13,7 @@ import type { VoiceRuntimeLike } from '../interaction-runtime.js';
 
 export class FakeWindowHandle implements WindowHandle {
   readonly kind: WindowKind;
+  readonly options: WindowOptions;
   visible: boolean;
   shown = 0;
   focused = 0;
@@ -21,6 +22,7 @@ export class FakeWindowHandle implements WindowHandle {
 
   constructor(kind: WindowKind, options: WindowOptions) {
     this.kind = kind;
+    this.options = options;
     this.visible = !options.startHidden;
   }
 

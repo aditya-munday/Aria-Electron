@@ -92,6 +92,11 @@ class ElectronWindowFactory implements WindowFactory {
       width: spec.width,
       height: spec.height,
       show: !options.startHidden,
+      frame: options.frame ?? true,
+      transparent: options.transparent ?? false,
+      alwaysOnTop: options.alwaysOnTop ?? false,
+      focusable: options.focusable ?? true,
+      skipTaskbar: kind === 'orb',
       webPreferences: {
         contextIsolation: RENDERER_WEB_PREFERENCES.contextIsolation,
         nodeIntegration: RENDERER_WEB_PREFERENCES.nodeIntegration,
@@ -100,6 +105,11 @@ class ElectronWindowFactory implements WindowFactory {
         preload: preloadPath,
       },
     });
+    // A click-through presence must not swallow clicks aimed at the window
+    // beneath it; input only reaches the Orb when it is not ignoring the mouse.
+    if (options.clickThrough === true) {
+      window.setIgnoreMouseEvents(true, { forward: true });
+    }
     blockExternalNavigation({
       willNavigate: (handler) => window.webContents.on('will-navigate', (event) => handler(event.url)),
       setWindowOpenHandler: (handler) =>

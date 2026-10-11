@@ -11,7 +11,9 @@ import { createFileSettingsStore } from './shell/settings-file.js';
 import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
+import { OrbService } from './orb/orb-service.js';
 import type { ControlCenterState, PermissionState } from './control-center/state.js';
+import type { OrbState } from './orb/state.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
 
 const WAKE_WORD_PHRASE = 'hey aria';
@@ -64,6 +66,23 @@ function main(): void {
     microphonePermission,
   });
 
+  const orb = new OrbService({
+    runtime: {
+      voiceDiagnostics: () => {
+        const voice = runtime.voice;
+        if (voice === undefined) return undefined;
+        const diagnostics = voice.diagnostics();
+        return {
+          listening: diagnostics.listening,
+          sessionState: diagnostics.sessionState,
+          wakeWordEnabled: diagnostics.wakeWordEnabled,
+          ...(diagnostics.lastError !== undefined ? { lastError: diagnostics.lastError } : {}),
+        };
+      },
+      settings: () => shell.currentSettings(),
+    },
+  });
+
   registerIpcHandlers(ipcMain, {
     signedIn: (): boolean => runtime.isSignedIn(),
     sendText: async (text: string): Promise<void> => {
@@ -83,6 +102,7 @@ function main(): void {
       runtime.setSessionToken(undefined);
       return { ok: true, signedIn: true };
     },
+    orbState: (): OrbState => orb.buildState(),
   });
 
   shell.start();
