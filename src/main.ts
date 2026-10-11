@@ -1,5 +1,6 @@
 import { app, ipcMain } from 'electron';
 
+import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
 import { InteractionController } from './interaction/interaction-controller.js';
 import { AriaRuntime } from './runtime.js';
@@ -7,11 +8,19 @@ import { AriaShell } from './shell/aria-shell.js';
 import { createVoiceInteractionRuntime, type VoiceRuntimeLike } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
+import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
+import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
+import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
+import type { ControlCenterState, PermissionState } from './control-center/state.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
 
+const WAKE_WORD_PHRASE = 'hey aria';
+
 function main(): void {
-  const settings = createFileSettingsStore(app.getPath('userData'));
-  const runtime = new AriaRuntime({ statePath: `${app.getPath('userData')}/supervision.json` });
+  const userData = app.getPath('userData');
+  const settings = createFileSettingsStore(userData);
+  const config = loadConfig();
+  const runtime = new AriaRuntime({ statePath: `${userData}/supervision.json` });
 
   const voice = runtime.voice;
   const interactionRuntime =
@@ -19,9 +28,12 @@ function main(): void {
       ? createVoiceInteractionRuntime(voice)
       : inertVoiceRuntime();
 
+  const microphonePermission = (): PermissionState =>
+    voice !== undefined ? 'granted' : 'denied';
+
   const environmentSource = (): InteractionEnvironment => ({
     wakeWordEnabled: settings.load().wakeWordEnabled,
-    microphonePermission: 'granted',
+    microphonePermission: microphonePermission(),
     voiceSessionActive: false,
   });
   const interaction = new InteractionController({
@@ -36,6 +48,21 @@ function main(): void {
     settings,
   });
 
+  const controlCenter = new ControlCenterService({
+    runtime: createControlCenterRuntime(runtime, shell),
+    config,
+    activation: {
+      request: 'Hold ?',
+      wakeWordPhrase: WAKE_WORD_PHRASE,
+      chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
+      wakeWordAvailable: voice !== undefined,
+      ...(voice !== undefined
+        ? {}
+        : { wakeWordReason: 'The wake-word engine is unavailable on this build.' }),
+    },
+    microphonePermission,
+  });
+
   registerIpcHandlers(ipcMain, {
     signedIn: (): boolean => runtime.isSignedIn(),
     sendText: async (text: string): Promise<void> => {
@@ -43,6 +70,17 @@ function main(): void {
     },
     stopPlayback: async (): Promise<void> => {
       await interactionRuntime.interrupt();
+    },
+    controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
+    updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
+    signIn: (): { ok: false; reason: string; unsupported: true } => ({
+      ok: false,
+      reason: 'Sign-in is not available in this build yet.',
+      unsupported: true,
+    }),
+    signOut: (): SignInOutcome => {
+      runtime.setSessionToken(undefined);
+      return { ok: true, signedIn: true };
     },
   });
 
@@ -59,6 +97,10 @@ function main(): void {
   });
 }
 
+type SignInOutcome =
+  | { readonly ok: true; readonly signedIn: true }
+  | { readonly ok: false; readonly reason: string; readonly unsupported?: true };
+
 function inertVoiceRuntime(): VoiceRuntimeLike {
   return {
     pushToTalkPress: async () => undefined,
@@ -69,3 +111,4 @@ function inertVoiceRuntime(): VoiceRuntimeLike {
 }
 
 void app.whenReady().then(main);
+

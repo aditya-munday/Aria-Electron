@@ -7,7 +7,7 @@
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-renderer.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-renderer.mjs && node scripts/bundle-renderer.mjs",
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,6 +22,8 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "electron": "^38.8.6",
+    "esbuild": "^0.21.5",
+    "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
