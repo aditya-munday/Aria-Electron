@@ -49,6 +49,15 @@ function conversationSection(doc: Document, state: ChatState): El {
     text.textContent = turn.text;
     item.append(who, text);
     if (turn.error !== undefined) item.append(note(doc, turn.error));
+    if (turn.submittedTaskId !== undefined) {
+      const marker = note(
+        doc,
+        `Submitted as tracked work${turn.routeCapability !== undefined ? ` (${turn.routeCapability})` : ''}. Approval required.`,
+        'muted',
+      );
+      marker.setAttribute('data-testid', `submitted-${turn.submittedTaskId}`);
+      item.append(marker);
+    }
     list.append(item);
   }
   wrap.append(list);
