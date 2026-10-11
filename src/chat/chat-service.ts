@@ -8,6 +8,8 @@ import {
 import { describeTaskPhase } from '../supervisor/supervisor.js';
 import type { SupervisionRecord } from '../supervisor/task-store.js';
 import { assembleChatState, emergencyStopView } from './assemble.js';
+import { deriveTitle, operationForRoute, shouldSubmit } from './submission.js';
+import type { RouteHint } from '../contract/aria-contract.js';
 import type {
   ApprovalDecisionOutcome,
   ApprovalView,
@@ -26,15 +28,22 @@ export interface ApprovalRequestedInput {
   readonly operation: OperationDescriptor;
 }
 
+export interface SubmittedWork {
+  readonly record: SupervisionRecord;
+  readonly approvalId: string;
+}
+
 export interface ChatVoiceControl {
-  sendText(text: string): Promise<void>;
+  sendText(text: string): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
 }
 
 export interface ChatTaskControl {
   records(): readonly SupervisionRecord[];
+  submit(input: { title: string; conversationId?: string }): Promise<SubmittedWork>;
+  reconcile(): Promise<void>;
   approvals(taskId: string): Promise<Result<readonly ApprovalDto[]>>;
   approvalScope(approvalId: string): ApprovalScope | undefined;
-  rememberApproval(input: ApprovalRequestedInput): void;
+  rememberApproval(input: ApprovalRequestedInput): Promise<void>;
   decideApproval(
     taskId: string,
     approvalId: string,
@@ -82,6 +91,7 @@ export class ChatService {
   }
 
   async buildState(): Promise<ChatState> {
+    await this.deps.runtime.tasks.reconcile();
     const now = this.now();
     const records = await this.recordViews();
     return assembleChatState({
@@ -92,7 +102,11 @@ export class ChatService {
     });
   }
 
-  /** Submit a typed turn. It never opens the microphone. */
+  /**
+   * Submit a typed turn. It never opens the microphone. When the reply carries
+   * an advisory route hint that requires confirmation, the turn is also
+   * submitted as tracked work — accepted and awaiting approval, not running.
+   */
   async sendText(text: string): Promise<ChatActionResult> {
     const trimmed = text.trim();
     if (trimmed === '') return { ok: false, reason: 'A message cannot be empty.' };
@@ -100,25 +114,55 @@ export class ChatService {
     if (voice === undefined) {
       return { ok: false, reason: 'Typed conversation is unavailable on this build.' };
     }
-    const turn: ChatTurn = {
+    const userTurn: ChatTurn = {
       id: this.nextTurnId(),
       role: 'user',
       text: trimmed,
       at: this.now(),
       state: 'complete',
     };
-    this.turns.push(turn);
+    this.turns.push(userTurn);
+
+    let reply: { readonly text: string; readonly route?: RouteHint | null };
     try {
-      await voice.sendText(trimmed);
-      return { ok: true };
+      reply = await voice.sendText(trimmed);
     } catch (error) {
-      const failed: ChatTurn = {
-        ...turn,
-        state: 'failed',
-        error: messageOf(error),
-      };
+      const failed: ChatTurn = { ...userTurn, state: 'failed', error: messageOf(error) };
       this.turns[this.turns.length - 1] = failed;
       return { ok: false, reason: failed.error ?? 'The turn failed.' };
+    }
+
+    if (reply.text.trim() !== '') {
+      this.turns.push({
+        id: this.nextTurnId(),
+        role: 'assistant',
+        text: reply.text,
+        at: this.now(),
+        state: 'complete',
+      });
+    }
+
+    if (!shouldSubmit(reply.route)) return { ok: true };
+
+    const route = reply.route as RouteHint;
+    try {
+      const submittedWork = await this.deps.runtime.tasks.submit({
+        title: deriveTitle(trimmed),
+        conversationId: userTurn.id,
+      });
+      await this.rememberApprovalFor(submittedWork, route);
+      const submitted: ChatTurn = {
+        ...userTurn,
+        submittedTaskId: submittedWork.record.taskId,
+        routeCapability: route.capability,
+      };
+      this.replaceTurn(userTurn.id, submitted);
+      return { ok: true, submittedTaskId: submittedWork.record.taskId };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `The request was not submitted as tracked work: ${messageOf(error)}`,
+      };
     }
   }
 
@@ -258,6 +302,20 @@ export class ChatService {
   private nextTurnId(): string {
     this.turnCounter += 1;
     return `turn-${this.turnCounter}`;
+  }
+
+  private replaceTurn(id: string, next: ChatTurn): void {
+    const index = this.turns.findIndex((turn) => turn.id === id);
+    if (index >= 0) this.turns[index] = next;
+  }
+
+  private async rememberApprovalFor(submitted: SubmittedWork, route: RouteHint): Promise<void> {
+    await this.deps.runtime.tasks.rememberApproval({
+      approvalId: submitted.approvalId,
+      taskId: submitted.record.taskId,
+      planVersion: 1,
+      operation: operationForRoute(route),
+    });
   }
 
   private async recordViews(): Promise<readonly ChatRecordView[]> {
