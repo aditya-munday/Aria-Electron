@@ -292,4 +292,34 @@ export {
   type OrbEnvironment,
 } from './orb/state.js';
 
+export {
+  ChatService,
+  type ChatDeps,
+  type ChatRuntime,
+  type ChatVoiceControl,
+  type ChatTaskControl,
+  type ApprovalRequestedInput,
+} from './chat/chat-service.js';
+export { assembleChatState, emergencyStopView } from './chat/assemble.js';
+export { createChatRuntime } from './chat/chat-runtime.js';
+export type {
+  ChatRole,
+  ChatTurnState,
+  ChatTurn,
+  ApprovalDecision,
+  ApprovalScopeView,
+  ApprovalView,
+  QuestionView,
+  PlanView,
+  PermissionView,
+  TaskResultView,
+  ChatTaskView,
+  EmergencyStopView,
+  ChatState,
+  ChatSources,
+  ChatRecordView,
+  ApprovalDecisionOutcome,
+  ChatActionResult,
+} from './chat/state.js';
+
 export * from './contract/product-contract.js';

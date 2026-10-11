@@ -7,6 +7,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const entries = [
   ['src/control-center/renderer/control-center.ts', 'control-center.js'],
   ['src/orb/renderer/orb.ts', 'orb.js'],
+  ['src/chat/renderer/chat.ts', 'chat.js'],
 ];
 
 for (const [entry, out] of entries) {

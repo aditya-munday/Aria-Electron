@@ -12,8 +12,11 @@ import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
+import { ChatService } from './chat/chat-service.js';
+import { createChatRuntime } from './chat/chat-runtime.js';
 import type { ControlCenterState, PermissionState } from './control-center/state.js';
 import type { OrbState } from './orb/state.js';
+import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from './chat/state.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
 
 const WAKE_WORD_PHRASE = 'hey aria';
@@ -83,6 +86,11 @@ function main(): void {
     },
   });
 
+  const chat = new ChatService({
+    runtime: createChatRuntime(runtime),
+    principal: async () => (await runtime.principal()) ?? 'local',
+  });
+
   registerIpcHandlers(ipcMain, {
     signedIn: (): boolean => runtime.isSignedIn(),
     sendText: async (text: string): Promise<void> => {
@@ -103,6 +111,14 @@ function main(): void {
       return { ok: true, signedIn: true };
     },
     orbState: (): OrbState => orb.buildState(),
+    chatState: (): Promise<ChatState> => chat.buildState(),
+    decideApproval: (input: unknown): Promise<ApprovalDecisionOutcome> =>
+      chat.decideApproval(input),
+    answerQuestion: (input: unknown): Promise<ChatActionResult> => chat.answerQuestion(input),
+    decidePlan: (input: unknown): Promise<ChatActionResult> => chat.decidePlan(input),
+    decidePermission: (input: unknown): Promise<ChatActionResult> => chat.decidePermission(input),
+    cancelTask: (input: unknown): Promise<ChatActionResult> => chat.cancelTask(input),
+    emergencyStop: (): Promise<EmergencyStopView> => chat.emergencyStop(),
   });
 
   shell.start();

@@ -52,9 +52,19 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     updateSettings: () => ({ ok: true, settings: undefined as never }),
     signIn: () => ({ ok: false, reason: 'unsupported', unsupported: true }),
     signOut: () => ({ ok: true, signedIn: true }),
-    orbState: () => ({
-      generatedAt: 'x',
-      presence: { presence: 'idle', cue: 'dot', label: 'Idle', updatedAt: 'x' },
+    orbState: () => ({ generatedAt: 'x', presence: { presence: 'idle', cue: 'dot', label: 'Idle', updatedAt: 'x' } }),
+    chatState: async () => ({ generatedAt: 'x', turns: [], tasks: [] }),
+    decideApproval: () => ({ ok: false, approvalId: '', taskId: '', reason: 'unsupported', reassessmentRequired: false }),
+    answerQuestion: () => ({ ok: false, reason: 'unsupported' }),
+    decidePlan: () => ({ ok: false, reason: 'unsupported' }),
+    decidePermission: () => ({ ok: false, reason: 'unsupported' }),
+    cancelTask: () => ({ ok: false, reason: 'unsupported' }),
+    emergencyStop: () => ({
+      engaged: true,
+      stopped: [],
+      cancellationUnconfirmed: [],
+      unknown: [],
+      reportedAt: 'x',
     }),
     ...overrides,
   };
@@ -74,6 +84,13 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.accountSignIn,
         IPC_CHANNELS.accountSignOut,
         IPC_CHANNELS.orbState,
+        IPC_CHANNELS.chatState,
+        IPC_CHANNELS.chatDecideApproval,
+        IPC_CHANNELS.chatAnswerQuestion,
+        IPC_CHANNELS.chatDecidePlan,
+        IPC_CHANNELS.chatDecidePermission,
+        IPC_CHANNELS.chatCancelTask,
+        IPC_CHANNELS.chatEmergencyStop,
       ].sort(),
     );
   });

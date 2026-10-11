@@ -24,6 +24,7 @@
  */
 
 import type {
+  ApprovalDto,
   CancellationState,
   Identity,
   TaskDto,
@@ -297,6 +298,11 @@ export class AriaSupervisor {
     return record === undefined ? undefined : describeTaskPhase(record);
   }
 
+  /** List a task's approvals as the Backend reports them. */
+  listApprovals(taskId: string): Promise<Result<readonly ApprovalDto[]>> {
+    return this.client.listTaskApprovals(taskId);
+  }
+
   /** Resolve the signed-in identity through the product client (metadata only). */
   async identity(): Promise<Result<Identity>> {
     return this.client.identity();
@@ -372,6 +378,12 @@ export class AriaSupervisor {
       verification: execution?.verification ?? 'unverified',
       ...(execution?.leaseOwner !== undefined ? { leaseOwner: execution.leaseOwner } : {}),
       lastSequence: existing?.lastSequence ?? 0,
+      ...(execution?.result !== undefined
+        ? { result: execution.result }
+        : existing?.result !== undefined
+          ? { result: existing.result }
+          : {}),
+      ...(existing?.progress !== undefined ? { progress: existing.progress } : {}),
       ...(input?.conversationId !== undefined
         ? { conversationId: input.conversationId }
         : existing?.conversationId !== undefined
@@ -412,6 +424,8 @@ export class AriaSupervisor {
     const pendingQuestions = [...base.pendingQuestions];
     const pendingPermissions = [...base.pendingPermissions];
     const pendingPlans = [...base.pendingPlans];
+    let progress = base.progress;
+    let result = base.result;
 
     const ordered = [...events].sort((a, b) => a.sequence - b.sequence);
     for (const event of ordered) {
@@ -425,14 +439,17 @@ export class AriaSupervisor {
           break;
         case 'task.completed':
           if (!isTerminalTaskStatus(status)) status = 'succeeded';
+          result = { outcome: 'succeeded' };
           break;
         case 'task.failed':
           if (!isTerminalTaskStatus(status)) status = 'failed';
+          result = { outcome: 'failed' };
           break;
         case 'task.cancelled':
           if (!isTerminalTaskStatus(status)) status = 'cancelled';
           // A confirmed cancellation event claims the stop happened.
           cancellation = 'confirmed';
+          result = { outcome: 'cancelled' };
           break;
         case 'cancellation.requested':
           cancellation = cancellation === 'none' ? 'requested' : cancellation;
@@ -452,6 +469,8 @@ export class AriaSupervisor {
             upsert(pendingPermissions, signal, (p) => p.requestId);
           } else if (signal.kind === 'plan_proposed') {
             upsert(pendingPlans, signal, (p) => `${p.planId}:v${p.planVersion}`);
+          } else if (signal.kind === 'progress') {
+            progress = signal;
           }
           break;
         }
@@ -467,6 +486,8 @@ export class AriaSupervisor {
       cancellation,
       verification,
       ...(executionState !== undefined ? { executionState } : {}),
+      ...(progress !== undefined ? { progress } : {}),
+      ...(result !== undefined ? { result } : {}),
       lastSequence,
       pendingQuestions,
       pendingPermissions,

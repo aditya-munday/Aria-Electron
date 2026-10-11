@@ -1,5 +1,6 @@
 import type { ControlCenterState } from '../control-center/state.js';
 import type { OrbState } from '../orb/state.js';
+import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from '../chat/state.js';
 import type { ShellSettings } from './settings.js';
 
 export const IPC_CHANNELS = {
@@ -11,6 +12,13 @@ export const IPC_CHANNELS = {
   accountSignIn: 'aria:control-center:sign-in',
   accountSignOut: 'aria:control-center:sign-out',
   orbState: 'aria:orb:state',
+  chatState: 'aria:chat:state',
+  chatDecideApproval: 'aria:chat:decide-approval',
+  chatAnswerQuestion: 'aria:chat:answer-question',
+  chatDecidePlan: 'aria:chat:decide-plan',
+  chatDecidePermission: 'aria:chat:decide-permission',
+  chatCancelTask: 'aria:chat:cancel-task',
+  chatEmergencyStop: 'aria:chat:emergency-stop',
 } as const;
 
 export interface ShellStatus {
@@ -26,6 +34,8 @@ export type SignInResult =
   | { readonly ok: true; readonly signedIn: true }
   | { readonly ok: false; readonly reason: string; readonly unsupported?: true };
 
+export type { ApprovalDecisionOutcome, ChatActionResult, EmergencyStopView };
+
 export interface AriaBridge {
   status(): Promise<ShellStatus>;
   sendText(text: string): Promise<void>;
@@ -35,6 +45,13 @@ export interface AriaBridge {
   signIn(input: unknown): Promise<SignInResult>;
   signOut(): Promise<SignInResult>;
   orbState(): Promise<OrbState>;
+  chatState(): Promise<ChatState>;
+  decideApproval(input: unknown): Promise<ApprovalDecisionOutcome>;
+  answerQuestion(input: unknown): Promise<ChatActionResult>;
+  decidePlan(input: unknown): Promise<ChatActionResult>;
+  decidePermission(input: unknown): Promise<ChatActionResult>;
+  cancelTask(input: unknown): Promise<ChatActionResult>;
+  emergencyStop(): Promise<EmergencyStopView>;
 }
 
 export const BRIDGE_API_KEY = 'aria';
@@ -48,6 +65,13 @@ export const BRIDGE_METHODS = [
   'signIn',
   'signOut',
   'orbState',
+  'chatState',
+  'decideApproval',
+  'answerQuestion',
+  'decidePlan',
+  'decidePermission',
+  'cancelTask',
+  'emergencyStop',
 ] as const;
 
 export const FORBIDDEN_BRIDGE_METHODS = [
@@ -90,6 +114,19 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
     signOut: (): Promise<SignInResult> =>
       ipc.invoke(IPC_CHANNELS.accountSignOut) as Promise<SignInResult>,
     orbState: (): Promise<OrbState> => ipc.invoke(IPC_CHANNELS.orbState) as Promise<OrbState>,
+    chatState: (): Promise<ChatState> => ipc.invoke(IPC_CHANNELS.chatState) as Promise<ChatState>,
+    decideApproval: (input: unknown): Promise<ApprovalDecisionOutcome> =>
+      ipc.invoke(IPC_CHANNELS.chatDecideApproval, input) as Promise<ApprovalDecisionOutcome>,
+    answerQuestion: (input: unknown): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatAnswerQuestion, input) as Promise<ChatActionResult>,
+    decidePlan: (input: unknown): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatDecidePlan, input) as Promise<ChatActionResult>,
+    decidePermission: (input: unknown): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatDecidePermission, input) as Promise<ChatActionResult>,
+    cancelTask: (input: unknown): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatCancelTask, input) as Promise<ChatActionResult>,
+    emergencyStop: (): Promise<EmergencyStopView> =>
+      ipc.invoke(IPC_CHANNELS.chatEmergencyStop) as Promise<EmergencyStopView>,
   };
 }
 
