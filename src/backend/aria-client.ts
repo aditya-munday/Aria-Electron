@@ -309,6 +309,7 @@ export class AriaClient {
       throw new AriaStreamError(
         kindForStatus(response.status),
         `The Aria stream was rejected (${response.status}).`,
+        response.status,
       );
     }
     for await (const line of readNdjson(response.body)) {
@@ -336,6 +337,7 @@ export class AriaStreamError extends Error {
   constructor(
     readonly kind: string,
     message: string,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'AriaStreamError';
@@ -351,5 +353,5 @@ function classifyAriaError(status: number, body: unknown): AriaBackendError {
   const message = parsed.success
     ? parsed.data.message
     : `The Aria surface rejected the request (${status}).`;
-  return ariaError(kindForStatus(status), message);
+  return ariaError(kindForStatus(status), message, { status });
 }

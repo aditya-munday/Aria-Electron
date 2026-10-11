@@ -10,6 +10,111 @@
 export { AriaRuntime, type AriaRuntimeOptions } from './runtime.js';
 export { loadConfig, normalizeBaseUrl, type AriaConfig } from './config.js';
 
+// --- voice runtime --------------------------------------------------------
+export {
+  VoiceRuntime,
+  type VoiceRuntimeDeps,
+  type VoiceRuntimeDiagnostics,
+} from './voice/voice-runtime.js';
+export { VoiceError, isVoiceError, asVoiceError, recoveryForVoiceError, type VoiceErrorKind, type VoiceErrorRecovery } from './voice/errors.js';
+export {
+  VoiceEventBus,
+  type VoiceEvent,
+  type VoiceEventListener,
+  type VoiceSessionState,
+  type VoiceActivationSource,
+} from './voice/events.js';
+export {
+  loadVoiceConfig,
+  validateVoiceConfig,
+  DEFAULT_VOICE_CONFIG,
+  type VoiceRuntimeConfig,
+} from './voice/voice-config.js';
+export {
+  SPEECH_SAMPLE_RATE,
+  MAX_UTTERANCE_MS,
+  MAX_PCM_BYTES,
+  assertAudioFormat,
+  isSupportedAudioFormat,
+  frameSamples,
+  pcmDurationMs,
+  type AudioFormat,
+} from './voice/audio-format.js';
+export { AudioRingBuffer, type RingBufferStats } from './voice/ring-buffer.js';
+export {
+  createNoiseReducer,
+  NoiseReducer,
+  DEFAULT_NOISE_REDUCTION,
+  type NoiseReductionConfig,
+  type NoiseReductionStats,
+} from './voice/noise-reduction.js';
+export {
+  createVad,
+  VoiceActivityDetector,
+  DEFAULT_VAD,
+  type VadConfig,
+  type VadEvent,
+  type VadFrame,
+  type VadState,
+} from './voice/vad.js';
+export {
+  UtteranceAssembler,
+  toInt16,
+  bytesToBase64,
+  type UtteranceOutcome,
+  type UtteranceAssemblerConfig,
+} from './voice/segmenter.js';
+export {
+  createPushToTalk,
+  PushToTalkController,
+  DEFAULT_PUSH_TO_TALK,
+  type PushToTalkConfig,
+  type PushToTalkIntent,
+  type PushToTalkMode,
+} from './voice/push-to-talk.js';
+export {
+  EngineWakeWordDetector,
+  WakeWordController,
+  createNativeWakeWordDetector,
+  DEFAULT_WAKE_WORD,
+  type WakeWordConfig,
+  type WakeWordDetector,
+  type WakeWordEngine,
+  type WakeWordDetection,
+  type WakeWordActivation,
+  type WakeWordStatus,
+} from './voice/wake-word.js';
+export {
+  WakeWordListener,
+  type WakeListenerState,
+  type WakeWordListenerDeps,
+} from './voice/wake-listener.js';
+export { ManualSpeaker, type Speaker } from './voice/playback.js';
+export type {
+  AudioDevice,
+  CaptureHandle,
+  DeviceChangeEvent,
+  Microphone,
+  MicrophonePermission,
+} from './voice/device.js';
+export {
+  BackendSpeechProxy,
+  voiceErrorFromBackend,
+  voiceErrorFromStream,
+  type SpeechProxy,
+  type SttResult,
+  type TtsOptions,
+} from './voice/speech.js';
+export { ChatOrchestrator, type ChatOrchestratorOptions } from './voice/orchestrator.js';
+export {
+  VoiceSession,
+  raceWithSignal,
+  base64ToPcm,
+  type VoiceSessionDeps,
+  type Orchestrator,
+  type UtteranceBoundary,
+} from './voice/session.js';
+
 export { TaskClient, type TaskClientOptions } from './backend/task-client.js';
 export type { TaskApi } from './backend/task-api.js';
 export {
