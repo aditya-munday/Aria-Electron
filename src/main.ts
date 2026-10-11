@@ -34,6 +34,7 @@ function main(): void {
   const environmentSource = (): InteractionEnvironment => ({
     wakeWordEnabled: settings.load().wakeWordEnabled,
     microphonePermission: microphonePermission(),
+    captureMuted: settings.load().captureMuted,
     voiceSessionActive: false,
   });
   const interaction = new InteractionController({

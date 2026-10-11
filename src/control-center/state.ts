@@ -166,6 +166,7 @@ export interface ShellSettingsPatch {
   readonly pushToTalkEnabled?: boolean;
   readonly pushToTalkMode?: PushToTalkMode;
   readonly chatShortcutEnabled?: boolean;
+  readonly captureMuted?: boolean;
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
@@ -179,6 +180,7 @@ export const EDITABLE_SETTINGS_KEYS: readonly SettingsKey[] = [
   'pushToTalkMode',
   'wakeWordEnabled',
   'chatShortcutEnabled',
+  'captureMuted',
   'voice',
   'language',
   'speakResponses',

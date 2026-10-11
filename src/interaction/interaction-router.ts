@@ -150,6 +150,12 @@ export interface InteractionEnvironment {
    */
   readonly microphonePermission: 'granted' | 'denied' | 'prompt';
   /**
+   * Whether the user has muted capture. A muted control refuses every voice
+   * activation locally, before any device is opened, and is distinct from a
+   * denied permission (the user can unmute; only the OS can re-grant).
+   */
+  readonly captureMuted: boolean;
+  /**
    * Whether a voice interaction is already active. The router refuses to merge
    * two voice interactions; a new one is rejected rather than layered.
    */
@@ -163,6 +169,7 @@ export interface InteractionEnvironment {
 export type RouteRefusal =
   | 'wake_word_disabled'
   | 'microphone_not_permitted'
+  | 'capture_muted'
   | 'voice_session_active';
 
 export type RoutedResult =
@@ -172,6 +179,7 @@ export type RoutedResult =
 export const DEFAULT_INTERACTION_ENVIRONMENT: InteractionEnvironment = {
   wakeWordEnabled: false,
   microphonePermission: 'prompt',
+  captureMuted: false,
   voiceSessionActive: false,
 };
 
@@ -236,7 +244,10 @@ export function routeActivation(
 
     case 'push_to_talk_press': {
       // Push-to-talk does not depend on wake-word detection or its model; it
-      // only requires microphone permission.
+      // only requires microphone permission and an unmuted capture control.
+      if (environment.captureMuted) {
+        return refused(activation.kind, 'capture_muted');
+      }
       if (environment.microphonePermission !== 'granted') {
         return refused(activation.kind, 'microphone_not_permitted');
       }
@@ -264,10 +275,13 @@ export function routeActivation(
 
     case 'wake_word': {
       // Capture happens only after activation, and only while detection is
-      // enabled and the microphone is permitted. A disabled detector never
-      // captures.
+      // enabled, the microphone is permitted, and capture is not muted. A
+      // disabled detector never captures.
       if (!environment.wakeWordEnabled) {
         return refused(activation.kind, 'wake_word_disabled');
+      }
+      if (environment.captureMuted) {
+        return refused(activation.kind, 'capture_muted');
       }
       if (environment.microphonePermission !== 'granted') {
         return refused(activation.kind, 'microphone_not_permitted');

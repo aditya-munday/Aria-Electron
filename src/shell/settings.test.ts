@@ -4,6 +4,7 @@ import {
   DEFAULT_SETTINGS,
   InMemorySettingsStore,
   normalizeSettings,
+  patchSettings,
 } from './settings.js';
 
 describe('shell settings', () => {
@@ -31,5 +32,20 @@ describe('shell settings', () => {
     const store = new InMemorySettingsStore();
     store.save({ ...DEFAULT_SETTINGS, wakeWordEnabled: true });
     expect(store.load().wakeWordEnabled).toBe(true);
+  });
+
+  it('defaults capture to unmuted and validates a persisted mute flag', () => {
+    expect(DEFAULT_SETTINGS.captureMuted).toBe(false);
+    expect(normalizeSettings({ captureMuted: true }).captureMuted).toBe(true);
+    expect(normalizeSettings({ captureMuted: 'yes' }).captureMuted).toBe(false);
+  });
+
+  it('applies a capture-mute patch without disturbing unrelated settings', () => {
+    const patched = patchSettings(
+      { ...DEFAULT_SETTINGS, wakeWordEnabled: true },
+      { captureMuted: true },
+    );
+    expect(patched.captureMuted).toBe(true);
+    expect(patched.wakeWordEnabled).toBe(true);
   });
 });

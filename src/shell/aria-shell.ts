@@ -115,6 +115,7 @@ export class AriaShell {
     return {
       wakeWordEnabled: settings.wakeWordEnabled,
       microphonePermission: 'granted',
+      captureMuted: settings.captureMuted,
       voiceSessionActive: false,
     };
   }

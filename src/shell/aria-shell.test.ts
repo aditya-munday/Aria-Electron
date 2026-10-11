@@ -29,6 +29,7 @@ function build(initial: ShellSettings = DEFAULT_SETTINGS) {
     environment: () => ({
       wakeWordEnabled: settings.load().wakeWordEnabled,
       microphonePermission: 'granted',
+      captureMuted: settings.load().captureMuted,
       voiceSessionActive: false,
     }),
     runtime: interactionRuntime,

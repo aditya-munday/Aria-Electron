@@ -6,6 +6,7 @@ export interface ShellSettings {
   readonly pushToTalkEnabled: boolean;
   readonly pushToTalkMode: PushToTalkMode;
   readonly chatShortcutEnabled: boolean;
+  readonly captureMuted: boolean;
   readonly voice?: string;
   readonly language?: string;
   readonly speakResponses: boolean;
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   pushToTalkEnabled: true,
   pushToTalkMode: 'hold',
   chatShortcutEnabled: true,
+  captureMuted: false,
   speakResponses: true,
 };
 
@@ -59,6 +61,10 @@ export function normalizeSettings(value: unknown): ShellSettings {
       typeof record['chatShortcutEnabled'] === 'boolean'
         ? record['chatShortcutEnabled']
         : DEFAULT_SETTINGS.chatShortcutEnabled,
+    captureMuted:
+      typeof record['captureMuted'] === 'boolean'
+        ? record['captureMuted']
+        : DEFAULT_SETTINGS.captureMuted,
     speakResponses:
       typeof record['speakResponses'] === 'boolean'
         ? record['speakResponses']
@@ -87,6 +93,7 @@ export interface SettingsPatchInput {
   readonly pushToTalkEnabled?: boolean;
   readonly pushToTalkMode?: PushToTalkMode;
   readonly chatShortcutEnabled?: boolean;
+  readonly captureMuted?: boolean;
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
@@ -111,6 +118,7 @@ export function patchSettings(
     ...(patch.chatShortcutEnabled !== undefined
       ? { chatShortcutEnabled: patch.chatShortcutEnabled }
       : {}),
+    ...(patch.captureMuted !== undefined ? { captureMuted: patch.captureMuted } : {}),
     ...(patch.speakResponses !== undefined ? { speakResponses: patch.speakResponses } : {}),
   };
   if (next['voice'] === null) {

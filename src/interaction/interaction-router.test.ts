@@ -92,3 +92,46 @@ describe('interaction routing: surface and input identity', () => {
     expect(result.kind).toBe('refused');
   });
 });
+
+describe('interaction routing: capture mute gates every voice activation', () => {
+  it('refuses push-to-talk while capture is muted, before any device', () => {
+    const result = routeActivation(
+      { kind: 'push_to_talk_press' },
+      { ...VOICE_READY, captureMuted: true },
+    );
+    expect(result.kind).toBe('refused');
+    if (result.kind !== 'refused') return;
+    expect(result.reason).toBe('capture_muted');
+  });
+
+  it('refuses wake-word capture while muted even when the detector is enabled', () => {
+    const result = routeActivation(
+      { kind: 'wake_word' },
+      { ...VOICE_READY, captureMuted: true },
+    );
+    expect(result.kind).toBe('refused');
+    if (result.kind !== 'refused') return;
+    expect(result.reason).toBe('capture_muted');
+  });
+
+  it('routes push-to-talk again once capture is unmuted', () => {
+    const result = routeActivation(
+      { kind: 'push_to_talk_press' },
+      { ...VOICE_READY, captureMuted: false },
+    );
+    expect(result.kind).toBe('routed');
+  });
+
+  it('keeps mute distinct from a denied microphone permission', () => {
+    const muted = routeActivation(
+      { kind: 'push_to_talk_press' },
+      { ...VOICE_READY, captureMuted: true },
+    );
+    const denied = routeActivation(
+      { kind: 'push_to_talk_press' },
+      { ...VOICE_READY, microphonePermission: 'denied' },
+    );
+    if (muted.kind !== 'refused' || denied.kind !== 'refused') throw new Error('expected refusals');
+    expect(muted.reason).not.toBe(denied.reason);
+  });
+});
