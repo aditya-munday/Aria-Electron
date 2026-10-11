@@ -1,8 +1,8 @@
 {
-  "name": "aria-electron",
+  "name": "aria-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Aria - the local-first voice assistant desktop application for the Directioner ecosystem.",
+  "description": "Aria \u2014 the local-first voice assistant desktop client (Electron).",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -57,8 +57,9 @@
       "category": "Utility",
       "maintainer": "Beyonders <dev@beyonders.dev>",
       "synopsis": "Aria - the local-first voice assistant desktop client",
-      "description": "Aria is the Linux-native desktop client of the Aria /v1 wire contract. It provides the Control Center, the Orb presence, the chat surface and honest stop, mute, interrupt and recovery controls, and talks to the Beyonders backend.",
-      "executableName": "aria",
+      "description": "Aria is the Linux-native desktop client of the Aria /v1 wire contract. Control Center, Orb presence, chat surface and honest stop/mute/interrupt/recovery controls.",
+      "executableName": "aria-desktop",
+      "icon": "build/icon.png",
       "syncDesktopName": true
     },
     "deb": {
@@ -76,5 +77,5 @@
       ]
     }
   },
-  "desktopName": "aria.desktop"
+  "desktopName": "aria-desktop.desktop"
 }
