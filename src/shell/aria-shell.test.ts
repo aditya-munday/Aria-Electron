@@ -9,6 +9,8 @@ import {
   DEFAULT_KEY_REPERTOIRE,
   type KeyEvent,
 } from './window.js';
+import { ORB_RIGHT_MARGIN } from './placement.js';
+import { ORB_WINDOW_SIZE } from '../orb/window-options.js';
 import {
   FakePlatform,
   FakeShellRuntime,
@@ -229,6 +231,46 @@ describe('orb presence', () => {
 });
 
 
+
+describe('orb window geometry and options', () => {
+  it('places the orb at the right edge, two sixths down the work area', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    const orb = platform.windows.handle('orb');
+    expect(orb?.bounds).toEqual({
+      x: 1440 - ORB_WINDOW_SIZE - ORB_RIGHT_MARGIN,
+      y: (900 * 2) / 6,
+      width: ORB_WINDOW_SIZE,
+      height: ORB_WINDOW_SIZE,
+    });
+  });
+
+  it('creates the orb with the real frameless, panel, shadowless options', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    const options = platform.windows.handle('orb')?.options;
+    expect(options?.frame).toBe(false);
+    expect(options?.transparent).toBe(true);
+    expect(options?.alwaysOnTop).toBe(true);
+    expect(options?.focusable).toBe(false);
+    expect(options?.hasShadow).toBe(false);
+    expect(options?.skipTaskbar).toBe(true);
+    expect(options?.panel).toBe(true);
+    expect(options?.bounds).toBeDefined();
+  });
+
+  it('does not focus the orb even when it is shown', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(platform.windows.handle('orb')?.focused).toBe(0);
+  });
+});
 
 describe('settings persistence', () => {
   it('persists which windows are open, excluding the activation-driven Orb', async () => {
