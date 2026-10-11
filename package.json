@@ -11,7 +11,8 @@
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run typecheck && npm run test"
+    "ci": "npm run typecheck && npm run test",
+    "pack:deb": "npm run build && electron-builder --linux deb --x64"
   },
   "engines": {
     "node": ">=20"
@@ -22,9 +23,58 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "electron": "^38.8.6",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.21.5",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  }
+  },
+  "author": {
+    "name": "Beyonders",
+    "email": "dev@beyonders.dev"
+  },
+  "homepage": "https://beyonders.dev",
+  "build": {
+    "appId": "dev.beyonders.aria",
+    "productName": "Aria",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "maintainer": "Beyonders <dev@beyonders.dev>",
+      "synopsis": "Aria - the local-first voice assistant desktop client",
+      "description": "Aria is the Linux-native desktop client of the Aria /v1 wire contract. It provides the Control Center, the Orb presence, the chat surface and honest stop, mute, interrupt and recovery controls, and talks to the Beyonders backend.",
+      "executableName": "aria",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libdrm2",
+        "libgbm1",
+        "libasound2"
+      ]
+    }
+  },
+  "desktopName": "aria.desktop"
 }
