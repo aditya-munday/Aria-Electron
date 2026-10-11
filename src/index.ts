@@ -10,6 +10,24 @@
 export { AriaRuntime, type AriaRuntimeOptions } from './runtime.js';
 export { loadConfig, normalizeBaseUrl, type AriaConfig } from './config.js';
 
+// --- interaction routing --------------------------------------------------
+export {
+  routeActivation,
+  isRoutedSession,
+  isRoutedControl,
+  DEFAULT_INTERACTION_ENVIRONMENT,
+  type Activation,
+  type InteractionSurface,
+  type InteractionInput,
+  type VoiceInputPath,
+  type RoutedSession,
+  type RoutedControl,
+  type Routed,
+  type RoutedResult,
+  type RouteRefusal,
+  type InteractionEnvironment,
+} from './interaction/interaction-router.js';
+
 // --- voice runtime --------------------------------------------------------
 export {
   VoiceRuntime,
