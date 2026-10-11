@@ -3,6 +3,7 @@ import { app, ipcMain, screen } from 'electron';
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
 import { InteractionController } from './interaction/interaction-controller.js';
+import type { InteractionRuntime } from './interaction/interaction-controller.js';
 import { AriaRuntime } from './runtime.js';
 import { AriaShell } from './shell/aria-shell.js';
 import { planOrbBackdrop } from './orb/backdrop.js';
@@ -29,10 +30,8 @@ function main(): void {
   const runtime = new AriaRuntime({ statePath: `${userData}/supervision.json` });
 
   const voice = runtime.voice;
-  const interactionRuntime =
-    voice !== undefined
-      ? createVoiceInteractionRuntime(voice)
-      : inertVoiceRuntime();
+  const interactionRuntime: InteractionRuntime =
+    voice !== undefined ? createVoiceInteractionRuntime(voice) : inertVoiceRuntime();
 
   const microphonePermission = (): PermissionState =>
     voice !== undefined ? 'granted' : 'denied';
@@ -96,7 +95,7 @@ function main(): void {
   registerIpcHandlers(ipcMain, {
     signedIn: (): boolean => runtime.isSignedIn(),
     sendText: async (text: string): Promise<void> => {
-      await interactionRuntime.sendText(text);
+      await chat.sendText(text);
     },
     stopPlayback: async (): Promise<void> => {
       await interactionRuntime.interrupt();
@@ -141,7 +140,7 @@ type SignInOutcome =
   | { readonly ok: true; readonly signedIn: true }
   | { readonly ok: false; readonly reason: string; readonly unsupported?: true };
 
-function inertVoiceRuntime(): VoiceRuntimeLike {
+function inertVoiceRuntime(): InteractionRuntime {
   return {
     pushToTalkPress: async () => undefined,
     pushToTalkRelease: async () => undefined,

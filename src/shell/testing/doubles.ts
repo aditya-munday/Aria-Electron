@@ -9,6 +9,7 @@ import type {
   WindowOptions,
 } from '../window.js';
 import type { Rect } from '../geometry.js';
+import type { RouteHint } from '../../contract/aria-contract.js';
 import type { ScreenInfo, ScreenProvider } from '../placement.js';
 import type { ShellRuntime } from '../aria-shell.js';
 import type { VoiceRuntimeLike } from '../interaction-runtime.js';
@@ -156,6 +157,7 @@ export class FakeVoiceRuntime implements VoiceRuntimeLike {
   releases = 0;
   readonly texts: string[] = [];
   interrupts = 0;
+  reply: { readonly text: string; readonly route?: RouteHint | null } = { text: '' };
 
   async pushToTalkPress(): Promise<void> {
     this.presses += 1;
@@ -163,8 +165,9 @@ export class FakeVoiceRuntime implements VoiceRuntimeLike {
   async pushToTalkRelease(): Promise<void> {
     this.releases += 1;
   }
-  async sendText(text: string): Promise<void> {
+  async sendText(text: string): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
     this.texts.push(text);
+    return this.reply;
   }
   async interrupt(): Promise<void> {
     this.interrupts += 1;

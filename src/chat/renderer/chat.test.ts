@@ -114,6 +114,42 @@ function render(value: ChatState, overrides: Partial<ChatBridge> = {}) {
 }
 
 describe('chat renderer', () => {
+  it('marks a user turn that was submitted as tracked work', () => {
+    render({
+      generatedAt: NOW,
+      turns: [
+        {
+          id: 'turn-1',
+          role: 'user',
+          text: 'deploy the api',
+          at: NOW,
+          state: 'complete',
+          submittedTaskId: 't9',
+          routeCapability: 'deploy.service',
+        },
+        { id: 'turn-2', role: 'assistant', text: 'Working on it.', at: NOW, state: 'complete' },
+      ],
+      tasks: [],
+    });
+    const marker = document.querySelector('[data-testid="submitted-t9"]');
+    expect(marker).not.toBeNull();
+    expect(marker?.textContent).toContain('deploy.service');
+    expect(marker?.textContent).toContain('Approval required');
+  });
+
+  it('renders a plain conversation turn with no submission marker', () => {
+    render({
+      generatedAt: NOW,
+      turns: [
+        { id: 'turn-1', role: 'user', text: 'hello', at: NOW, state: 'complete' },
+        { id: 'turn-2', role: 'assistant', text: 'Hi there.', at: NOW, state: 'complete' },
+      ],
+      tasks: [],
+    });
+    expect(document.querySelector('[data-testid^="submitted-"]')).toBeNull();
+    expect(document.querySelectorAll('.turns .turn')).toHaveLength(2);
+  });
+
   it('renders the pending approval with its exact scope', () => {
     render(approvalTask());
     const approval = document.querySelector('[data-testid="approval-a1"]');

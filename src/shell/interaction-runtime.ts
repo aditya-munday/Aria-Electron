@@ -1,10 +1,11 @@
 import type { InteractionRuntime } from '../interaction/interaction-controller.js';
+import type { RouteHint } from '../contract/aria-contract.js';
 import type { VoiceRuntime } from '../voice/voice-runtime.js';
 
 export interface VoiceRuntimeLike {
   pushToTalkPress(): Promise<void>;
   pushToTalkRelease(): Promise<void>;
-  sendText(text: string): Promise<void>;
+  sendText(text: string): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
   interrupt(): Promise<void>;
 }
 
