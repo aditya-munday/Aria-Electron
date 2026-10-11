@@ -273,4 +273,23 @@ export {
   type TaskStore,
 } from './supervisor/task-store.js';
 
+export {
+  OrbService,
+  type OrbDeps,
+  type OrbRuntime,
+} from './orb/orb-service.js';
+export { resolvePresence } from './orb/assemble.js';
+export {
+  ORB_CUE,
+  ORB_LABEL,
+  isOrbPresence,
+  type OrbPresence,
+  type OrbCue,
+  type OrbPresenceView,
+  type OrbState,
+  type OrbSources,
+  type OrbVoiceDiagnostics,
+  type OrbEnvironment,
+} from './orb/state.js';
+
 export * from './contract/product-contract.js';

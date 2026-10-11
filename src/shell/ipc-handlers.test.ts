@@ -52,6 +52,10 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     updateSettings: () => ({ ok: true, settings: undefined as never }),
     signIn: () => ({ ok: false, reason: 'unsupported', unsupported: true }),
     signOut: () => ({ ok: true, signedIn: true }),
+    orbState: () => ({
+      generatedAt: 'x',
+      presence: { presence: 'idle', cue: 'dot', label: 'Idle', updatedAt: 'x' },
+    }),
     ...overrides,
   };
 }
@@ -69,6 +73,7 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.settingsUpdate,
         IPC_CHANNELS.accountSignIn,
         IPC_CHANNELS.accountSignOut,
+        IPC_CHANNELS.orbState,
       ].sort(),
     );
   });

@@ -3,6 +3,7 @@ import type { InteractionEnvironment, RoutedResult } from '../interaction/intera
 import {
   CHAT_SHORTCUT_ACCELERATOR,
   DEFAULT_KEY_REPERTOIRE,
+  ORB_WINDOW_OPTIONS,
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
@@ -131,7 +132,10 @@ export class AriaShell {
   open(kind: WindowKind, persist = true): WindowHandle {
     const handle = this.windows.get(kind) ?? this.createWindow(kind);
     handle.show();
-    handle.focus();
+    // The Orb is a presence: borderless, always-on-top and click-through. It is
+    // never focused, because taking focus would steal it from whatever the user
+    // was doing when the capture activation fired.
+    if (kind !== 'orb') handle.focus();
     if (persist) this.persistOpenWindows();
     return handle;
   }
@@ -142,7 +146,10 @@ export class AriaShell {
   }
 
   private createWindow(kind: WindowKind): WindowHandle {
-    const handle = this.platform.windows.create(kind, { startHidden: kind === 'orb' });
+    const handle = this.platform.windows.create(
+      kind,
+      kind === 'orb' ? ORB_WINDOW_OPTIONS : { startHidden: false },
+    );
     this.windows.set(kind, handle);
     return handle;
   }
