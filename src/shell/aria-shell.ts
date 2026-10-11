@@ -63,6 +63,17 @@ export class AriaShell {
     return this.pending;
   }
 
+  currentSettings(): ShellSettings {
+    return this.settings.load();
+  }
+
+  updateSettings(update: (current: ShellSettings) => ShellSettings): ShellSettings {
+    const next = update(this.settings.load());
+    this.settings.save(next);
+    this.persistOpenWindows();
+    return next;
+  }
+
   private enqueue(task: () => Promise<void>): void {
     this.pending = this.pending.then(task, task);
   }

@@ -20,6 +20,7 @@ import type { TaskApi } from '../task-api.js';
 import type {
   ApprovalDto,
   ApprovalResultEnvelope,
+  Identity,
   TaskDto,
   TaskEventDto,
   TaskExecutionDto,
@@ -61,8 +62,8 @@ export class InMemoryBackend implements TaskApi {
 
   // --- TaskApi ------------------------------------------------------------
 
-  async identity(): Promise<Result<{ userId: string }>> {
-    return ok({ userId: 'u1' });
+  async identity(): Promise<Result<Identity>> {
+    return ok({ userId: 'u1', email: null, roles: ['user'], providers: ['password'], anonymous: false });
   }
 
   async createTask(input: { title: string }): Promise<Result<TaskDto>> {
