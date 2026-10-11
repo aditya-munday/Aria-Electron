@@ -12,7 +12,7 @@
  */
 
 import type { AriaClient } from '../backend/aria-client.js';
-import type { ChatMessage } from '../contract/aria-contract.js';
+import type { ChatMessage, RouteHint } from '../contract/aria-contract.js';
 import { VoiceError } from './errors.js';
 import type { Orchestrator } from './session.js';
 
@@ -41,7 +41,7 @@ export class ChatOrchestrator implements Orchestrator {
     readonly text: string;
     readonly sessionId: string;
     readonly signal: AbortSignal;
-  }): Promise<{ readonly text: string }> {
+  }): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
     if (input.signal.aborted) {
       throw new VoiceError('cancelled', 'The voice turn was cancelled.');
     }
@@ -63,7 +63,10 @@ export class ChatOrchestrator implements Orchestrator {
     this.history.push({ role: 'user', content: input.text });
     this.history.push({ role: 'assistant', content: text });
     while (this.history.length > this.maxHistory) this.history.shift();
-    return { text };
+    return {
+      text,
+      ...(result.value.route !== undefined ? { route: result.value.route } : {}),
+    };
   }
 
   /** Forget the conversation history (a new conversation). */

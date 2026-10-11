@@ -302,4 +302,27 @@ describe('VoiceSession cancellation and stale results', () => {
     await run;
     expect(types(h.events)).toContain('response');
   });
+
+  it('threads an advisory route hint from the orchestrator onto the response', async () => {
+    const route = { capability: 'deploy.service', requires_confirmation: true };
+    const h = harness({ orchestrator: new RecordingOrchestrator({ route }) });
+    const run = h.session.runText('deploy the api');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    const response = h.events.find((e) => e.type === 'response');
+    expect(response).toMatchObject({ text: 'response:deploy the api', route });
+    expect(h.session.route).toEqual(route);
+  });
+
+  it('leaves the route undefined when the Backend sent no hint', async () => {
+    const h = harness({});
+    const run = h.session.runText('just talking');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    const response = h.events.find((e) => e.type === 'response');
+    expect(response?.type === 'response' && response.route).toBeFalsy();
+    expect(h.session.route).toBeUndefined();
+  });
 });

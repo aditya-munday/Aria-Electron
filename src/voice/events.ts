@@ -8,6 +8,8 @@
  * can never attribute a stale event to a newer interaction.
  */
 
+import type { RouteHint } from '../contract/aria-contract.js';
+
 export type VoiceActivationSource = 'push_to_talk' | 'wake_word' | 'text';
 
 export type VoiceSessionState =
@@ -41,7 +43,11 @@ export type VoiceEvent =
       readonly reason: 'empty' | 'too_short' | 'too_long' | 'invalid';
     })
   | (VoiceEventBase & { readonly type: 'transcript'; readonly text: string; readonly final: boolean })
-  | (VoiceEventBase & { readonly type: 'response'; readonly text: string })
+  | (VoiceEventBase & {
+      readonly type: 'response';
+      readonly text: string;
+      readonly route?: RouteHint | null;
+    })
   | (VoiceEventBase & { readonly type: 'synthesis.started'; readonly text: string })
   | (VoiceEventBase & { readonly type: 'playback.started' })
   | (VoiceEventBase & { readonly type: 'playback.finished' })
