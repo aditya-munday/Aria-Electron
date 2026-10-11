@@ -21,6 +21,7 @@ import type {
   ApprovalDto,
   ApprovalResultEnvelope,
   Identity,
+  ReconcileResult,
   TaskDto,
   TaskEventDto,
   TaskExecutionDto,
@@ -332,5 +333,15 @@ export class InMemoryBackend implements TaskApi {
       idempotencyKey: `${type}:${this.counter + 1}`,
       payload,
     });
+  }
+
+  async reconcile(): Promise<Result<ReconcileResult>> {
+    let requeued = 0;
+    for (const execution of this.executions.values()) {
+      if (execution.state === 'leased' || execution.state === 'running') {
+        requeued += 1;
+      }
+    }
+    return ok({ requeued });
   }
 }

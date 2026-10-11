@@ -37,6 +37,12 @@ import { isTerminalExecutionState, isTerminalTaskStatus } from '../contract/prod
 import type { TaskApi } from '../backend/task-api.js';
 import type { Result } from '../backend/result.js';
 import {
+  availabilityFromOutcome,
+  classifyBackendOutcome,
+  type BackendAvailabilityState,
+  type BackendOutcome,
+} from '../backend/backend-outcome.js';
+import {
   confirmCancellation,
   type CancellationOutcome,
   type ConfirmCancellationOptions,
@@ -96,6 +102,8 @@ export class AriaSupervisor {
   private readonly store: TaskStore;
   private readonly now: () => string;
   private emergencyStop = false;
+  private availability: BackendAvailabilityState = 'unknown';
+  private lastOutcome: BackendOutcome | undefined;
 
   constructor(deps: SupervisorDeps) {
     this.client = deps.client;
@@ -145,15 +153,26 @@ export class AriaSupervisor {
         'Emergency stop is engaged; no new work will be started.',
       );
     }
+    if (this.availability === 'offline') {
+      throw new SupervisorError(
+        'backend',
+        'The Backend is unreachable; new tracked work is refused until it returns.',
+      );
+    }
 
     const created = await this.client.createTask({ title: input.title });
-    if (!created.ok) throw new SupervisorError('backend', created.error.message, created.error);
+    if (!created.ok) {
+      this.observeBackendOutcome(classifyBackendOutcome(created.error));
+      throw new SupervisorError('backend', created.error.message, created.error);
+    }
     const task = created.value;
+    this.markAvailable();
 
     // Authorization gate: open the approval so a human decision is required
     // before any execution. The backend refuses to dispatch an unapproved task.
     const requested = await this.client.requestApproval(task.id);
     if (!requested.ok) {
+      this.observeBackendOutcome(classifyBackendOutcome(requested.error));
       throw new SupervisorError('backend', requested.error.message, requested.error);
     }
 
@@ -201,10 +220,18 @@ export class AriaSupervisor {
         'Emergency stop is engaged; no new work will be started.',
       );
     }
+    if (this.availability === 'offline') {
+      throw new SupervisorError(
+        'backend',
+        'The Backend is unreachable; new tracked work is refused until it returns.',
+      );
+    }
     const dispatched = await this.client.dispatch(taskId, { origin: 'aria' });
     if (!dispatched.ok) {
+      this.observeBackendOutcome(classifyBackendOutcome(dispatched.error));
       throw new SupervisorError('backend', dispatched.error.message, dispatched.error);
     }
+    this.markAvailable();
     return this.refresh(taskId);
   }
 
@@ -236,6 +263,86 @@ export class AriaSupervisor {
       if (record !== undefined) refreshed.push(record);
     }
     return refreshed;
+  }
+
+  /**
+   * The Backend's availability, as last observed by a write attempt. It starts
+   * `unknown` and only a definite rejection, a delivered write, or an outage
+   * moves it. Reads never fabricate availability.
+   */
+  backendAvailability(): BackendAvailabilityState {
+    return this.availability;
+  }
+
+  /** The last backend outcome observed by a write attempt, if any. */
+  lastBackendOutcome(): BackendOutcome | undefined {
+    return this.lastOutcome;
+  }
+
+  /**
+   * Whether new tracked work may start right now. It is refused while the
+   * emergency stop is engaged or the Backend was last observed offline, so Aria
+   * fails closed rather than starting work it cannot supervise.
+   */
+  canStartWork(): boolean {
+    return !this.emergencyStop && this.availability !== 'offline';
+  }
+
+  /**
+   * Reload persisted state and re-converge every tracked task on the Backend.
+   * Called after a process/renderer restart. A restart never loses ongoing
+   * tasks, pending approvals, or pending questions: they are re-read from the
+   * Backend, and an unreachable Backend leaves the persisted view intact rather
+   * than clearing it.
+   */
+  async recover(): Promise<readonly SupervisionRecord[]> {
+    this.store.load();
+    await this.refreshAvailability();
+    return this.reconcile();
+  }
+
+  /**
+   * Reconcile an uncertain outcome by reading authoritative status. It never
+   * resubmits and never guesses: the record reflects exactly what the Backend
+   * reports after the re-read.
+   */
+  async reconcileUncertain(taskId: string): Promise<SupervisionRecord | undefined> {
+    return this.refresh(taskId);
+  }
+
+  /**
+   * Ask the Backend to requeue orphaned executions (for example after a worker
+   * crash) and re-read the tracked tasks. Bounded and read-confirmed.
+   */
+  async reconcileExecutions(): Promise<Result<{ readonly requeued: number }>> {
+    const result = await this.client.reconcile();
+    if (!result.ok) {
+      this.observeBackendOutcome(classifyBackendOutcome(result.error));
+      return result;
+    }
+    this.markAvailable();
+    await this.reconcile();
+    return result;
+  }
+
+  private markAvailable(): void {
+    this.availability = 'online';
+    this.lastOutcome = undefined;
+  }
+
+  private observeBackendOutcome(outcome: BackendOutcome): void {
+    this.lastOutcome = outcome;
+    this.availability = availabilityFromOutcome(outcome);
+    if (this.availability === 'online') this.lastOutcome = undefined;
+  }
+
+  private async refreshAvailability(): Promise<void> {
+    const probe = await this.client.getTask('__availability_probe__');
+    if (probe.ok) {
+      this.markAvailable();
+      return;
+    }
+    this.observeBackendOutcome(classifyBackendOutcome(probe.error));
   }
 
   /** Answer AI-Engineer's question and clear it from the pending set. */
