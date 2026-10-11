@@ -86,4 +86,12 @@ describe('preload bridge surface', () => {
     expect(api['invoke']).toBeUndefined();
     expect(api['ipc']).toBeUndefined();
   });
+
+  it('routes shell settings through the settings channel', async () => {
+    const invoker = new RecordingInvoker();
+    const bridge = createAriaBridge(invoker);
+    await bridge.settings();
+    expect(invoker.calls).toEqual([{ channel: IPC_CHANNELS.shellSettings, args: [] }]);
+  });
+
 });

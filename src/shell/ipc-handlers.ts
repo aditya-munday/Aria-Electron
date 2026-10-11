@@ -1,6 +1,7 @@
 import type { ControlCenterState } from '../control-center/state.js';
 import type { OrbState } from '../orb/state.js';
 import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from '../chat/state.js';
+import type { ShellSettings } from './settings.js';
 import {
   IPC_CHANNELS,
   type IpcRegistrar,
@@ -28,6 +29,7 @@ export interface IpcHost {
   muteCapture(input: unknown): ChatActionResult | Promise<ChatActionResult>;
   interruptSpeech(): ChatActionResult | Promise<ChatActionResult>;
   emergencyStop(): EmergencyStopView | Promise<EmergencyStopView>;
+  settings(): ShellSettings | Promise<ShellSettings>;
 }
 
 export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
@@ -106,5 +108,9 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
   ipc.handle(
     IPC_CHANNELS.chatEmergencyStop,
     (): EmergencyStopView | Promise<EmergencyStopView> => host.emergencyStop(),
+  );
+  ipc.handle(
+    IPC_CHANNELS.shellSettings,
+    (): ShellSettings | Promise<ShellSettings> => host.settings(),
   );
 }

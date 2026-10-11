@@ -79,4 +79,4 @@ export interface Platform {
   readonly screen: ScreenProvider;
 }
 
-export const CHAT_SHORTCUT_ACCELERATOR = 'CommandOrControl+Alt+A';
+export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';

@@ -18,6 +18,10 @@ import type {
   WindowOptions,
 } from './shell/window.js';
 
+export interface ElectronPlatformOptions {
+  readonly onRendererError?: (source: string, error: unknown) => void;
+}
+
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererPath = (file: string): string => join(here, 'renderer', file);
 const preloadPath = join(here, 'preload.js');
@@ -53,11 +57,17 @@ class ElectronKeyListener implements KeyListener {
 class ElectronWindowHandle implements WindowHandle {
   readonly kind: WindowKind;
   private readonly window: BrowserWindow;
+  private readonly onError: ((source: string, error: unknown) => void) | undefined;
   private loaded = false;
 
-  constructor(kind: WindowKind, window: BrowserWindow) {
+  constructor(
+    kind: WindowKind,
+    window: BrowserWindow,
+    onError?: (source: string, error: unknown) => void,
+  ) {
     this.kind = kind;
     this.window = window;
+    this.onError = onError;
   }
 
   get visible(): boolean {
@@ -66,7 +76,9 @@ class ElectronWindowHandle implements WindowHandle {
 
   show(): void {
     if (!this.loaded) {
-      void this.window.loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file));
+      this.window
+        .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
+        .catch((error: unknown) => this.onError?.(`renderer:${this.kind}`, error));
       this.loaded = true;
     }
     this.window.showInactive();
@@ -121,9 +133,14 @@ class ElectronScreenProvider implements ScreenProvider {
 
 class ElectronWindowFactory implements WindowFactory {
   private readonly keys: ElectronKeyListener;
+  private readonly onError: ((source: string, error: unknown) => void) | undefined;
 
-  constructor(keys: ElectronKeyListener) {
+  constructor(
+    keys: ElectronKeyListener,
+    onError?: (source: string, error: unknown) => void,
+  ) {
     this.keys = keys;
+    this.onError = onError;
   }
 
   create(kind: WindowKind, options: WindowOptions): WindowHandle {
@@ -182,7 +199,10 @@ class ElectronWindowFactory implements WindowFactory {
         repeat: input.isAutoRepeat,
       });
     });
-    return new ElectronWindowHandle(kind, window);
+    window.webContents.on('render-process-gone', (_event, details) => {
+      this.onError?.(`render-process:${kind}`, details.reason);
+    });
+    return new ElectronWindowHandle(kind, window, this.onError);
   }
 }
 
@@ -192,10 +212,10 @@ class ElectronShortcuts implements ShortcutRegistration {
   }
 }
 
-export function createElectronPlatform(): Platform {
+export function createElectronPlatform(options: ElectronPlatformOptions = {}): Platform {
   const keys = new ElectronKeyListener();
   return {
-    windows: new ElectronWindowFactory(keys),
+    windows: new ElectronWindowFactory(keys, options.onRendererError),
     keys,
     shortcuts: new ElectronShortcuts(),
     screen: new ElectronScreenProvider(),

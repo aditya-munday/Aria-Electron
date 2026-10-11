@@ -10,6 +10,7 @@ import { planOrbBackdrop } from './orb/backdrop.js';
 import { createVoiceInteractionRuntime, type VoiceRuntimeLike } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
+import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
 import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
@@ -20,6 +21,7 @@ import { createChatControl, createChatRuntime } from './chat/chat-runtime.js';
 import type { ControlCenterState, PermissionState } from './control-center/state.js';
 import type { OrbState } from './orb/state.js';
 import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from './chat/state.js';
+import type { ShellSettings } from './shell/settings.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
 
 const WAKE_WORD_PHRASE = 'hey aria';
@@ -28,11 +30,30 @@ function main(): void {
   const userData = app.getPath('userData');
   const settings = createFileSettingsStore(userData);
   const config = loadConfig();
+  const errors = new ErrorReporter({
+    sink: (entry) => {
+      process.stderr.write(`[aria] ${entry.source}: ${entry.message}\n`);
+    },
+  });
+  process.on('uncaughtException', (error) => errors.report('uncaughtException', error));
+  process.on('unhandledRejection', (reason) => errors.report('unhandledRejection', reason));
   const runtime = new AriaRuntime({ statePath: `${userData}/supervision.json` });
+  if (runtime.isSignedIn()) {
+    process.stdout.write('[aria] Session token loaded from ARIA_SESSION_TOKEN.\n');
+  } else {
+    process.stdout.write('[aria] No ARIA_SESSION_TOKEN set; starting signed out.\n');
+  }
 
   const voice = runtime.voice;
   const interactionRuntime: InteractionRuntime =
     voice !== undefined ? createVoiceInteractionRuntime(voice) : inertVoiceRuntime();
+
+  const applySettingsToRuntime = (next: ShellSettings): void => {
+    void runtime.voice?.setWakeWordEnabled(next.wakeWordEnabled).catch((error: unknown) => {
+      errors.report('settings:wakeWord', error);
+    });
+    runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
+  };
 
   const microphonePermission = (): PermissionState =>
     voice !== undefined ? 'granted' : 'denied';
@@ -49,11 +70,16 @@ function main(): void {
   });
 
   const shell = new AriaShell({
-    platform: createElectronPlatform(),
+    platform: createElectronPlatform({
+      onRendererError: (source, error) => errors.report(source, error),
+    }),
     runtime,
     interaction,
     settings,
     backdrop: planOrbBackdrop(process.platform, screen.getPrimaryDisplay().bounds),
+  });
+  settings.subscribe?.((next) => {
+    applySettingsToRuntime(next);
   });
 
   const controlCenter = new ControlCenterService({
@@ -119,6 +145,7 @@ function main(): void {
       return chat.muteCapture(muted);
     },
     interruptSpeech: (): ChatActionResult => chat.interruptSpeech(),
+    settings: () => settings.load(),
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
     signIn: (): { ok: false; reason: string; unsupported: true } => ({
