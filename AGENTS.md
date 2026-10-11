@@ -118,19 +118,31 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   captures started, so tests can assert "a capture start is the only thing that
   raises the Orb".
 - `ipc.ts` / `ipc-handlers.ts` / `security.ts` — the renderer boundary. The
-  bridge exposes exactly `status`, `sendText`, `stopPlayback`; no token,
-  capability or raw-`ipcRenderer` accessor crosses it. Renderer windows are
-  context-isolated, `nodeIntegration: false`, web-security on, and deny
-  external navigation and `window.open`. The main process registers a
-  `window-all-closed` handler on purpose so Electron does not quit when the last
-  window closes.
-- `settings.ts` / `settings-file.ts` — persisted shell state. Only window kinds
-  survive `normalizeSettings`; unknown kinds are dropped and an empty capture
-  device id is omitted.
+  bridge exposes exactly `status`, `sendText`, `stopPlayback` plus the
+  Control Center operations `controlCenterState`, `settingsUpdate`,
+  `accountSignIn`, `accountSignOut`; no token, capability or raw-`ipcRenderer`
+  accessor crosses it. Renderer windows are context-isolated,
+  `nodeIntegration: false`, web-security on, and deny external navigation and
+  `window.open`. The main process registers a `window-all-closed` handler on
+  purpose so Electron does not quit when the last window closes.
+- `settings.ts` / `settings-file.ts` — persisted shell state. `normalizeSettings`
+  keeps only known window kinds and rejects an unknown push-to-talk mode;
+  optional ids (capture device, voice, language) survive only when present.
+- `control-center/` (`state.ts`, `assemble.ts`, `control-center-service.ts`) —
+  the Control Center domain. `ControlCenterService` reads live sources (Backend
+  identity, public capabilities catalog, voice diagnostics, shell settings,
+  supervisor records, activation inputs) through a narrow runtime port and
+  returns one typed `ControlCenterState`. Failures stay honest: signed-out
+  identity, backend outage with reason, empty/unknown voice catalog, denied
+  microphone. `control-center-runtime.ts` adapts `AriaRuntime` + `AriaShell`.
+- `control-center/renderer/control-center.ts` — the Control Center UI. Renders
+  every section from the received state and enables a control only when its
+  source allows it. Bundled by `scripts/bundle-renderer.mjs` with esbuild into a
+  deferred classic script, because Chromium refuses `file://` ES-module imports.
 - `electron-platform.ts`, `main.ts`, `preload.ts` are the only files that
   import `electron`; everything under `src/shell/` is dependency-free.
 
-Test baseline: 236 tests / 30 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 263 tests / 32 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeKeyListener`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
 
