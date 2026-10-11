@@ -151,7 +151,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle.
 
-Test baseline: 367 tests / 41 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 369 tests / 41 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
 
