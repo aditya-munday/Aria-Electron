@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "ci": "npm run typecheck && npm run test",
-    "pack:deb": "npm run build && electron-builder --linux deb --x64"
+    "pack:deb": "npm run build && electron-builder --linux deb --x64",
+    "smoke:deb": "npm run pack:deb && node scripts/smoke-deb.mjs"
   },
   "engines": {
     "node": ">=20"
