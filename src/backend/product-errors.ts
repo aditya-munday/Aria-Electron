@@ -69,12 +69,18 @@ export interface AriaBackendError {
   readonly requestId?: string;
   /** Server-provided `Retry-After`, in seconds, when present. */
   readonly retryAfterSecs?: number;
+  /**
+   * The HTTP status, when the failure came from a response. Optional, but it
+   * lets a caller that must distinguish an upstream/provider failure (502) from
+   * a backend outage (503) do so without re-deriving it from the kind.
+   */
+  readonly status?: number;
 }
 
 export function ariaError(
   kind: AriaErrorKind,
   message: string,
-  extra: { requestId?: string; retryAfterSecs?: number } = {},
+  extra: { requestId?: string; retryAfterSecs?: number; status?: number } = {},
 ): AriaBackendError {
   return {
     kind,
@@ -83,6 +89,7 @@ export function ariaError(
     ...(extra.retryAfterSecs !== undefined
       ? { retryAfterSecs: extra.retryAfterSecs }
       : {}),
+    ...(extra.status !== undefined ? { status: extra.status } : {}),
   };
 }
 
