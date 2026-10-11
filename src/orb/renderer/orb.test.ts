@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { renderOrb, wirePointerInteractivity, type OrbBridge } from './orb.js';
+import { renderOrb, wirePointerInteractivity, bootstrapOrb, type OrbBridge } from './orb.js';
 import type { OrbState } from '../state.js';
 import { ORB_WINDOW_SIZE } from '../window-options.js';
 
@@ -53,6 +53,7 @@ describe('orb renderer', () => {
     expect(root.querySelectorAll('.core')).toHaveLength(1);
     expect(root.querySelectorAll('.halo')).toHaveLength(1);
     expect(root.querySelectorAll('.glow')).toHaveLength(1);
+    expect(root.querySelectorAll('.ring')).toHaveLength(1);
     expect(root.querySelector('.panel')).toBeNull();
     expect(root.querySelector('.frame')).toBeNull();
   });
@@ -122,5 +123,34 @@ describe('orb pointer interactivity', () => {
     move(center, center);
     document.dispatchEvent(new MouseEvent('mouseleave'));
     expect(b.interactivity).toEqual([true, false]);
+  });
+});
+
+describe('orb live presence', () => {
+  it('re-reads its state on an interval so a new presence appears without reopening', async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<main id="orb"></main>';
+      let presence: OrbState['presence'] = {
+        presence: 'idle',
+        cue: 'dot',
+        label: 'Idle',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      };
+      const b: OrbBridge = {
+        orbState: async () => ({ generatedAt: 'now', presence }),
+        orbSetInteractive: async () => undefined,
+      };
+      const stop = bootstrapOrb(document, b, 100);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(document.querySelector('.orb')?.getAttribute('data-presence')).toBe('idle');
+
+      presence = { presence: 'listening', cue: 'waveform', label: 'Listening', updatedAt: 'now' };
+      await vi.advanceTimersByTimeAsync(120);
+      expect(document.querySelector('.orb')?.getAttribute('data-presence')).toBe('listening');
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
