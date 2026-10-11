@@ -1,0 +1,26 @@
+{
+  "name": "aria-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aria - the local-first voice assistant desktop application for the Directioner ecosystem.",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ci": "npm run typecheck && npm run test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
