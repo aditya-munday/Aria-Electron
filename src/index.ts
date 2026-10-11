@@ -27,6 +27,12 @@ export {
   type RouteRefusal,
   type InteractionEnvironment,
 } from './interaction/interaction-router.js';
+export {
+  InteractionController,
+  type InteractionControllerDeps,
+  type InteractionRuntime,
+  type InteractionControl,
+} from './interaction/interaction-controller.js';
 
 // --- voice runtime --------------------------------------------------------
 export {
