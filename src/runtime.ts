@@ -15,7 +15,10 @@
 import { AriaClient } from './backend/aria-client.js';
 import { TaskClient } from './backend/task-client.js';
 import { FetchTransport, SharedToken } from './backend/transport.js';
+import { ariaError } from './backend/product-errors.js';
+import { fail, type Result } from './backend/result.js';
 import { loadConfig, type AriaConfig } from './config.js';
+import type { Identity } from './contract/product-contract.js';
 import { AriaSupervisor } from './supervisor/supervisor.js';
 import { FileTaskStore, InMemoryTaskStore, type TaskStore } from './supervisor/task-store.js';
 import { ChatOrchestrator } from './voice/orchestrator.js';
@@ -135,5 +138,27 @@ export class AriaRuntime {
   /** Whether a session token is present. */
   isSignedIn(): boolean {
     return this.tokens.current() !== undefined;
+  }
+
+  /**
+   * The signed-in principal, if one can be read. This is the local session's
+   * identity; when it cannot be resolved the caller falls back to a local
+   * principal rather than inventing a user.
+   */
+  async principal(): Promise<string | undefined> {
+    const identity = await this.identity();
+    return identity.ok ? identity.value.userId : undefined;
+  }
+
+  /**
+   * Read the signed-in identity from the Backend. Returns the classified
+   * failure (e.g. `no_token`, `unauthenticated`, `unavailable`) rather than
+   * inventing a user; the caller renders the absence honestly.
+   */
+  async identity(): Promise<Result<Identity>> {
+    if (!this.isSignedIn()) {
+      return fail(ariaError('no_token', 'No session token; the user is not signed in.'));
+    }
+    return this.supervisor.identity();
   }
 }

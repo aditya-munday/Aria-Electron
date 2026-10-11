@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>Aria</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        pointer-events: none;
+        user-select: none;
+      }
+      /* A gentle scrim that focuses attention; the blur itself is the native
+         material the host window supplies, not a painted rectangle. */
+      #scrim {
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(
+            140% 120% at 88% 33%,
+            rgba(59, 130, 246, 0.16) 0%,
+            rgba(15, 23, 42, 0.28) 42%,
+            rgba(2, 6, 23, 0.42) 100%
+          );
+        opacity: 0;
+        animation: fade-in 260ms ease-out forwards;
+      }
+      @keyframes fade-in {
+        to {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scrim" aria-hidden="true"></div>
+  </body>
+</html>

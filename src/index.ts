@@ -27,6 +27,12 @@ export {
   type RouteRefusal,
   type InteractionEnvironment,
 } from './interaction/interaction-router.js';
+export {
+  InteractionController,
+  type InteractionControllerDeps,
+  type InteractionRuntime,
+  type InteractionControl,
+} from './interaction/interaction-controller.js';
 
 // --- voice runtime --------------------------------------------------------
 export {
@@ -174,6 +180,77 @@ export {
 } from './backend/product-errors.js';
 
 export {
+  AriaShell,
+  type ShellDeps,
+  type ShellRuntime,
+} from './shell/aria-shell.js';
+export {
+  InMemorySettingsStore,
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  type ShellSettings,
+  type SettingsStore,
+} from './shell/settings.js';
+export {
+  CHAT_SHORTCUT_ACCELERATOR,
+  DEFAULT_KEY_REPERTOIRE,
+  type KeyEvent,
+  type KeyListener,
+  type KeyRepertoire,
+  type PhysicalKey,
+  type Platform,
+  type ShortcutRegistration,
+  type WindowFactory,
+  type WindowHandle,
+  type WindowKind,
+  type WindowOptions,
+} from './shell/window.js';
+export {
+  clamp,
+  contains,
+  type Point,
+  type Size,
+  type Rect,
+} from './shell/geometry.js';
+export {
+  ORB_RIGHT_MARGIN,
+  ORB_VERTICAL_SIXTHS,
+  ORB_VERTICAL_DENOMINATOR,
+  placeOrb,
+  orbCircle,
+  type ScreenInfo,
+  type ScreenProvider,
+} from './shell/placement.js';
+export {
+  VoiceInteractionRuntime,
+  createVoiceInteractionRuntime,
+  type VoiceRuntimeLike,
+} from './shell/interaction-runtime.js';
+export {
+  IPC_CHANNELS,
+  BRIDGE_API_KEY,
+  BRIDGE_METHODS,
+  FORBIDDEN_BRIDGE_METHODS,
+  createAriaBridge,
+  bridgeKeys,
+  exposeAriaBridge,
+  type AriaBridge,
+  type ContextBridge,
+  type IpcHandler,
+  type IpcInvoker,
+  type IpcRegistrar,
+  type ShellStatus,
+} from './shell/ipc.js';
+export { registerIpcHandlers, type IpcHost } from './shell/ipc-handlers.js';
+export {
+  RENDERER_WEB_PREFERENCES,
+  blockExternalNavigation,
+  type RendererWindowSecurity,
+  type ExternalNavigationGuard,
+} from './shell/security.js';
+export { createFileSettingsStore } from './shell/settings-file.js';
+
+export {
   AriaSupervisor,
   SupervisorError,
   describeTaskPhase,
@@ -211,5 +288,62 @@ export {
   InMemoryTaskStore,
   type TaskStore,
 } from './supervisor/task-store.js';
+
+export {
+  OrbService,
+  type OrbDeps,
+  type OrbRuntime,
+} from './orb/orb-service.js';
+export { resolvePresence } from './orb/assemble.js';
+export {
+  ORB_DIAMETER,
+  ORB_WINDOW_PADDING,
+  ORB_WINDOW_SIZE,
+  ORB_WINDOW_OPTIONS,
+} from './orb/window-options.js';
+export { orbHitTest } from './orb/hit-test.js';
+export { planOrbBackdrop, type OrbBackdropPlan, type OrbBackdropMaterial } from './orb/backdrop.js';
+export {
+  ORB_CUE,
+  ORB_LABEL,
+  isOrbPresence,
+  type OrbPresence,
+  type OrbCue,
+  type OrbPresenceView,
+  type OrbState,
+  type OrbSources,
+  type OrbVoiceDiagnostics,
+  type OrbEnvironment,
+} from './orb/state.js';
+
+export {
+  ChatService,
+  type ChatDeps,
+  type ChatRuntime,
+  type ChatVoiceControl,
+  type ChatTaskControl,
+  type ApprovalRequestedInput,
+} from './chat/chat-service.js';
+export { assembleChatState, emergencyStopView } from './chat/assemble.js';
+export { createChatRuntime } from './chat/chat-runtime.js';
+export type {
+  ChatRole,
+  ChatTurnState,
+  ChatTurn,
+  ApprovalDecision,
+  ApprovalScopeView,
+  ApprovalView,
+  QuestionView,
+  PlanView,
+  PermissionView,
+  TaskResultView,
+  ChatTaskView,
+  EmergencyStopView,
+  ChatState,
+  ChatSources,
+  ChatRecordView,
+  ApprovalDecisionOutcome,
+  ChatActionResult,
+} from './chat/state.js';
 
 export * from './contract/product-contract.js';

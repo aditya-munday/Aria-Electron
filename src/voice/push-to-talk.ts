@@ -48,7 +48,7 @@ export interface PushToTalkControllerDeps {
 }
 
 export class PushToTalkController {
-  private readonly config: PushToTalkConfig;
+  private config: PushToTalkConfig;
   private readonly now: () => number;
   private capturing = false;
   private pressStartedMs = 0;
@@ -64,6 +64,13 @@ export class PushToTalkController {
 
   mode(): PushToTalkMode {
     return this.config.mode;
+  }
+
+  setMode(mode: PushToTalkMode): void {
+    if (mode !== 'hold' && mode !== 'toggle') {
+      throw new VoiceError('invalid_configuration', `Unsupported push-to-talk mode: ${mode}`);
+    }
+    this.config = { ...this.config, mode };
   }
 
   isCapturing(): boolean {

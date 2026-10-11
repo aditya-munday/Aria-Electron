@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>Aria</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      #orb {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        background: transparent;
+      }
+      /* A single circle: no frame, no panel, no rectangular background. */
+      .orb {
+        position: relative;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+      }
+      .halo,
+      .glow,
+      .core {
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .halo {
+        width: 120px;
+        height: 120px;
+        background: radial-gradient(circle, rgba(96, 165, 250, 0.28) 0%, rgba(96, 165, 250, 0) 68%);
+        filter: blur(6px);
+      }
+      .glow {
+        width: 104px;
+        height: 104px;
+        background: radial-gradient(circle, rgba(147, 197, 253, 0.55) 0%, rgba(147, 197, 253, 0) 70%);
+        filter: blur(3px);
+      }
+      .core {
+        width: 96px;
+        height: 96px;
+        background: radial-gradient(circle at 32% 28%, #bcd7ff 0%, #60a5fa 42%, #3b82f6 70%, #1d4ed8 100%);
+        box-shadow:
+          inset 0 0 18px rgba(255, 255, 255, 0.55),
+          0 0 22px rgba(59, 130, 246, 0.55);
+      }
+      .label,
+      .detail {
+        position: relative;
+        margin: 0;
+        text-align: center;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+      }
+      .label {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #dbeafe;
+        transform: translateY(62px);
+      }
+      .detail {
+        max-width: 240px;
+        font-size: 11px;
+        color: #c7d2fe;
+        transform: translateY(78px);
+      }
+
+      .orb[data-cue="pulse"] .core {
+        animation: pulse 1.4s ease-out infinite;
+      }
+      .orb[data-cue="waveform"] .core {
+        animation: breathe 1.6s ease-in-out infinite;
+      }
+      .orb[data-cue="bars"] .core {
+        background: radial-gradient(circle at 32% 28%, #bbf7d0 0%, #4ade80 45%, #16a34a 100%);
+        box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.5), 0 0 22px rgba(34, 197, 94, 0.5);
+      }
+      .orb[data-cue="alert"] .core {
+        background: radial-gradient(circle at 32% 28%, #fecaca 0%, #f87171 45%, #dc2626 100%);
+        box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.5), 0 0 22px rgba(239, 68, 68, 0.55);
+      }
+      .orb[data-cue="slash"] .core {
+        background: radial-gradient(circle at 32% 28%, #e5e7eb 0%, #9ca3af 45%, #4b5563 100%);
+        box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.35), 0 0 18px rgba(107, 114, 128, 0.45);
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.55), 0 0 0 0 rgba(147, 197, 253, 0.55);
+        }
+        100% {
+          box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.55), 0 0 0 26px rgba(147, 197, 253, 0);
+        }
+      }
+      @keyframes breathe {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.06);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="orb"></main>
+    <script defer src="./orb.js"></script>
+  </body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>Aria — Chat</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #14161a;
+        color: #e8eaed;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 20px 18px 32px;
+        display: grid;
+        gap: 14px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #9aa4b2;
+      }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+        color: #e8eaed;
+      }
+      .card {
+        background: #1e2127;
+        border: 1px solid #2c313a;
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .turns {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+      .turn {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #262b33;
+      }
+      .turn-user {
+        background: #1f2c44;
+      }
+      .turn[data-state="failed"] {
+        border-left: 3px solid #ef4444;
+      }
+      .who {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #9aa4b2;
+      }
+      .text {
+        white-space: pre-wrap;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 4px 12px;
+        padding: 4px 0;
+      }
+      .row-label {
+        color: #b9c0cb;
+      }
+      .reason {
+        color: #f87171;
+        font-size: 13px;
+        margin: 6px 0 0;
+      }
+      .muted {
+        color: #8b95a3;
+        font-size: 13px;
+        margin: 4px 0 0;
+      }
+      .outcome {
+        color: #86efac;
+        font-size: 13px;
+        margin: 4px 0 0;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      button {
+        background: #3b82f6;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 7px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .emergency button {
+        background: #dc2626;
+      }
+      .composer {
+        display: flex;
+        gap: 8px;
+      }
+      .composer-input {
+        flex: 1;
+        background: #262b33;
+        color: #e8eaed;
+        border: 1px solid #3a4048;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-size: 14px;
+      }
+      progress {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="chat"></main>
+    <script defer src="./chat.js"></script>
+  </body>
+</html>
+

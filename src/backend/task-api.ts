@@ -11,6 +11,7 @@
 import type {
   ApprovalDto,
   ApprovalResultEnvelope,
+  Identity,
   TaskDto,
   TaskEventDto,
   TaskExecutionDto,
@@ -19,7 +20,7 @@ import type {
 import type { Result } from './result.js';
 
 export interface TaskApi {
-  identity(): Promise<Result<{ userId: string }>>;
+  identity(): Promise<Result<Identity>>;
   createTask(input: { title: string }): Promise<Result<TaskDto>>;
   getTask(taskId: string): Promise<Result<TaskDto>>;
   transitionTask(

@@ -21,6 +21,7 @@ import { dirname } from 'node:path';
 import type {
   CancellationState,
   ExecutionOrigin,
+  ExecutionResultDto,
   ExecutionState,
   TaskStatus,
   VerificationState,
@@ -28,6 +29,7 @@ import type {
 import type {
   PermissionRequest,
   PlanProposal,
+  ProgressUpdate,
   QuestionRequest,
 } from './engineer-events.js';
 
@@ -45,6 +47,10 @@ export interface SupervisionRecord {
   readonly leaseOwner?: string;
   /** Highest journal sequence folded into this record. */
   readonly lastSequence: number;
+  /** The latest bounded progress signal, if AI-Engineer reported one. */
+  readonly progress?: ProgressUpdate;
+  /** The terminal execution result, present only once one was reported. */
+  readonly result?: ExecutionResultDto;
   readonly conversationId?: string;
   readonly sessionId?: string;
   /** Signals awaiting a user response, keyed by their stable id. */

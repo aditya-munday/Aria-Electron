@@ -131,6 +131,37 @@ describe('AriaSupervisor completion and verification', () => {
     await s.refresh(taskId);
     expect(s.phaseOf(taskId)).toBe('completed_verified');
   });
+
+  it('folds the latest progress signal into the record', async () => {
+    const backend = new InMemoryBackend();
+    const s = supervisor(backend);
+    const taskId = await running(backend, s);
+    backend.simulateWorkerEvent(taskId, 'engineer.progress', { summary: 'compiling', percent: 25 });
+    backend.simulateWorkerEvent(taskId, 'engineer.progress', { summary: 'linking', percent: 70 });
+    const record = await s.refresh(taskId);
+    expect(record?.progress?.percent).toBe(70);
+    expect(record?.progress?.summary).toBe('linking');
+  });
+
+  it('surfaces the terminal result once the worker reports one', async () => {
+    const backend = new InMemoryBackend();
+    const s = supervisor(backend);
+    const taskId = await running(backend, s);
+    backend.simulateComplete(taskId, 'failed');
+    const record = await s.refresh(taskId);
+    expect(record?.result?.outcome).toBe('failed');
+  });
+
+  it('does not lose an already-folded result when the execution result is absent', async () => {
+    const backend = new InMemoryBackend();
+    const s = supervisor(backend);
+    const taskId = await running(backend, s);
+    backend.simulateWorkerEvent(taskId, 'task.completed', { outcome: 'succeeded' });
+    const first = await s.refresh(taskId);
+    expect(first?.result?.outcome).toBe('succeeded');
+    const second = await s.refresh(taskId);
+    expect(second?.result?.outcome).toBe('succeeded');
+  });
 });
 
 describe('AriaSupervisor cancellation', () => {
