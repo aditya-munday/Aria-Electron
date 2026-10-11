@@ -8,7 +8,7 @@
  * their real code paths. `RecordingOrchestrator` is the orchestration seam.
  */
 
-import type { AudioPayload } from '../../contract/aria-contract.js';
+import type { AudioPayload, RouteHint } from '../../contract/aria-contract.js';
 import type { SpeechProxy, SttResult, TtsOptions } from '../speech.js';
 import type {
   WakeWordDetection,
@@ -157,28 +157,34 @@ export class RecordingOrchestrator implements Orchestrator {
   private readonly respond_: (text: string) => string;
   private readonly error: Error | undefined;
   private readonly delayTicks: number;
+  private readonly route: RouteHint | null | undefined;
 
   constructor(
     options: {
       respond?: (text: string) => string;
       error?: Error;
       delayTicks?: number;
+      route?: RouteHint | null;
     } = {},
   ) {
     this.respond_ = options.respond ?? ((text) => `response:${text}`);
     this.error = options.error;
     this.delayTicks = options.delayTicks ?? 0;
+    this.route = options.route;
   }
 
   async respond(input: {
     readonly text: string;
     readonly sessionId: string;
     readonly signal: AbortSignal;
-  }): Promise<{ readonly text: string }> {
+  }): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
     this.calls.push({ text: input.text, sessionId: input.sessionId });
     for (let i = 0; i < this.delayTicks; i += 1) await Promise.resolve();
     if (this.error !== undefined) throw this.error;
-    return { text: this.respond_(input.text) };
+    return {
+      text: this.respond_(input.text),
+      ...(this.route !== undefined ? { route: this.route } : {}),
+    };
   }
 }
 

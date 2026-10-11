@@ -20,6 +20,7 @@
  */
 
 import type { AudioDevice, Microphone } from './device.js';
+import type { RouteHint } from '../contract/aria-contract.js';
 import { VoiceError, asVoiceError } from './errors.js';
 import { VoiceEventBus, type VoiceEventListener } from './events.js';
 import type { Speaker } from './playback.js';
@@ -225,13 +226,19 @@ export class VoiceRuntime {
   }
 
   /** Run a typed turn: bypasses capture and STT, goes straight to orchestration. */
-  async sendText(text: string): Promise<void> {
+  async sendText(
+    text: string,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
     const trimmed = text.trim();
-    if (trimmed === '') return;
+    if (trimmed === '') return { text: '' };
     const session = await this.beginSession('text');
-    if (session === undefined) return;
+    if (session === undefined) return { text: '' };
     await session.runText(trimmed);
     this.finishSession(session);
+    return {
+      text: session.response ?? '',
+      ...(session.route !== undefined ? { route: session.route } : {}),
+    };
   }
 
   /** Interrupt the active session's speech/audio (barge-in). Never a task cancel. */

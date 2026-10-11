@@ -20,7 +20,7 @@
  * voice turn, nothing more.
  */
 
-import type { AudioPayload } from '../contract/aria-contract.js';
+import type { AudioPayload, RouteHint } from '../contract/aria-contract.js';
 import { SPEECH_SAMPLE_RATE, assertAudioFormat } from './audio-format.js';
 import { VoiceError, asVoiceError } from './errors.js';
 import type { VoiceEventBus, VoiceSessionState } from './events.js';
@@ -38,7 +38,7 @@ export interface Orchestrator {
     readonly text: string;
     readonly sessionId: string;
     readonly signal: AbortSignal;
-  }): Promise<{ readonly text: string }>;
+  }): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
 }
 
 export interface VoiceSessionDeps {
@@ -78,6 +78,7 @@ export class VoiceSession {
   private finalizeRequested = false;
   private utteranceResolve: (() => void) | undefined;
   private responseText: string | undefined;
+  private responseRoute: RouteHint | null | undefined;
 
   constructor(deps: VoiceSessionDeps) {
     this.id = deps.id;
@@ -102,6 +103,10 @@ export class VoiceSession {
   /** The AI response text, if one was produced (kept even if TTS fails). */
   get response(): string | undefined {
     return this.responseText;
+  }
+
+  get route(): RouteHint | null | undefined {
+    return this.responseRoute;
   }
 
   isCancelled(): boolean {
@@ -146,7 +151,7 @@ export class VoiceSession {
         return;
       }
       this.events.emit({ type: 'transcript', sessionId: this.id, at: this.now(), text, final: true });
-      let response: string | undefined;
+      let response: { readonly text: string; readonly route?: RouteHint | null } | undefined;
       try {
         response = await this.respond(text);
       } catch (error) {
@@ -168,9 +173,16 @@ export class VoiceSession {
       }
       this.ensureActive();
       if (response !== undefined) {
-        this.responseText = response;
-        this.events.emit({ type: 'response', sessionId: this.id, at: this.now(), text: response });
-        await this.speak(response);
+        this.responseText = response.text;
+        this.responseRoute = response.route;
+        this.events.emit({
+          type: 'response',
+          sessionId: this.id,
+          at: this.now(),
+          text: response.text,
+          ...(response.route !== undefined ? { route: response.route } : {}),
+        });
+        await this.speak(response.text);
       }
       if (!this.isCancelled()) this.setState('idle');
     } catch (error) {
@@ -206,7 +218,7 @@ export class VoiceSession {
         text,
         final: true,
       });
-      let response: string | undefined;
+      let response: { readonly text: string; readonly route?: RouteHint | null } | undefined;
       try {
         response = await this.respond(text);
       } catch (error) {
@@ -224,9 +236,16 @@ export class VoiceSession {
       }
       if (this.isCancelled()) return;
       if (response !== undefined) {
-        this.responseText = response;
-        this.events.emit({ type: 'response', sessionId: this.id, at: this.now(), text: response });
-        await this.speak(response);
+        this.responseText = response.text;
+        this.responseRoute = response.route;
+        this.events.emit({
+          type: 'response',
+          sessionId: this.id,
+          at: this.now(),
+          text: response.text,
+          ...(response.route !== undefined ? { route: response.route } : {}),
+        });
+        await this.speak(response.text);
       }
       if (!this.isCancelled()) this.setState('idle');
     } catch (error) {
@@ -391,7 +410,9 @@ export class VoiceSession {
     }
   }
 
-  private async respond(text: string): Promise<string | undefined> {
+  private async respond(
+    text: string,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null } | undefined> {
     this.setState('thinking');
     try {
       const response = await raceWithSignal(
@@ -399,7 +420,7 @@ export class VoiceSession {
         this.controller.signal,
         this.config.responseTimeoutMs,
       );
-      return response.text;
+      return response;
     } catch (error) {
       // A failed orchestration must not fail the voice session silently: report
       // it, but a TTS failure later must still not erase a text response.

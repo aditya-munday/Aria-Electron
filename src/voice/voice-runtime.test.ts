@@ -35,12 +35,13 @@ function build(options: {
   microphone?: FakeMicrophone;
   speech?: SpeechDouble;
   detector?: FakeWakeWordDetector | null;
+  orchestrator?: RecordingOrchestrator;
 } = {}): Built {
   const clock = manualClock();
   const microphone = options.microphone ?? new FakeMicrophone();
   const speaker = new ManualSpeaker();
   const speech = options.speech ?? new SpeechDouble({ sttText: 'hello world' });
-  const orchestrator = new RecordingOrchestrator();
+  const orchestrator = options.orchestrator ?? new RecordingOrchestrator();
   const events: VoiceEvent[] = [];
   const runtime = new VoiceRuntime({
     config: options.config ?? config(),
@@ -250,6 +251,25 @@ describe('VoiceRuntime text turn', () => {
     const built = build({});
     await built.runtime.sendText('   ');
     expect(built.orchestrator.calls).toHaveLength(0);
+  });
+
+  it('returns the reply text so a caller can read the response', async () => {
+    const built = build({});
+    const turn = built.runtime.sendText('typed');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    const reply = await turn;
+    expect(reply.text).toBe('response:typed');
+  });
+
+  it('carries the advisory route hint back to the caller', async () => {
+    const route = { capability: 'deploy.service', requires_confirmation: true };
+    const built = build({ orchestrator: new RecordingOrchestrator({ route }) });
+    const turn = built.runtime.sendText('deploy the api');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    const reply = await turn;
+    expect(reply.route).toEqual(route);
   });
 });
 
