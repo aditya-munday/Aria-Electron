@@ -90,12 +90,19 @@ export interface ChatState {
   readonly turns: readonly ChatTurn[];
   readonly tasks: readonly ChatTaskView[];
   readonly emergencyStop?: EmergencyStopView;
+  readonly mute?: MuteView;
+}
+
+export interface MuteView {
+  readonly muted: boolean;
+  readonly mode: string;
 }
 
 export interface ChatSources {
   readonly turns: readonly ChatTurn[];
   readonly records: readonly ChatRecordView[];
   readonly emergencyStop: EmergencyStopView | undefined;
+  readonly mute: MuteView | undefined;
   readonly now: string;
 }
 

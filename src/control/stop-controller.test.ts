@@ -55,7 +55,6 @@ describe('StopController', () => {
     expect(interrupt.interrupted).toBe(true);
     expect(stop.stopped).toBe(true);
     expect(counters.interrupts).toBe(2);
-    // Neither the interrupt nor the playback stop engages the emergency stop.
     expect(controller.isEngaged()).toBe(false);
     expect(counters.halts).toBe(0);
   });

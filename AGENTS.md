@@ -151,7 +151,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle.
 
-Test baseline: 369 tests / 41 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 404 tests / 47 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
 
@@ -177,6 +177,35 @@ The typed/chat turn pipeline above the voice runtime and the supervisor.
   back the opened approval; `rememberApproval` is async and must be awaited
   before `approvalScope` will resolve.
 - `state.ts` / `assemble.ts` — the `ChatState` the renderer consumes.
+
+## Stop, cancellation, and recovery (`src/control/`, `src/backend/`)
+
+Honest stopping and outage handling. Nothing is reported stopped, completed, or
+recovered unless it was observed to reach that state.
+
+- `control/cancellation.ts` — `confirmCancellation` requests a stop and waits
+  for the authoritative execution state to reach `cancelled` within a grace
+  period. Only then is it `confirmed`; a terminal-but-not-cancelled task is
+  `not_cancellable`; a stop that never lands is `failed` with a reason.
+  `describeCancellation` renders the honest line.
+- `control/mute.ts` — `MuteController` owns the local mute flag and the capture
+  mode it would resume. `mayCapture` refuses while muted.
+- `control/stop-controller.ts` — `StopController` engages the local halt
+  synchronously and reports what the local layer actually did.
+- `backend/backend-outcome.ts` — `classifyBackendOutcome` splits failures into
+  `definite_rejection`, `unavailable`, and `uncertain`; `availabilityFromOutcome`
+  maps them to `online`/`offline`/`unauthenticated`/`unknown`.
+- `backend/retry.ts` — `retryIdempotent` retries only `unavailable`/`uncertain`,
+  bounded by `MAX_ATTEMPTS`, reusing one idempotency key so a retried write
+  cannot double-apply.
+- The supervisor exposes `availability`, `observeBackendOutcome`, `recover`,
+  `reconcileUncertain`, `reconcileExecutions`, and `cancelAndConfirm`. New
+  tracked work is refused while the Backend was last observed offline (fail
+  closed); the emergency stop stays local and works offline.
+
+The chat surface (`ChatService.muteCapture`/`interruptSpeech`/`stopPlayback`,
+the renderer's emergency controls, and the `muteCapture`/`interruptSpeech` IPC
+channels) drives these through `ChatControl`. See `docs/RECOVERY.md`.
 
 ## Backend errors
 

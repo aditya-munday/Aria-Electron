@@ -7,6 +7,7 @@ export function assembleChatState(sources: ChatSources): ChatState {
     turns: [...sources.turns],
     tasks,
     ...(sources.emergencyStop !== undefined ? { emergencyStop: sources.emergencyStop } : {}),
+    ...(sources.mute !== undefined ? { mute: sources.mute } : {}),
   };
 }
 

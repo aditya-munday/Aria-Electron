@@ -3,13 +3,69 @@ import type { RouteHint } from '../contract/aria-contract.js';
 import type { ApprovalScope, OperationDescriptor } from '../supervisor/approval-scope.js';
 import type {
   ApprovalRequestedInput,
+  ChatControl,
   ChatRuntime,
   ChatTaskControl,
   SubmittedWork,
 } from './chat-service.js';
 import type { EmergencyStopView } from './state.js';
+import type { CancellationOutcome, ConfirmCancellationOptions } from '../control/cancellation.js';
+import { MuteController, type CaptureMode } from '../control/mute.js';
+import { StopController } from '../control/stop-controller.js';
 
-export function createChatRuntime(runtime: AriaRuntime): ChatRuntime {
+export interface ChatControlOptions {
+  readonly muted?: boolean;
+  readonly mode?: CaptureMode;
+  readonly interruptLocal?: () => void;
+  readonly persistMute?: (muted: boolean) => void;
+}
+
+export function createChatControl(
+  runtime: AriaRuntime,
+  options: ChatControlOptions = {},
+): ChatControl {
+  const mute = new MuteController({
+    muted: options.muted ?? false,
+    ...(options.mode !== undefined ? { mode: options.mode } : {}),
+  });
+  const stop = new StopController({
+    haltLocal: () => {
+      options.interruptLocal?.();
+      return { captureHalted: true, playbackHalted: true };
+    },
+    ...(options.interruptLocal !== undefined ? { interruptLocal: options.interruptLocal } : {}),
+  });
+  const voice = runtime.voice;
+  return {
+    get muteState(): { readonly muted: boolean; readonly mode: string } {
+      return { muted: mute.isMuted(), mode: mute.captureMode().kind };
+    },
+    setMuted: (muted: boolean): void => {
+      if (muted) {
+        mute.mute();
+        void voice?.muteCapture();
+      } else {
+        mute.unmute();
+      }
+      options.persistMute?.(muted);
+    },
+    interruptSpeech: (): void => {
+      stop.interruptSpeech();
+      void voice?.interrupt();
+    },
+    stopPlayback: (): void => {
+      stop.stopPlayback();
+    },
+    engageEmergencyStop: (): void => {
+      stop.engage();
+    },
+  };
+}
+
+export function createChatRuntime(
+  runtime: AriaRuntime,
+  control?: ChatControl,
+): ChatRuntime {
   const supervisor = runtime.supervisor;
   const principal = async (): Promise<string> => (await runtime.principal()) ?? 'local';
   const scopes = new Map<string, ApprovalScope>();
@@ -57,6 +113,10 @@ export function createChatRuntime(runtime: AriaRuntime): ChatRuntime {
     decidePermission: (taskId, requestId, decision, reason) =>
       supervisor.decidePermission(taskId, requestId, decision, reason),
     cancel: (taskId) => supervisor.cancel(taskId),
+    cancelAndConfirm: (
+      taskId: string,
+      options?: ConfirmCancellationOptions,
+    ): Promise<CancellationOutcome> => supervisor.cancelAndConfirm(taskId, options),
     emergencyStop: async (): Promise<EmergencyStopView> => {
       const report = await supervisor.emergencyStopNow();
       return {
@@ -83,6 +143,7 @@ export function createChatRuntime(runtime: AriaRuntime): ChatRuntime {
             },
           },
     tasks,
+    ...(control !== undefined ? { control } : {}),
   };
 }
 

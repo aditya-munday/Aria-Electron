@@ -10,12 +10,13 @@ import { planOrbBackdrop } from './orb/backdrop.js';
 import { createVoiceInteractionRuntime, type VoiceRuntimeLike } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
+import { patchSettings } from './shell/settings.js';
 import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
 import { ChatService } from './chat/chat-service.js';
-import { createChatRuntime } from './chat/chat-runtime.js';
+import { createChatControl, createChatRuntime } from './chat/chat-runtime.js';
 import type { ControlCenterState, PermissionState } from './control-center/state.js';
 import type { OrbState } from './orb/state.js';
 import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from './chat/state.js';
@@ -88,7 +89,18 @@ function main(): void {
   });
 
   const chat = new ChatService({
-    runtime: createChatRuntime(runtime),
+    runtime: createChatRuntime(
+      runtime,
+      createChatControl(runtime, {
+        muted: settings.load().captureMuted,
+        interruptLocal: () => {
+          void interactionRuntime.interrupt();
+        },
+        persistMute: (muted) => {
+          settings.save(patchSettings(settings.load(), { captureMuted: muted }));
+        },
+      }),
+    ),
     principal: async () => (await runtime.principal()) ?? 'local',
   });
 
@@ -97,9 +109,16 @@ function main(): void {
     sendText: async (text: string): Promise<void> => {
       await chat.sendText(text);
     },
-    stopPlayback: async (): Promise<void> => {
-      await interactionRuntime.interrupt();
+    stopPlayback: (): ChatActionResult => chat.stopPlayback(),
+    muteCapture: (input: unknown): ChatActionResult => {
+      const muted =
+        typeof input === 'object' && input !== null
+          ? (input as { muted?: unknown }).muted
+          : undefined;
+      if (typeof muted !== 'boolean') return { ok: false, reason: 'The mute request was malformed.' };
+      return chat.muteCapture(muted);
     },
+    interruptSpeech: (): ChatActionResult => chat.interruptSpeech(),
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
     signIn: (): { ok: false; reason: string; unsupported: true } => ({

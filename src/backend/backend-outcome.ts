@@ -16,22 +16,15 @@ export interface BackendOutcome {
   readonly status?: number;
 }
 
-const OUTAGE_KINDS: ReadonlySet<string> = new Set(['unavailable']);
 const UNCERTAIN_KINDS: ReadonlySet<string> = new Set(['timeout', 'transport', 'conflict']);
 
-/**
- * Classify a backend failure. A definite rejection (validation, forbidden, not
- * found, unprocessable) is kept separate from an unavailable backend, which is
- * kept separate from an *uncertain* outcome — a dropped connection or a timeout
- * on a mutating write, where the request may or may not have been applied. An
- * uncertain outcome is never reported as a success or a cancellation.
- */
 export function classifyBackendOutcome(error: AriaBackendError): BackendOutcome {
-  const outcome: BackendOutcomeClass = UNCERTAIN_KINDS.has(error.kind)
-    ? 'uncertain'
-    : OUTAGE_KINDS.has(error.kind)
+  const outcome: BackendOutcomeClass =
+    error.kind === 'unavailable'
       ? 'unavailable'
-      : 'definite_rejection';
+      : UNCERTAIN_KINDS.has(error.kind)
+        ? 'uncertain'
+        : 'definite_rejection';
   return {
     outcome,
     kind: error.kind,

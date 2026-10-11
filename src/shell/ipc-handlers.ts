@@ -12,7 +12,7 @@ import {
 export interface IpcHost {
   signedIn(): boolean;
   sendText(text: string): Promise<void> | void;
-  stopPlayback(): Promise<void> | void;
+  stopPlayback(): ChatActionResult | Promise<ChatActionResult> | void;
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): SettingsUpdateResult | Promise<SettingsUpdateResult>;
   signIn(input: unknown): SignInResult | Promise<SignInResult>;
@@ -25,6 +25,8 @@ export interface IpcHost {
   decidePlan(input: unknown): ChatActionResult | Promise<ChatActionResult>;
   decidePermission(input: unknown): ChatActionResult | Promise<ChatActionResult>;
   cancelTask(input: unknown): ChatActionResult | Promise<ChatActionResult>;
+  muteCapture(input: unknown): ChatActionResult | Promise<ChatActionResult>;
+  interruptSpeech(): ChatActionResult | Promise<ChatActionResult>;
   emergencyStop(): EmergencyStopView | Promise<EmergencyStopView>;
 }
 
@@ -37,9 +39,10 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     if (typeof text !== 'string') throw new Error('sendText expects a string argument');
     await host.sendText(text);
   });
-  ipc.handle(IPC_CHANNELS.stopPlayback, async (): Promise<void> => {
-    await host.stopPlayback();
-  });
+  ipc.handle(
+    IPC_CHANNELS.stopPlayback,
+    (): ChatActionResult | Promise<ChatActionResult> | void => host.stopPlayback(),
+  );
   ipc.handle(
     IPC_CHANNELS.controlCenterState,
     (): Promise<ControlCenterState> => host.controlCenterState(),
@@ -90,6 +93,15 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.chatCancelTask,
     (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.cancelTask(args[0]),
+  );
+  ipc.handle(
+    IPC_CHANNELS.chatMuteCapture,
+    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+      host.muteCapture(args[0]),
+  );
+  ipc.handle(
+    IPC_CHANNELS.chatInterruptSpeech,
+    (): ChatActionResult | Promise<ChatActionResult> => host.interruptSpeech(),
   );
   ipc.handle(
     IPC_CHANNELS.chatEmergencyStop,

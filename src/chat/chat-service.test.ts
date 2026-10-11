@@ -107,6 +107,17 @@ function harness(overrides: Partial<ChatTaskControl> = {}): Harness {
       actions.push(`cancel:${taskId}`);
       return record();
     },
+    cancelAndConfirm: async (taskId) => {
+      actions.push(`cancel:${taskId}`);
+      return {
+        kind: 'confirmed',
+        taskId,
+        reason: 'confirmed',
+        detail: 'The worker confirmed the stop.',
+        observedExecutionState: 'cancelled',
+        observedCancellation: 'confirmed',
+      };
+    },
     emergencyStop: async () => emergency,
     ...overrides,
   };
@@ -424,5 +435,61 @@ describe('cancellation and emergency stop', () => {
     expect(report).toEqual(emergency);
     const state = await service.buildState();
     expect(state.emergencyStop).toEqual(emergency);
+  });
+
+  it('reports an unconfirmed cancellation honestly, never as stopped', async () => {
+    const { service } = harness({
+      cancelAndConfirm: async (taskId) => ({
+        kind: 'failed',
+        taskId,
+        reason: 'grace_elapsed',
+        detail: 'The worker did not stop within the 10000 ms grace period.',
+      }),
+    });
+    const result = await service.cancelTask({ taskId: 't1' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/not stop/i);
+  });
+
+  it('engages the local halt before asking the supervisor for the report', async () => {
+    const order: string[] = [];
+    const runtime: ChatRuntime = {
+      voice: { sendText: async () => ({ text: '' }) },
+      tasks: {
+        records: () => [record()],
+        submit: async () => ({ record: record(), approvalId: 'a1' }),
+        reconcile: async () => undefined,
+        approvals: async () => ok([approval()]),
+        approvalScope: () => undefined,
+        rememberApproval: async () => undefined,
+        decideApproval: async () => record(),
+        answerQuestion: async () => undefined,
+        decidePlan: async () => undefined,
+        decidePermission: async () => undefined,
+        cancel: async () => record(),
+        cancelAndConfirm: async (taskId) => ({
+          kind: 'confirmed',
+          taskId,
+          reason: 'confirmed',
+          detail: 'The worker confirmed the stop.',
+        }),
+        emergencyStop: async () => {
+          order.push('supervisor');
+          return { engaged: true, stopped: [], cancellationUnconfirmed: [], unknown: [], reportedAt: NOW };
+        },
+      },
+      control: {
+        muteState: { muted: false, mode: 'idle' },
+        setMuted: () => undefined,
+        interruptSpeech: () => undefined,
+        stopPlayback: () => undefined,
+        engageEmergencyStop: () => {
+          order.push('local');
+        },
+      },
+    };
+    const service = new ChatService({ runtime, principal: () => 'u1', now: () => NOW });
+    await service.emergencyStop();
+    expect(order).toEqual(['local', 'supervisor']);
   });
 });

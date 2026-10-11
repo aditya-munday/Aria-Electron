@@ -1,12 +1,11 @@
 import { ariaError } from './product-errors.js';
-import { fail, ok, type Result } from './result.js';
+import { fail, type Result } from './result.js';
 import { classifyBackendOutcome, type BackendOutcome } from './backend-outcome.js';
 
 export const MAX_ATTEMPTS = 3;
 export const DEFAULT_RETRY_BACKOFF_MS = 50;
 
 export interface RetryOptions {
-  /** Total attempts including the first. Bounded by {@link MAX_ATTEMPTS}. */
   readonly attempts?: number;
   readonly backoffMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -14,7 +13,6 @@ export interface RetryOptions {
 }
 
 export interface IdempotentOperation<T> {
-  /** Stable across attempts so the Backend can deduplicate a retried write. */
   readonly idempotencyKey: string;
   readonly run: (idempotencyKey: string) => Promise<Result<T>>;
 }
@@ -26,13 +24,6 @@ function defaultSleep(ms: number): Promise<void> {
   });
 }
 
-/**
- * Run an idempotent operation with bounded retries. Each attempt reuses the same
- * idempotency key, so a retried write cannot duplicate a side effect. Only an
- * unavailable or uncertain outcome is retried; a definite rejection is returned
- * as-is. The final, honest result is always returned — a persistent outage
- * resolves as a failure, never as a fabricated success.
- */
 export async function retryIdempotent<T>(
   operation: IdempotentOperation<T>,
   options: RetryOptions = {},
@@ -53,5 +44,3 @@ export async function retryIdempotent<T>(
   }
   return last;
 }
-
-export { ok };
