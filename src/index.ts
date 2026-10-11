@@ -180,6 +180,61 @@ export {
 } from './backend/product-errors.js';
 
 export {
+  AriaShell,
+  type ShellDeps,
+  type ShellRuntime,
+} from './shell/aria-shell.js';
+export {
+  InMemorySettingsStore,
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  type ShellSettings,
+  type SettingsStore,
+} from './shell/settings.js';
+export {
+  CHAT_SHORTCUT_ACCELERATOR,
+  DEFAULT_KEY_REPERTOIRE,
+  type KeyEvent,
+  type KeyListener,
+  type KeyRepertoire,
+  type PhysicalKey,
+  type Platform,
+  type ShortcutRegistration,
+  type WindowFactory,
+  type WindowHandle,
+  type WindowKind,
+  type WindowOptions,
+} from './shell/window.js';
+export {
+  VoiceInteractionRuntime,
+  createVoiceInteractionRuntime,
+  type VoiceRuntimeLike,
+} from './shell/interaction-runtime.js';
+export {
+  IPC_CHANNELS,
+  BRIDGE_API_KEY,
+  BRIDGE_METHODS,
+  FORBIDDEN_BRIDGE_METHODS,
+  createAriaBridge,
+  bridgeKeys,
+  exposeAriaBridge,
+  type AriaBridge,
+  type ContextBridge,
+  type IpcHandler,
+  type IpcInvoker,
+  type IpcRegistrar,
+  type ShellStatus,
+} from './shell/ipc.js';
+export { registerIpcHandlers, type IpcHost } from './shell/ipc-handlers.js';
+export {
+  RENDERER_WEB_PREFERENCES,
+  blockExternalNavigation,
+  type RendererWindowSecurity,
+  type ExternalNavigationGuard,
+} from './shell/security.js';
+export { createFileSettingsStore } from './shell/settings-file.js';
+
+export {
   AriaSupervisor,
   SupervisorError,
   describeTaskPhase,
