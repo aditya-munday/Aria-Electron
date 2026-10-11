@@ -1,0 +1,13 @@
+{
+    "contract_version": 1,
+    "backend_version": "2026.10.0",
+    "stt_languages": ["en-US", "en-GB", "de-DE"],
+    "tts_languages": ["en-US", "en-GB", "de-DE"],
+    "voices": [
+        { "id": "v1", "name": "Voice One", "language": "en-US", "accent": { "tag": "en-us" } },
+        { "id": "v2", "name": "Voice Two", "language": "en-GB", "accent": { "tag": "en-gb" } }
+    ],
+    "streaming_stt": true,
+    "streaming_chat": true,
+    "streaming_tts": false
+}
