@@ -151,9 +151,32 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle.
 
-Test baseline: 350 tests / 39 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 367 tests / 41 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
+
+## Chat and task submission (`src/chat/`)
+
+The typed/chat turn pipeline above the voice runtime and the supervisor.
+
+- `chat-service.ts` (`ChatService`) — the typed-turn surface. `sendText` goes to
+  the Backend's conversational proxy through the voice runtime; when the reply
+  carries an advisory `RouteHint` with `requires_confirmation: true`, the turn is
+  *also* submitted as tracked work (`tasks.submit`) and the user turn is stamped
+  with `submittedTaskId` / `routeCapability`. The hint is advisory only: a
+  submitted request is `awaiting_approval`, never running, and a human still
+  grants the approval. A `RouteHint` with no confirmation requirement is a plain
+  conversation and is not submitted. `buildState` reconciles tracked tasks with
+  the Backend before rendering so the surface shows current truth.
+- `submission.ts` — the pure policy for the above: `shouldSubmit(route)`,
+  `deriveTitle(text)` (the user's own words, bounded), and
+  `operationForRoute(route)` (describes only the capability the hint carried;
+  Aria never fabricates privileges, resources or risk).
+- `chat-runtime.ts` (`createChatRuntime`) — adapts `AriaRuntime` to the
+  `ChatRuntime` seam: `tasks.submit` calls `supervisor.submitRequest` then reads
+  back the opened approval; `rememberApproval` is async and must be awaited
+  before `approvalScope` will resolve.
+- `state.ts` / `assemble.ts` — the `ChatState` the renderer consumes.
 
 ## Backend errors
 
