@@ -117,9 +117,14 @@ export class InteractionController {
       case 'emergency_stop':
         // Local and synchronous first: the stop does not wait on the network,
         // and never on model inference. The cancellation request is best-effort
-        // and its confirmation is read later, never assumed here.
+        // and its confirmation is read later, never assumed here — so a
+        // failing orchestration connection must not undo the local engage.
         this.deps.control?.engageEmergencyStop();
-        await this.deps.control?.requestCancellation();
+        try {
+          await this.deps.control?.requestCancellation();
+        } catch {
+          // The request is best-effort; the local stop is already engaged.
+        }
         break;
     }
   }
