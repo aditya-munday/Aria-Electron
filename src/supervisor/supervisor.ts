@@ -37,6 +37,11 @@ import { isTerminalExecutionState, isTerminalTaskStatus } from '../contract/prod
 import type { TaskApi } from '../backend/task-api.js';
 import type { Result } from '../backend/result.js';
 import {
+  confirmCancellation,
+  type CancellationOutcome,
+  type ConfirmCancellationOptions,
+} from '../control/cancellation.js';
+import {
   answerQuestionEvent,
   classifyEngineerEvent,
   permissionDecisionEvent,
@@ -290,6 +295,32 @@ export class AriaSupervisor {
     const requested = await this.client.requestCancellation(taskId);
     if (!requested.ok) return this.store.get(taskId);
     return this.refresh(taskId);
+  }
+
+  /**
+   * Request cancellation and wait for the agent to actually stop before
+   * reporting the stop. It resolves `confirmed` only when the authoritative
+   * execution state was observed to reach `cancelled`; if the agent does not
+   * stop within the grace period it resolves `failed` with a reason, and a
+   * terminal task that never reached `cancelled` resolves `not_cancellable`.
+   * It never reports a false `cancelled`.
+   */
+  async cancelAndConfirm(
+    taskId: string,
+    options: ConfirmCancellationOptions = {},
+  ): Promise<CancellationOutcome> {
+    const outcome = await confirmCancellation(
+      taskId,
+      {
+        requestCancellation: async (id) => {
+          const requested = await this.client.requestCancellation(id);
+          return { ok: requested.ok };
+        },
+        observe: async (id) => this.refresh(id),
+      },
+      options,
+    );
+    return outcome;
   }
 
   /** Read the user-facing phase for a task. */

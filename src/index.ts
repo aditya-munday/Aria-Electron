@@ -34,6 +34,27 @@ export {
   type InteractionControl,
 } from './interaction/interaction-controller.js';
 
+// --- stop / cancel / interrupt / mute controls ----------------------------
+export {
+  StopController,
+  type StopControllerDeps,
+  type EmergencyStopOutcome,
+  type LocalHaltReport,
+  type SpeechInterruptOutcome,
+  type PlaybackStopOutcome,
+} from './control/stop-controller.js';
+export { MuteController, IDLE_CAPTURE, type CaptureMode, type MuteStateView } from './control/mute.js';
+export {
+  confirmCancellation,
+  describeCancellation,
+  DEFAULT_CANCEL_GRACE_MS,
+  type CancellationOutcome,
+  type CancellationOutcomeKind,
+  type CancellationReason,
+  type ConfirmCancellationDeps,
+  type ConfirmCancellationOptions,
+} from './control/cancellation.js';
+
 // --- voice runtime --------------------------------------------------------
 export {
   VoiceRuntime,
