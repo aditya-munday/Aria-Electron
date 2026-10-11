@@ -25,6 +25,7 @@
 
 import type {
   CancellationState,
+  Identity,
   TaskDto,
   TaskEventDto,
   TaskExecutionDto,
@@ -33,6 +34,7 @@ import type {
 } from '../contract/product-contract.js';
 import { isTerminalExecutionState, isTerminalTaskStatus } from '../contract/product-contract.js';
 import type { TaskApi } from '../backend/task-api.js';
+import type { Result } from '../backend/result.js';
 import {
   answerQuestionEvent,
   classifyEngineerEvent,
@@ -293,6 +295,11 @@ export class AriaSupervisor {
   phaseOf(taskId: string): TaskPhase | undefined {
     const record = this.store.get(taskId);
     return record === undefined ? undefined : describeTaskPhase(record);
+  }
+
+  /** Resolve the signed-in identity through the product client (metadata only). */
+  async identity(): Promise<Result<Identity>> {
+    return this.client.identity();
   }
 
   /** All tracked records (metadata only). */
