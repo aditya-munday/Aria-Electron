@@ -190,6 +190,20 @@ export {
 } from './backend/transport.js';
 export { ok, fail, type Result } from './backend/result.js';
 export {
+  classifyBackendOutcome,
+  availabilityFromOutcome,
+  type BackendAvailabilityState,
+  type BackendOutcome,
+  type BackendOutcomeClass,
+} from './backend/backend-outcome.js';
+export {
+  retryIdempotent,
+  MAX_ATTEMPTS,
+  DEFAULT_RETRY_BACKOFF_MS,
+  type IdempotentOperation,
+  type RetryOptions,
+} from './backend/retry.js';
+export {
   ariaError,
   kindForStatus,
   recoveryForError,

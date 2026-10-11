@@ -12,6 +12,7 @@ import type {
   ApprovalDto,
   ApprovalResultEnvelope,
   Identity,
+  ReconcileResult,
   TaskDto,
   TaskEventDto,
   TaskExecutionDto,
@@ -45,4 +46,5 @@ export interface TaskApi {
     taskId: string,
     input: { type: string; idempotencyKey: string; payload?: Record<string, unknown> },
   ): Promise<Result<TaskEventDto>>;
+  reconcile(): Promise<Result<ReconcileResult>>;
 }
