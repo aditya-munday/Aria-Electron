@@ -325,6 +325,9 @@ function configSection(
   }
   wrap.append(row(doc, 'Backend base URL', config.backendBaseUrl));
   wrap.append(row(doc, 'Request timeout', `${config.requestTimeoutMs} ms`));
+  wrap.append(
+    row(doc, 'Aria model', config.model.displayName, 'Fixed for this release; there is no provider chooser.'),
+  );
   return wrap;
 }
 

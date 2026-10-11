@@ -106,6 +106,12 @@ function ariaConfigView(sources: ControlCenterSources): AriaConfigView {
   return {
     backendBaseUrl: config.backendBaseUrl,
     requestTimeoutMs: config.requestTimeoutMs,
+    model: {
+      provider: config.model.provider,
+      id: config.model.id,
+      displayName: config.model.displayName,
+      fixed: true,
+    },
     ...(settings.captureDeviceId !== undefined
       ? { microphoneDeviceId: settings.captureDeviceId }
       : {}),

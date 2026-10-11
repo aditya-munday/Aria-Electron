@@ -51,6 +51,12 @@ export interface ActivationView {
 export interface AriaConfigView {
   readonly backendBaseUrl: string;
   readonly requestTimeoutMs: number;
+  readonly model: {
+    readonly provider: string;
+    readonly id: string;
+    readonly displayName: string;
+    readonly fixed: true;
+  };
   readonly microphoneDeviceId?: string;
   readonly options: readonly {
     readonly id: string;

@@ -16,11 +16,12 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
     activation: {
       pushToTalk: { enabled: true, mode: 'hold', key: 'Hold ?' },
       wakeWord: { enabled: false, phrase: 'hey aria', available: true },
-      chatShortcut: { enabled: true, accelerator: 'CommandOrControl+Alt+A' },
+      chatShortcut: { enabled: true, accelerator: 'Super+Alt+A' },
     },
     ariaConfig: {
-      backendBaseUrl: 'http://127.0.0.1:8080',
+      backendBaseUrl: 'https://api.beyonders.dev',
       requestTimeoutMs: 30000,
+      model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)', fixed: true },
       options: [],
     },
     privacy: {
@@ -117,7 +118,7 @@ describe('control center renderer', () => {
             available: false,
             reason: 'The wake-word engine is unavailable on this build.',
           },
-          chatShortcut: { enabled: true, accelerator: 'CommandOrControl+Alt+A' },
+          chatShortcut: { enabled: true, accelerator: 'Super+Alt+A' },
         },
       }),
     );
