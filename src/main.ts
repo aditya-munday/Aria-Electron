@@ -111,6 +111,7 @@ function main(): void {
       return { ok: true, signedIn: true };
     },
     orbState: (): OrbState => orb.buildState(),
+    orbSetInteractive: (interactive: boolean): void => shell.setOrbInteractive(interactive),
     chatState: (): Promise<ChatState> => chat.buildState(),
     decideApproval: (input: unknown): Promise<ApprovalDecisionOutcome> =>
       chat.decideApproval(input),

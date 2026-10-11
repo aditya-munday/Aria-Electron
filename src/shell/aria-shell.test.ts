@@ -270,6 +270,29 @@ describe('orb window geometry and options', () => {
     await shell.whenIdle();
     expect(platform.windows.handle('orb')?.focused).toBe(0);
   });
+
+  it('starts click-through and toggles interactivity on request', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    const orb = platform.windows.handle('orb');
+    expect(orb?.ignoreMouse).toBe(true);
+    expect(orb?.ignoreMouseForward).toBe(true);
+
+    shell.setOrbInteractive(true);
+    expect(orb?.ignoreMouse).toBe(false);
+    expect(orb?.ignoreMouseForward).toBe(true);
+
+    shell.setOrbInteractive(false);
+    expect(orb?.ignoreMouse).toBe(true);
+    expect(orb?.ignoreMouseForward).toBe(true);
+  });
+
+  it('ignores interactivity toggles before the orb exists', () => {
+    const { shell } = build();
+    expect(() => shell.setOrbInteractive(true)).not.toThrow();
+  });
 });
 
 describe('settings persistence', () => {

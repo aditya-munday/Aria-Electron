@@ -155,6 +155,17 @@ export class AriaShell {
     this.persistOpenWindows();
   }
 
+  /**
+   * The Orb is click-through except on its painted circle. The renderer asks
+   * for interactivity only while the pointer is over the circle; everywhere
+   * else the window keeps forwarding clicks to whatever is beneath it.
+   */
+  setOrbInteractive(interactive: boolean): void {
+    const orb = this.windows.get('orb');
+    if (orb === undefined) return;
+    orb.setIgnoreMouseEvents(!interactive, { forward: true });
+  }
+
   private createWindow(kind: WindowKind): WindowHandle {
     const options =
       kind === 'orb'

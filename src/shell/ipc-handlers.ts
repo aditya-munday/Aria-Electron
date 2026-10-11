@@ -18,6 +18,7 @@ export interface IpcHost {
   signIn(input: unknown): SignInResult | Promise<SignInResult>;
   signOut(): SignInResult | Promise<SignInResult>;
   orbState(): OrbState | Promise<OrbState>;
+  orbSetInteractive(interactive: boolean): void | Promise<void>;
   chatState(): ChatState | Promise<ChatState>;
   decideApproval(input: unknown): ApprovalDecisionOutcome | Promise<ApprovalDecisionOutcome>;
   answerQuestion(input: unknown): ChatActionResult | Promise<ChatActionResult>;
@@ -57,6 +58,13 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     (): SignInResult | Promise<SignInResult> => host.signOut(),
   );
   ipc.handle(IPC_CHANNELS.orbState, (): OrbState | Promise<OrbState> => host.orbState());
+  ipc.handle(
+    IPC_CHANNELS.orbSetInteractive,
+    (...args: readonly unknown[]): void | Promise<void> => {
+      if (typeof args[0] !== 'boolean') throw new Error('orbSetInteractive expects a boolean argument');
+      return host.orbSetInteractive(args[0]);
+    },
+  );
   ipc.handle(IPC_CHANNELS.chatState, (): ChatState | Promise<ChatState> => host.chatState());
   ipc.handle(
     IPC_CHANNELS.chatDecideApproval,
