@@ -209,6 +209,7 @@ function diagnosticsView(sources: ControlCenterSources): DiagnosticView {
     ...(voiceDetail !== undefined ? { voiceDetail } : {}),
     listening: voice.listening,
     checkedAt: sources.now,
+    incidents: sources.incidents,
   };
 }
 

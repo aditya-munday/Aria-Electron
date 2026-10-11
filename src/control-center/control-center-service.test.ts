@@ -33,6 +33,7 @@ interface HarnessOptions {
   readonly records?: readonly SupervisionRecord[];
   readonly voicePresent?: boolean;
   readonly permission?: 'granted' | 'denied' | 'prompt';
+  readonly incidents?: readonly { at: string; source: string; message: string }[];
 }
 
 function harness(options: HarnessOptions = {}) {
@@ -61,6 +62,7 @@ function harness(options: HarnessOptions = {}) {
       settings = next;
       saved.push(next);
     },
+    incidents: () => options.incidents ?? [],
     voiceDiagnostics: () =>
       options.voicePresent === false
         ? undefined
@@ -171,6 +173,24 @@ describe('ControlCenterService.buildState', () => {
     const { service } = harness({ records });
     const state = await service.buildState();
     expect(state.tasks.map((t) => t.taskId)).toEqual(['t2', 't1']);
+  });
+
+  it('surfaces reported errors in diagnostics', async () => {
+    const { service } = harness({
+      incidents: [
+        { at: '2026-01-01T00:00:01.000Z', source: 'settings:wakeWord', message: 'engine offline' },
+      ],
+    });
+    const state = await service.buildState();
+    expect(state.diagnostics.incidents).toEqual([
+      { at: '2026-01-01T00:00:01.000Z', source: 'settings:wakeWord', message: 'engine offline' },
+    ]);
+  });
+
+  it('reports no incidents when the reporter is empty', async () => {
+    const { service } = harness();
+    const state = await service.buildState();
+    expect(state.diagnostics.incidents).toEqual([]);
   });
 });
 

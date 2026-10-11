@@ -1,11 +1,14 @@
 import type { AriaRuntime } from '../runtime.js';
 import type { AriaShell } from '../shell/aria-shell.js';
 import type { ShellSettings } from '../shell/settings.js';
+import type { ErrorReporter } from '../shell/error-reporting.js';
+import type { ReportedIncident } from './state.js';
 import type { ControlCenterRuntime, VoiceDiagnosticsLike } from './control-center-service.js';
 
 export function createControlCenterRuntime(
   runtime: AriaRuntime,
   shell: AriaShell,
+  errors: Pick<ErrorReporter, 'recent'>,
 ): ControlCenterRuntime {
   return {
     identity: () => runtime.identity(),
@@ -15,6 +18,7 @@ export function createControlCenterRuntime(
     saveSettings: (next: ShellSettings): void => {
       shell.updateSettings(() => next);
     },
+    incidents: (): readonly ReportedIncident[] => errors.recent(),
     voiceDiagnostics: (): VoiceDiagnosticsLike | undefined => {
       const voice = runtime.voice;
       if (voice === undefined) return undefined;

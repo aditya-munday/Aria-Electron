@@ -42,7 +42,7 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
       notes: ['Session tokens are held in memory only.'],
     },
     integrations: { backend: { state: 'ok' }, aiEngineer: { state: 'unknown' } },
-    diagnostics: { backendState: 'ok', voiceReady: true, listening: false, checkedAt: 'now' },
+    diagnostics: { backendState: 'ok', voiceReady: true, listening: false, checkedAt: 'now', incidents: [] },
     tasks: [],
     ...overrides,
   };
@@ -275,5 +275,27 @@ describe('control center renderer', () => {
     );
     expect(document.body.textContent).toContain('Unreachable');
     expect(document.body.textContent).toContain('Connection refused.');
+  });
+
+  it('lists reported errors in diagnostics with source and message', () => {
+    render(
+      state({
+        diagnostics: {
+          backendState: 'ok',
+          voiceReady: true,
+          listening: false,
+          checkedAt: 'now',
+          incidents: [{ at: '2026-01-01T00:00:01.000Z', source: 'settings:wakeWord', message: 'engine offline' }],
+        },
+      }),
+      'diagnostics',
+    );
+    expect(document.body.textContent).toContain('settings:wakeWord');
+    expect(document.body.textContent).toContain('engine offline');
+  });
+
+  it('says no errors were reported when the incident list is empty', () => {
+    render(state(), 'diagnostics');
+    expect(document.body.textContent).toContain('No errors have been reported this session.');
   });
 });

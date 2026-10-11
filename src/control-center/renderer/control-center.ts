@@ -597,7 +597,16 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
     ),
   );
 
-  panel.append(backend, runtime);
+  const errorsCard = card(doc, `Reported errors (${d.incidents.length})`);
+  if (d.incidents.length === 0) {
+    errorsCard.append(hint(doc, 'No errors have been reported this session.'));
+  } else {
+    for (const incident of d.incidents) {
+      errorsCard.append(row(doc, incident.source, incident.message, incident.at));
+    }
+  }
+
+  panel.append(backend, runtime, errorsCard);
   return panel;
 }
 

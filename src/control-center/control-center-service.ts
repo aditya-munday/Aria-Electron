@@ -13,6 +13,7 @@ import type {
   ControlCenterState,
   IntegrationView,
   PermissionState,
+  ReportedIncident,
   TaskHistoryItem,
   VoiceCatalogEntry,
   VoiceDiagnosticsView,
@@ -45,6 +46,7 @@ export interface ControlCenterRuntime {
   saveSettings(next: ShellSettings): void;
   voiceDiagnostics(): VoiceDiagnosticsLike | undefined;
   voice: VoiceControlLike | undefined;
+  incidents(): readonly ReportedIncident[];
 }
 
 export interface ControlCenterDeps {
@@ -106,6 +108,7 @@ export class ControlCenterService {
       integrations: this.integrationView(capabilities),
       tasks: this.taskHistory(),
       activation: this.deps.activation,
+      incidents: this.deps.runtime.incidents(),
       now: this.now(),
     });
   }
