@@ -56,7 +56,7 @@ interface Harness {
 }
 
 function makeService(control: ChatTaskControl, principal = 'u1'): ChatService {
-  const runtime: ChatRuntime = { voice: { sendText: async () => undefined }, tasks: control };
+  const runtime: ChatRuntime = { voice: { sendText: async () => ({ text: '' }) }, tasks: control };
   return new ChatService({
     runtime,
     principal: () => principal,
@@ -75,6 +75,11 @@ function harness(overrides: Partial<ChatTaskControl> = {}): Harness {
   };
   const control: ChatTaskControl = {
     records: () => [record()],
+    submit: async (input) => ({
+      record: record({ taskId: 't1', title: input.title }),
+      approvalId: 'a1',
+    }),
+    reconcile: async () => undefined,
     approvals: async () => ok([approval()]),
     approvalScope: () => ({
       approvalId: 'a1',
@@ -84,7 +89,7 @@ function harness(overrides: Partial<ChatTaskControl> = {}): Harness {
       planVersion: 1,
       granted: true,
     }),
-    rememberApproval: () => undefined,
+    rememberApproval: async () => undefined,
     decideApproval: async (taskId, approvalId) => {
       actions.push(`approve:${taskId}:${approvalId}`);
       return record();
@@ -182,7 +187,12 @@ describe('chat typed turns', () => {
     const sent: string[] = [];
     const { control } = harness();
     const runtime: ChatRuntime = {
-      voice: { sendText: async (text) => void sent.push(text) },
+      voice: {
+        sendText: async (text) => {
+          sent.push(text);
+          return { text: '' };
+        },
+      },
       tasks: control,
     };
     const service = new ChatService({ runtime, principal: () => 'u1', now: () => NOW });
@@ -227,6 +237,83 @@ describe('chat typed turns', () => {
     });
     const result = await service.sendText('hello');
     expect(result.ok).toBe(false);
+  });
+
+  it('does not submit conversational turns with no confirming route hint', async () => {
+    const submitted: unknown[] = [];
+    const { control } = harness({
+      submit: async (input) => {
+        submitted.push(input);
+        return { record: record(), approvalId: 'a1' };
+      },
+    });
+    const runtime: ChatRuntime = {
+      voice: { sendText: async () => ({ text: 'A chat reply.', route: null }) },
+      tasks: control,
+    };
+    const service = new ChatService({ runtime, principal: () => 'u1', now: () => NOW });
+    const result = await service.sendText('what is the status?');
+    expect(result.ok).toBe(true);
+    expect(result.submittedTaskId).toBeUndefined();
+    expect(submitted).toEqual([]);
+    const state = await service.buildState();
+    expect(state.turns.map((t) => t.role)).toEqual(['user', 'assistant']);
+  });
+
+  it('submits a turn as tracked work when the route hint requires confirmation', async () => {
+    const approvals: unknown[] = [];
+    const { control } = harness({
+      submit: async (input) => {
+        return { record: record({ taskId: 't9', title: input.title }), approvalId: 'a9' };
+      },
+      rememberApproval: async (input) => void approvals.push(input),
+    });
+    const runtime: ChatRuntime = {
+      voice: {
+        sendText: async () => ({
+          text: 'I can do that once approved.',
+          route: { capability: 'deploy.service', requires_confirmation: true },
+        }),
+      },
+      tasks: control,
+    };
+    const service = new ChatService({ runtime, principal: () => 'u1', now: () => NOW });
+    const result = await service.sendText('deploy the api');
+    expect(result.ok).toBe(true);
+    expect(result.submittedTaskId).toBe('t9');
+    expect(approvals).toHaveLength(1);
+    expect(approvals[0]).toMatchObject({
+      approvalId: 'a9',
+      taskId: 't9',
+      operation: { capability: 'deploy.service' },
+    });
+    const state = await service.buildState();
+    expect(state.turns[0]?.submittedTaskId).toBe('t9');
+    expect(state.turns[0]?.routeCapability).toBe('deploy.service');
+  });
+
+  it('reports a submission refusal without losing the conversed turn', async () => {
+    const { control } = harness({
+      submit: async () => {
+        throw new Error('supervisor offline');
+      },
+    });
+    const runtime: ChatRuntime = {
+      voice: {
+        sendText: async () => ({
+          text: 'Ready to work.',
+          route: { capability: 'deploy.service', requires_confirmation: true },
+        }),
+      },
+      tasks: control,
+    };
+    const service = new ChatService({ runtime, principal: () => 'u1', now: () => NOW });
+    const result = await service.sendText('deploy the api');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatch(/supervisor offline/);
+    const state = await service.buildState();
+    expect(state.turns[0]?.text).toBe('deploy the api');
   });
 });
 

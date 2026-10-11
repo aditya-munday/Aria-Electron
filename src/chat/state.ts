@@ -1,4 +1,5 @@
 import type { TaskPhase } from '../supervisor/supervisor.js';
+import type { OperationDescriptor } from '../supervisor/approval-scope.js';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -11,6 +12,8 @@ export interface ChatTurn {
   readonly at: string;
   readonly state: ChatTurnState;
   readonly error?: string;
+  readonly submittedTaskId?: string;
+  readonly routeCapability?: string;
 }
 
 export type ApprovalDecision = 'approved' | 'rejected';
@@ -126,5 +129,5 @@ export type ApprovalDecisionOutcome =
     };
 
 export type ChatActionResult =
-  | { readonly ok: true; readonly detail?: string }
+  | { readonly ok: true; readonly detail?: string; readonly submittedTaskId?: string }
   | { readonly ok: false; readonly reason: string };
