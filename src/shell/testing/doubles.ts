@@ -87,8 +87,11 @@ export class FakeWindowFactory implements WindowFactory {
 
 export class FakeScreenProvider implements ScreenProvider {
   constructor(
-    private readonly workArea: Rect = { x: 0, y: 0, width: 1440, height: 900 },
-    readonly primaryScreen: ScreenInfo = { workArea, primary: true },
+    readonly primaryScreen: ScreenInfo = {
+      workArea: { x: 0, y: 0, width: 1440, height: 900 },
+      bounds: { x: 0, y: 0, width: 1440, height: 900 },
+      primary: true,
+    },
   ) {}
 
   primary(): ScreenInfo {
