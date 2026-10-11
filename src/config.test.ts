@@ -1,28 +1,36 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig, normalizeBaseUrl } from './config.js';
+import { loadConfig, loadSessionToken, normalizeBaseUrl } from './config.js';
 
 describe('loadConfig', () => {
-  it('uses local defaults when the environment is empty', () => {
+  it('defaults to the Beyonders backend when the environment is empty', () => {
     const config = loadConfig({} as NodeJS.ProcessEnv);
-    expect(config.backendBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(config.backendBaseUrl).toBe('https://api.beyonders.dev');
     expect(config.requestTimeoutMs).toBe(30_000);
+    expect(config.model.provider).toBe('groq');
+    expect(config.model.id).toBe('groq/llama-3.3-70b-versatile');
   });
 
   it('reads the backend URL and timeout from the environment', () => {
     const config = loadConfig({
-      DIRECTIONER_BACKEND_URL: 'https://api.directioner.example/',
-      DIRECTIONER_REQUEST_TIMEOUT_MS: '5000',
+      ARIA_BACKEND_URL: 'https://api.beyonders.example/',
+      ARIA_REQUEST_TIMEOUT_MS: '5000',
     } as NodeJS.ProcessEnv);
-    expect(config.backendBaseUrl).toBe('https://api.directioner.example');
+    expect(config.backendBaseUrl).toBe('https://api.beyonders.example');
     expect(config.requestTimeoutMs).toBe(5000);
   });
 
   it('falls back to the default timeout for a non-numeric value', () => {
     const config = loadConfig({
-      DIRECTIONER_REQUEST_TIMEOUT_MS: 'soon',
+      ARIA_REQUEST_TIMEOUT_MS: 'soon',
     } as NodeJS.ProcessEnv);
     expect(config.requestTimeoutMs).toBe(30_000);
+  });
+
+  it('loads a session token only when it is non-empty', () => {
+    expect(loadSessionToken({} as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(loadSessionToken({ ARIA_SESSION_TOKEN: '   ' } as NodeJS.ProcessEnv)).toBeUndefined();
+    expect(loadSessionToken({ ARIA_SESSION_TOKEN: 'tok-123' } as NodeJS.ProcessEnv)).toBe('tok-123');
   });
 });
 

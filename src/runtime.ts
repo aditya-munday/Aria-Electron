@@ -17,7 +17,7 @@ import { TaskClient } from './backend/task-client.js';
 import { FetchTransport, SharedToken } from './backend/transport.js';
 import { ariaError } from './backend/product-errors.js';
 import { fail, type Result } from './backend/result.js';
-import { loadConfig, type AriaConfig } from './config.js';
+import { loadConfig, loadSessionToken, type AriaConfig } from './config.js';
 import type { Identity } from './contract/product-contract.js';
 import { AriaSupervisor } from './supervisor/supervisor.js';
 import { FileTaskStore, InMemoryTaskStore, type TaskStore } from './supervisor/task-store.js';
@@ -44,11 +44,14 @@ export interface AriaRuntimeOptions {
   /** An injected wake-word detector, or `null` to disable detection. */
   readonly wakeWordDetector?: WakeWordDetector | null;
   readonly voiceDeviceId?: string;
+  /** The Aria session token; defaults to `ARIA_SESSION_TOKEN`. */
+  readonly sessionToken?: string;
 }
 
 export class AriaRuntime {
   readonly supervisor: AriaSupervisor;
   readonly aria: AriaClient;
+  readonly config: AriaConfig;
   /**
    * The voice runtime, present only when a microphone and speaker are supplied
    * (the desktop shell provides them). It is created here but not started;
@@ -59,7 +62,9 @@ export class AriaRuntime {
 
   constructor(options: AriaRuntimeOptions = {}) {
     const config = options.config ?? loadConfig();
-    this.tokens = new SharedToken();
+    this.config = config;
+    const sessionToken = options.sessionToken ?? loadSessionToken();
+    this.tokens = new SharedToken(sessionToken);
     const transport = new FetchTransport({
       baseUrl: config.backendBaseUrl,
       timeoutMs: config.requestTimeoutMs,

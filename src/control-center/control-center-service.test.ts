@@ -9,12 +9,16 @@ import type { SupervisionRecord } from '../supervisor/task-store.js';
 import type { ActivationInputs } from './state.js';
 import type { AriaConfig } from '../config.js';
 
-const CONFIG: AriaConfig = { backendBaseUrl: 'http://127.0.0.1:8080', requestTimeoutMs: 30_000 };
+const CONFIG: AriaConfig = {
+  backendBaseUrl: 'https://api.beyonders.dev',
+  requestTimeoutMs: 30_000,
+  model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' },
+};
 
 const ACTIVATION: ActivationInputs = {
   request: 'Hold ?',
   wakeWordPhrase: 'hey aria',
-  chatAccelerator: 'CommandOrControl+Alt+A',
+  chatAccelerator: 'Super+Alt+A',
   wakeWordAvailable: true,
 };
 
