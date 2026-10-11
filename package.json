@@ -1,8 +1,8 @@
 {
   "name": "aria-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "Aria \u2014 the local-first voice assistant desktop client (Electron).",
+  "description": "Aria — the local-first voice assistant desktop client (Electron).",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
