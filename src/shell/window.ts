@@ -69,7 +69,9 @@ export interface KeyListener {
 }
 
 export interface ShortcutRegistration {
-  register(accelerator: string, handler: () => void): void;
+  /** Register an accelerator; returns whether the OS accepted the grab. */
+  register(accelerator: string, handler: () => void): boolean;
+  isRegistered(accelerator: string): boolean;
 }
 
 export interface Platform {
@@ -80,3 +82,13 @@ export interface Platform {
 }
 
 export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';
+
+/**
+ * A true global push-to-talk accelerator. Unlike the focused `?` key, this is
+ * grabbed from the OS, so it fires while another application has focus.
+ *
+ * A global accelerator only reports the key going down, so the gesture is a
+ * toggle: the first press starts capture, the next press finalizes it. Hold-to-
+ * talk remains available through the focused `ControlRight` key.
+ */
+export const PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+Space';

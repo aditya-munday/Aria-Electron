@@ -7,6 +7,7 @@ import { InMemorySettingsStore, DEFAULT_SETTINGS, type ShellSettings } from './s
 import {
   CHAT_SHORTCUT_ACCELERATOR,
   DEFAULT_KEY_REPERTOIRE,
+  PUSH_TO_TALK_ACCELERATOR,
   type KeyEvent,
 } from './window.js';
 import { ORB_RIGHT_MARGIN } from './placement.js';
@@ -55,11 +56,22 @@ describe('shell launch', () => {
     expect(platform.windows.created.map((w) => w.kind)).toEqual(['control_center']);
   });
 
-  it('registers the chat accelerator and starts key listening', () => {
+  it('registers the chat and push-to-talk accelerators and starts key listening', () => {
     const { shell, platform } = build();
     shell.start();
-    expect(platform.shortcuts.accelerators).toEqual([CHAT_SHORTCUT_ACCELERATOR]);
+    expect(platform.shortcuts.accelerators).toEqual([
+      CHAT_SHORTCUT_ACCELERATOR,
+      PUSH_TO_TALK_ACCELERATOR,
+    ]);
     expect(platform.keys.started).toBe(1);
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+  });
+
+  it('reports an accelerator the OS refused instead of pretending it works', () => {
+    const { shell, platform } = build();
+    platform.shortcuts.refused.push(PUSH_TO_TALK_ACCELERATOR);
+    shell.start();
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: false });
   });
 
   it('does not start a capture on launch', () => {
@@ -92,6 +104,32 @@ describe('chat shortcut', () => {
     const { shell, platform, interactionRuntime } = build();
     shell.start();
     platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(0);
+    expect(shell.isOpen('orb')).toBe(false);
+  });
+});
+
+describe('global push-to-talk accelerator', () => {
+  it('toggles capture on the first press and off on the next', async () => {
+    const { shell, platform, interactionRuntime } = build();
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    expect(shell.isOpen('orb')).toBe(true);
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+  });
+
+  it('does nothing while push-to-talk is disabled in settings', async () => {
+    const { shell, platform, interactionRuntime } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkEnabled: false,
+    });
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
     await shell.whenIdle();
     expect(interactionRuntime.captureStarts()).toBe(0);
     expect(shell.isOpen('orb')).toBe(false);

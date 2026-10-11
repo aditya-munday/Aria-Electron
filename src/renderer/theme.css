@@ -1,0 +1,91 @@
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-stretch: 75% 100%;
+  font-display: swap;
+  src: url('./fonts/BricolageGrotesque-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-stretch: 75% 100%;
+  font-display: swap;
+  src: url('./fonts/InstrumentSans-400.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: dark;
+
+  --font-display: 'Bricolage Grotesque', 'Iowan Old Style', Georgia, serif;
+  --font-body: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+
+  --ink-000: #070910;
+  --ink-050: #0b0e17;
+  --ink-100: #11151f;
+  --ink-150: #171c28;
+  --ink-200: #1e2431;
+  --ink-250: #262d3d;
+  --ink-300: #333c50;
+
+  --line-soft: rgba(148, 163, 208, 0.1);
+  --line: rgba(148, 163, 208, 0.16);
+  --line-strong: rgba(148, 163, 208, 0.28);
+
+  --text-hi: #f2f4fb;
+  --text: #dfe3ef;
+  --text-mid: #a7aec4;
+  --text-lo: #767e95;
+
+  --aurora-1: #7c5cff;
+  --aurora-2: #4d7cff;
+  --aurora-3: #34d3ee;
+  --aurora-4: #ff7ac6;
+  --mint: #3ddc97;
+  --amber: #ffb454;
+  --rose: #ff6b6b;
+
+  --accent: var(--aurora-1);
+  --accent-soft: rgba(124, 92, 255, 0.16);
+  --accent-line: rgba(124, 92, 255, 0.42);
+
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius: 18px;
+  --radius-lg: 26px;
+
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px -18px rgba(0, 0, 0, 0.9);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.95);
+  --glow-accent: 0 0 0 1px var(--accent-line), 0 18px 50px -22px rgba(124, 92, 255, 0.75);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(124, 92, 255, 0.4);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--aurora-3);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

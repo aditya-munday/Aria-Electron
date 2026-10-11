@@ -23,7 +23,7 @@ export function renderOrb(doc: Document, state: OrbState): void {
   const presence = state.presence;
 
   const orb = doc.createElement('div');
-  orb.className = 'orb';
+  orb.className = `orb orb-${presence.presence}`;
   orb.setAttribute('data-presence', presence.presence);
   orb.setAttribute('data-cue', presence.cue);
   orb.setAttribute('role', 'img');
@@ -38,11 +38,14 @@ export function renderOrb(doc: Document, state: OrbState): void {
   const core = h(doc, 'div', `core core-${presence.cue}`);
   core.setAttribute('aria-hidden', 'true');
 
+  const ring = h(doc, 'div', 'ring');
+  ring.setAttribute('aria-hidden', 'true');
+
   const label = h(doc, 'p', 'label');
   label.textContent = presence.label;
   label.setAttribute('data-testid', 'orb-label');
 
-  orb.append(halo, glow, core, label);
+  orb.append(halo, glow, core, ring, label);
 
   if (presence.detail !== undefined) {
     const detail = h(doc, 'p', 'detail');
@@ -79,17 +82,32 @@ export function wirePointerInteractivity(
   });
 }
 
-export function bootstrapOrb(doc: Document, bridge: OrbBridge): void {
+export function bootstrapOrb(
+  doc: Document,
+  bridge: OrbBridge,
+  intervalMs = 600,
+): () => void {
   const root = doc.getElementById('orb');
   if (root !== null) {
     const loading = h(doc, 'p', 'label');
     loading.textContent = 'Idle';
     root.replaceChildren(loading);
   }
-  void bridge.orbState().then((state) => {
-    renderOrb(doc, state);
-    wirePointerInteractivity(doc, bridge);
-  });
+
+  const refresh = (): void => {
+    void bridge.orbState().then((state) => {
+      renderOrb(doc, state);
+    });
+  };
+
+  // The Orb is a live presence: it must follow the voice runtime without the
+  // user reopening it, so it re-reads its state on a short interval instead of
+  // rendering once and freezing.
+  refresh();
+  const timer = setInterval(refresh, intervalMs);
+  wirePointerInteractivity(doc, bridge);
+
+  return () => clearInterval(timer);
 }
 
 const injected = (globalThis as { aria?: OrbBridge }).aria;

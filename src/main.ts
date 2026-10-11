@@ -12,7 +12,7 @@ import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
 import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
-import { CHAT_SHORTCUT_ACCELERATOR } from './shell/window.js';
+import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
@@ -89,6 +89,9 @@ function main(): void {
       request: 'Hold ?',
       wakeWordPhrase: WAKE_WORD_PHRASE,
       chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
+      pushToTalkAccelerator: PUSH_TO_TALK_ACCELERATOR,
+      chatShortcutRegistered: shell.shortcutStatus().chat,
+      pushToTalkRegistered: shell.shortcutStatus().pushToTalk,
       wakeWordAvailable: voice !== undefined,
       ...(voice !== undefined
         ? {}
@@ -146,13 +149,23 @@ function main(): void {
     },
     interruptSpeech: (): ChatActionResult => chat.interruptSpeech(),
     settings: () => settings.load(),
+    openChat: (): void => {
+      shell.open('chat');
+    },
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
-    signIn: (): { ok: false; reason: string; unsupported: true } => ({
-      ok: false,
-      reason: 'Sign-in is not available in this build yet.',
-      unsupported: true,
-    }),
+    signIn: (input: unknown): SignInOutcome => {
+      const token =
+        typeof input === 'object' && input !== null
+          ? (input as { token?: unknown }).token
+          : undefined;
+      if (typeof token !== 'string' || token.trim() === '') {
+        return { ok: false, reason: 'Enter your session token to continue.' };
+      }
+      runtime.setSessionToken(token.trim());
+      process.stdout.write('[aria] Session token stored in memory for this session.\n');
+      return { ok: true, signedIn: true };
+    },
     signOut: (): SignInOutcome => {
       runtime.setSessionToken(undefined);
       return { ok: true, signedIn: true };

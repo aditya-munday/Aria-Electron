@@ -30,6 +30,7 @@ export interface IpcHost {
   interruptSpeech(): ChatActionResult | Promise<ChatActionResult>;
   emergencyStop(): EmergencyStopView | Promise<EmergencyStopView>;
   settings(): ShellSettings | Promise<ShellSettings>;
+  openChat(): void | Promise<void>;
 }
 
 export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
@@ -113,4 +114,5 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.shellSettings,
     (): ShellSettings | Promise<ShellSettings> => host.settings(),
   );
+  ipc.handle(IPC_CHANNELS.openChat, (): void | Promise<void> => host.openChat());
 }

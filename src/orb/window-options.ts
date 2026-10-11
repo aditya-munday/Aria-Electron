@@ -4,9 +4,13 @@ import type { WindowOptions } from '../shell/window.js';
  * The Orb is a presence, not a window: a single transparent circle drawn over
  * the desktop with no frame, no title bar, no shadow box and no rectangular
  * background. Only the circle is painted; everywhere else is fully transparent.
+ *
+ * The window is much larger than the painted circle so the soft outer glow has
+ * room to fall off; the hit test still uses `ORB_DIAMETER`, so only the visible
+ * circle takes pointer input and the glow stays click-through.
  */
-export const ORB_DIAMETER = 96;
-export const ORB_WINDOW_PADDING = 12;
+export const ORB_DIAMETER = 128;
+export const ORB_WINDOW_PADDING = 40;
 export const ORB_WINDOW_SIZE = ORB_DIAMETER + ORB_WINDOW_PADDING * 2;
 
 export const ORB_WINDOW_OPTIONS: WindowOptions = {

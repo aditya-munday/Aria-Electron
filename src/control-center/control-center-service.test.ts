@@ -19,6 +19,9 @@ const ACTIVATION: ActivationInputs = {
   request: 'Hold ?',
   wakeWordPhrase: 'hey aria',
   chatAccelerator: 'Super+Alt+A',
+  pushToTalkAccelerator: 'Super+Alt+Space',
+  chatShortcutRegistered: true,
+  pushToTalkRegistered: true,
   wakeWordAvailable: true,
 };
 

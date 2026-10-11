@@ -86,6 +86,8 @@ function activationView(sources: ControlCenterSources): ActivationView {
       enabled: settings.pushToTalkEnabled,
       mode: settings.pushToTalkMode,
       key: activation.request,
+      globalAccelerator: activation.pushToTalkAccelerator,
+      globalRegistered: activation.pushToTalkRegistered,
     },
     wakeWord: {
       enabled: settings.wakeWordEnabled,
@@ -96,6 +98,7 @@ function activationView(sources: ControlCenterSources): ActivationView {
     chatShortcut: {
       enabled: settings.chatShortcutEnabled,
       accelerator: activation.chatAccelerator,
+      registered: activation.chatShortcutRegistered,
     },
   };
 }

@@ -207,8 +207,17 @@ class ElectronWindowFactory implements WindowFactory {
 }
 
 class ElectronShortcuts implements ShortcutRegistration {
-  register(accelerator: string, handler: () => void): void {
-    globalShortcut.register(accelerator, handler);
+  register(accelerator: string, handler: () => void): boolean {
+    try {
+      return globalShortcut.register(accelerator, handler);
+    } catch {
+      // An invalid accelerator throws; report it as "not registered" rather
+      // than letting the failure escape and take the shell down.
+      return false;
+    }
+  }
+  isRegistered(accelerator: string): boolean {
+    return globalShortcut.isRegistered(accelerator);
   }
 }
 
