@@ -37,7 +37,7 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
   ipc.handle(IPC_CHANNELS.status, (): ShellStatus => {
     return { signedIn: host.signedIn(), runtime: 'ready' };
   });
-  ipc.handle(IPC_CHANNELS.sendText, async (...args: readonly unknown[]): Promise<void> => {
+  ipc.handle(IPC_CHANNELS.sendText, async (_event: unknown, ...args: readonly unknown[]): Promise<void> => {
     const text = args[0];
     if (typeof text !== 'string') throw new Error('sendText expects a string argument');
     await host.sendText(text);
@@ -52,54 +52,54 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
   );
   ipc.handle(
     IPC_CHANNELS.settingsUpdate,
-    (...args: readonly unknown[]): SettingsUpdateResult | Promise<SettingsUpdateResult> =>
+    (_event: unknown, ...args: readonly unknown[]): SettingsUpdateResult | Promise<SettingsUpdateResult> =>
       host.updateSettings(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.accountSignIn,
-    (...args: readonly unknown[]): SignInResult | Promise<SignInResult> => host.signIn(args[0]),
+    (_event: unknown, ...args: readonly unknown[]): SignInResult | Promise<SignInResult> => host.signIn(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.accountSignOut,
     (): SignInResult | Promise<SignInResult> => host.signOut(),
   );
-  ipc.handle(IPC_CHANNELS.orbState, (): OrbState | Promise<OrbState> => host.orbState());
+  ipc.handle(IPC_CHANNELS.orbState, (_event: unknown): OrbState | Promise<OrbState> => host.orbState());
   ipc.handle(
     IPC_CHANNELS.orbSetInteractive,
-    (...args: readonly unknown[]): void | Promise<void> => {
+    (_event: unknown, ...args: readonly unknown[]): void | Promise<void> => {
       if (typeof args[0] !== 'boolean') throw new Error('orbSetInteractive expects a boolean argument');
       return host.orbSetInteractive(args[0]);
     },
   );
-  ipc.handle(IPC_CHANNELS.chatState, (): ChatState | Promise<ChatState> => host.chatState());
+  ipc.handle(IPC_CHANNELS.chatState, (_event: unknown): ChatState | Promise<ChatState> => host.chatState());
   ipc.handle(
     IPC_CHANNELS.chatDecideApproval,
-    (...args: readonly unknown[]): ApprovalDecisionOutcome | Promise<ApprovalDecisionOutcome> =>
+    (_event: unknown, ...args: readonly unknown[]): ApprovalDecisionOutcome | Promise<ApprovalDecisionOutcome> =>
       host.decideApproval(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.chatAnswerQuestion,
-    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+    (_event: unknown, ...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.answerQuestion(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.chatDecidePlan,
-    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+    (_event: unknown, ...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.decidePlan(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.chatDecidePermission,
-    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+    (_event: unknown, ...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.decidePermission(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.chatCancelTask,
-    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+    (_event: unknown, ...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.cancelTask(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.chatMuteCapture,
-    (...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
+    (_event: unknown, ...args: readonly unknown[]): ChatActionResult | Promise<ChatActionResult> =>
       host.muteCapture(args[0]),
   );
   ipc.handle(
@@ -114,5 +114,5 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.shellSettings,
     (): ShellSettings | Promise<ShellSettings> => host.settings(),
   );
-  ipc.handle(IPC_CHANNELS.openChat, (): void | Promise<void> => host.openChat());
+  ipc.handle(IPC_CHANNELS.openChat, (_event: unknown): void | Promise<void> => host.openChat());
 }

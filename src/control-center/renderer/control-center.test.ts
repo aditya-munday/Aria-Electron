@@ -66,9 +66,9 @@ function bridge(stateValue: ControlCenterState): {
       },
       signIn: async (input) => {
         signIns.push(input);
-        return { ok: false, reason: 'unsupported', unsupported: true };
+        return { ok: false, signedIn: false, reason: 'The session token was rejected.' };
       },
-      signOut: async () => ({ ok: true }),
+      signOut: async () => ({ ok: true, signedIn: true }),
       openChat: async () => undefined,
     },
   };
@@ -247,8 +247,8 @@ describe('control center renderer', () => {
     const b: ControlCenterBridge = {
       controlCenterState: async () => state(),
       updateSettings: async () => ({ ok: true }),
-      signIn: async () => ({ ok: true }),
-      signOut: async () => ({ ok: true }),
+      signIn: async () => ({ ok: true, signedIn: true }),
+      signOut: async () => ({ ok: true, signedIn: true }),
       openChat: async () => {
         opened += 1;
       },

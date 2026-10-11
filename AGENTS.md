@@ -156,6 +156,15 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   `nodeIntegration: false`, web-security on, and deny external navigation and
   `window.open`. The main process registers a `window-all-closed` handler on
   purpose so Electron does not quit when the last window closes.
+  `registerIpcHandlers` strips the leading `IpcMainInvokeEvent` from every
+  `ipcMain.handle` callback (`(_event, ...args)`), so a handler reads its real
+  payload, not the event object. `RecordingRegistrar` in the test mirrors that
+  `(event, ...args)` arity so a mis-read argument cannot pass.
+- `control-center/sign-in.ts` — `verifySignIn` resolves a pasted session token
+  against the Backend before treating the user as signed in, and rolls the token
+  back when the identity read fails, so a rejected credential never leaves a
+  half-signed-in shell. The outcome carries the real identity or the classified
+  failure (`recoveryForError`), never a fabricated success.
 - `settings.ts` / `settings-file.ts` — persisted shell state. `normalizeSettings`
   keeps only known window kinds and rejects an unknown push-to-talk mode;
   optional ids (capture device, voice, language) survive only when present.

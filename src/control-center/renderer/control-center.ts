@@ -3,7 +3,7 @@ import type { ControlCenterState } from '../state.js';
 export interface ControlCenterBridge {
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): Promise<{ ok: boolean; reason?: string }>;
-  signIn(input: unknown): Promise<{ ok: boolean; reason?: string; unsupported?: boolean }>;
+  signIn(input: unknown): Promise<{ ok: boolean; reason?: string }>;
   signOut(): Promise<{ ok: boolean; reason?: string }>;
   openChat(): Promise<void>;
 }
@@ -560,12 +560,7 @@ function accountPanel(
       }
       signInButton.disabled = false;
       note.setAttribute('data-tone', 'bad');
-      text(
-        note,
-        result.unsupported === true
-          ? result.reason ?? 'Sign-in is not available in this build.'
-          : result.reason ?? 'Sign-in failed.',
-      );
+      text(note, result.reason ?? 'Sign-in failed.');
     });
   });
   wrap.append(form);

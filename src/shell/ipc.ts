@@ -36,8 +36,13 @@ export type SettingsUpdateResult =
   | { readonly ok: false; readonly reason: string };
 
 export type SignInResult =
-  | { readonly ok: true; readonly signedIn: true }
-  | { readonly ok: false; readonly reason: string; readonly unsupported?: true };
+  | { readonly ok: true; readonly signedIn: true; readonly reason?: string }
+  | {
+      readonly ok: false;
+      readonly signedIn: false;
+      readonly reason: string;
+      readonly recovery?: string;
+    };
 
 export type { ApprovalDecisionOutcome, ChatActionResult, EmergencyStopView };
 

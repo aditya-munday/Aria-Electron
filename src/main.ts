@@ -14,6 +14,7 @@ import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
 import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
+import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
 import { ChatService } from './chat/chat-service.js';
@@ -154,21 +155,15 @@ function main(): void {
     },
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
-    signIn: (input: unknown): SignInOutcome => {
-      const token =
-        typeof input === 'object' && input !== null
-          ? (input as { token?: unknown }).token
-          : undefined;
-      if (typeof token !== 'string' || token.trim() === '') {
-        return { ok: false, reason: 'Enter your session token to continue.' };
-      }
-      runtime.setSessionToken(token.trim());
-      process.stdout.write('[aria] Session token stored in memory for this session.\n');
-      return { ok: true, signedIn: true };
-    },
+    signIn: (input: unknown): Promise<SignInOutcome> =>
+      verifySignIn(input, {
+        sessionToken: runtime.sessionToken(),
+        setSessionToken: (token) => runtime.setSessionToken(token),
+        identity: () => runtime.identity(),
+      }),
     signOut: (): SignInOutcome => {
       runtime.setSessionToken(undefined);
-      return { ok: true, signedIn: true };
+      return { ok: true, signedIn: true, reason: 'Signed out.' };
     },
     orbState: (): OrbState => orb.buildState(),
     orbSetInteractive: (interactive: boolean): void => shell.setOrbInteractive(interactive),
@@ -194,10 +189,6 @@ function main(): void {
     void runtime.stopVoice();
   });
 }
-
-type SignInOutcome =
-  | { readonly ok: true; readonly signedIn: true }
-  | { readonly ok: false; readonly reason: string; readonly unsupported?: true };
 
 function inertVoiceRuntime(): InteractionRuntime {
   return {

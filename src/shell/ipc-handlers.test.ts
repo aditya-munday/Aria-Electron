@@ -13,7 +13,8 @@ class RecordingRegistrar implements IpcRegistrar {
   invoke(channel: string, ...args: readonly unknown[]): unknown {
     const handler = this.handlers.get(channel);
     if (handler === undefined) throw new Error(`no handler for ${channel}`);
-    return handler(...args);
+    // Mirror ipcMain.handle's (event, ...args) arity so a mis-read argument fails here.
+    return handler({}, ...args);
   }
 }
 
@@ -62,7 +63,7 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     stopPlayback: () => undefined,
     controlCenterState: async () => emptyState(),
     updateSettings: () => ({ ok: true, settings: undefined as never }),
-    signIn: () => ({ ok: false, reason: 'unsupported', unsupported: true }),
+    signIn: () => ({ ok: false, signedIn: false, reason: 'The session token was rejected.' }),
     signOut: () => ({ ok: true, signedIn: true }),
     orbState: () => ({ generatedAt: 'x', presence: { presence: 'idle', cue: 'dot', label: 'Idle', updatedAt: 'x' } }),
     orbSetInteractive: () => undefined,
@@ -211,7 +212,7 @@ describe('main-process IPC handlers', () => {
     const registrar = new RecordingRegistrar();
     registerIpcHandlers(registrar, host());
     const signIn = await registrar.invoke(IPC_CHANNELS.accountSignIn, {});
-    expect(signIn).toEqual({ ok: false, reason: 'unsupported', unsupported: true });
+    expect(signIn).toEqual({ ok: false, signedIn: false, reason: 'The session token was rejected.' });
     const signOut = await registrar.invoke(IPC_CHANNELS.accountSignOut);
     expect(signOut).toEqual({ ok: true, signedIn: true });
   });

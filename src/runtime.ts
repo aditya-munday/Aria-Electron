@@ -166,4 +166,9 @@ export class AriaRuntime {
     }
     return this.supervisor.identity();
   }
+
+  /** The current in-memory session token, for verification and diagnostics. */
+  sessionToken(): string | undefined {
+    return this.tokens.current();
+  }
 }
