@@ -23,7 +23,7 @@ import type { AudioDevice, Microphone } from './device.js';
 import { VoiceError, asVoiceError } from './errors.js';
 import { VoiceEventBus, type VoiceEventListener } from './events.js';
 import type { Speaker } from './playback.js';
-import { createPushToTalk, type PushToTalkController, type PushToTalkIntent } from './push-to-talk.js';
+import { createPushToTalk, type PushToTalkController, type PushToTalkIntent, type PushToTalkMode } from './push-to-talk.js';
 import type { SpeechProxy } from './speech.js';
 import { VoiceSession, type Orchestrator, type UtteranceBoundary } from './session.js';
 import type { VoiceRuntimeConfig } from './voice-config.js';
@@ -198,6 +198,10 @@ export class VoiceRuntime {
       return;
     }
     if (this.current === undefined) await this.wakeListener.start();
+  }
+
+  setPushToTalkMode(mode: PushToTalkMode): void {
+    this.pushToTalk.setMode(mode);
   }
 
   /** Push-to-talk: press the configured control. */

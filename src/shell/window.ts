@@ -2,6 +2,8 @@ export type WindowKind = 'control_center' | 'orb' | 'chat';
 
 export type PhysicalKey = 'question' | 'a';
 
+export type PushToTalkMode = 'hold' | 'toggle';
+
 export interface KeyRepertoire {
   readonly pushToTalk: PhysicalKey;
   readonly chatShortcut: PhysicalKey;
