@@ -1,0 +1,48 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'aria-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run ci
+
+  package:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run pack:deb
+      - name: Locate package
+        id: pkg
+        run: |
+          file=$(ls release/*.deb | head -n1)
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$file")" >> "$GITHUB_OUTPUT"
+      - name: Checksum
+        run: sha256sum "${{ steps.pkg.outputs.file }}" > "${{ steps.pkg.outputs.file }}.sha256"
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.pkg.outputs.file }}
+            ${{ steps.pkg.outputs.file }}.sha256
+          fail_on_unmatched_files: true

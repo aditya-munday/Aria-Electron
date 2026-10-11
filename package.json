@@ -37,6 +37,7 @@
   "build": {
     "appId": "dev.beyonders.aria",
     "productName": "Aria",
+    "artifactName": "aria-electron_${version}_${arch}.deb",
     "directories": {
       "output": "release",
       "buildResources": "build"
