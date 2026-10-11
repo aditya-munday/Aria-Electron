@@ -127,11 +127,19 @@ export class FakeKeyListener implements KeyListener {
 
 export class FakeShortcutRegistration implements ShortcutRegistration {
   readonly accelerators: string[] = [];
+  readonly refused: string[] = [];
   private readonly handlers = new Map<string, () => void>();
+  private readonly registered = new Set<string>();
 
-  register(accelerator: string, handler: () => void): void {
+  register(accelerator: string, handler: () => void): boolean {
     this.accelerators.push(accelerator);
+    if (this.refused.includes(accelerator)) return false;
     this.handlers.set(accelerator, handler);
+    this.registered.add(accelerator);
+    return true;
+  }
+  isRegistered(accelerator: string): boolean {
+    return this.registered.has(accelerator);
   }
   fire(accelerator: string): void {
     this.handlers.get(accelerator)?.();

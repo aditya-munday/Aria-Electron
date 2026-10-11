@@ -6,6 +6,7 @@ import { placeOrb } from './placement.js';
 import {
   CHAT_SHORTCUT_ACCELERATOR,
   DEFAULT_KEY_REPERTOIRE,
+  PUSH_TO_TALK_ACCELERATOR,
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
@@ -45,6 +46,9 @@ export class AriaShell {
   private backdropOpen = false;
 
   private pttHeld = false;
+  private pttToggled = false;
+  private chatShortcutRegistered = false;
+  private pushToTalkRegistered = false;
   private started = false;
   private pending: Promise<void> = Promise.resolve();
   private unsubscribeKeys: (() => void) | undefined;
@@ -64,13 +68,29 @@ export class AriaShell {
     this.runtime.start();
     this.createWindow('control_center');
     this.open('control_center');
-    this.platform.shortcuts.register(CHAT_SHORTCUT_ACCELERATOR, () => {
-      this.enqueue(() => this.handleShortcut());
-    });
+    this.chatShortcutRegistered = this.platform.shortcuts.register(
+      CHAT_SHORTCUT_ACCELERATOR,
+      () => {
+        this.enqueue(() => this.handleShortcut());
+      },
+    );
+    // A true global grab for push-to-talk, so it works while another app has
+    // focus. It only fires on key-down, so it toggles capture on and off.
+    this.pushToTalkRegistered = this.platform.shortcuts.register(
+      PUSH_TO_TALK_ACCELERATOR,
+      () => {
+        this.enqueue(() => this.togglePushToTalk());
+      },
+    );
     this.platform.keys.start();
     this.unsubscribeKeys = this.platform.keys.onKey((event) => {
       this.enqueue(() => this.onKey(event));
     });
+  }
+
+  /** Whether the OS accepted each accelerator grab. Reported, never assumed. */
+  shortcutStatus(): { readonly chat: boolean; readonly pushToTalk: boolean } {
+    return { chat: this.chatShortcutRegistered, pushToTalk: this.pushToTalkRegistered };
   }
 
   whenIdle(): Promise<void> {
@@ -109,6 +129,17 @@ export class AriaShell {
 
   private async handleShortcut(): Promise<void> {
     this.applyRouting(await this.interaction.handle({ kind: 'chat_shortcut' }));
+  }
+
+  private async togglePushToTalk(): Promise<void> {
+    if (!this.settings.load().pushToTalkEnabled) return;
+    if (!this.pttToggled) {
+      this.pttToggled = true;
+      this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
+      return;
+    }
+    this.pttToggled = false;
+    this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_release' }));
   }
 
   private async onKey(event: KeyEvent): Promise<void> {

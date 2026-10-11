@@ -23,6 +23,7 @@ export const IPC_CHANNELS = {
   chatInterruptSpeech: 'aria:chat:interrupt-speech',
   chatEmergencyStop: 'aria:chat:emergency-stop',
   shellSettings: 'aria:shell:settings',
+  openChat: 'aria:shell:open-chat',
 } as const;
 
 export interface ShellStatus {
@@ -60,6 +61,7 @@ export interface AriaBridge {
   stopPlayback(): Promise<ChatActionResult>;
   emergencyStop(): Promise<EmergencyStopView>;
   settings(): Promise<ShellSettings>;
+  openChat(): Promise<void>;
 }
 
 export const BRIDGE_API_KEY = 'aria';
@@ -84,6 +86,7 @@ export const BRIDGE_METHODS = [
   'stopPlayback',
   'emergencyStop',
   'settings',
+  'openChat',
 ] as const;
 
 export const FORBIDDEN_BRIDGE_METHODS = [
@@ -147,6 +150,7 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
       ipc.invoke(IPC_CHANNELS.chatEmergencyStop) as Promise<EmergencyStopView>,
     settings: (): Promise<ShellSettings> =>
       ipc.invoke(IPC_CHANNELS.shellSettings) as Promise<ShellSettings>,
+    openChat: (): Promise<void> => ipc.invoke(IPC_CHANNELS.openChat) as Promise<void>,
   };
 }
 

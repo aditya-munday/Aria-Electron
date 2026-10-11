@@ -35,6 +35,8 @@ export interface ActivationView {
     readonly enabled: boolean;
     readonly mode: PushToTalkMode;
     readonly key: string;
+    readonly globalAccelerator: string;
+    readonly globalRegistered: boolean;
   };
   readonly wakeWord: {
     readonly enabled: boolean;
@@ -45,6 +47,7 @@ export interface ActivationView {
   readonly chatShortcut: {
     readonly enabled: boolean;
     readonly accelerator: string;
+    readonly registered: boolean;
   };
 }
 
@@ -133,6 +136,9 @@ export interface ActivationInputs {
   readonly request: string;
   readonly wakeWordPhrase: string;
   readonly chatAccelerator: string;
+  readonly pushToTalkAccelerator: string;
+  readonly chatShortcutRegistered: boolean;
+  readonly pushToTalkRegistered: boolean;
   readonly wakeWordAvailable: boolean;
   readonly wakeWordReason?: string;
 }

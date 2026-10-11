@@ -27,9 +27,15 @@ function emptyState(): ControlCenterState {
       voices: [],
     },
     activation: {
-      pushToTalk: { enabled: true, mode: 'hold', key: 'Hold ?' },
+      pushToTalk: {
+        enabled: true,
+        mode: 'hold',
+        key: 'Hold ?',
+        globalAccelerator: 'Super+Alt+Space',
+        globalRegistered: true,
+      },
       wakeWord: { enabled: false, phrase: 'hey aria', available: true },
-      chatShortcut: { enabled: true, accelerator: 'Super+Alt+A' },
+      chatShortcut: { enabled: true, accelerator: 'Super+Alt+A', registered: true },
     },
     ariaConfig: {
       backendBaseUrl: 'https://api.beyonders.dev',
@@ -69,6 +75,7 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     muteCapture: () => ({ ok: true, detail: 'Capture muted.' }),
     interruptSpeech: () => ({ ok: true, detail: 'Speech interrupted.' }),
     settings: () => DEFAULT_SETTINGS,
+    openChat: () => undefined,
     emergencyStop: () => ({
       engaged: true,
       stopped: [],
@@ -105,6 +112,7 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.chatInterruptSpeech,
         IPC_CHANNELS.chatEmergencyStop,
         IPC_CHANNELS.shellSettings,
+        IPC_CHANNELS.openChat,
       ].sort(),
     );
   });
