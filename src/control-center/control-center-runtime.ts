@@ -18,7 +18,7 @@ export function createControlCenterRuntime(
     saveSettings: (next: ShellSettings): void => {
       shell.updateSettings(() => next);
     },
-    incidents: (): readonly ReportedIncident[] => errors.recent(),
+    incidents: (): readonly ReportedIncident[] => [...errors.recent()].reverse(),
     voiceDiagnostics: (): VoiceDiagnosticsLike | undefined => {
       const voice = runtime.voice;
       if (voice === undefined) return undefined;
