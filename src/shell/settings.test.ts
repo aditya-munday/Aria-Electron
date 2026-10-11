@@ -48,4 +48,15 @@ describe('shell settings', () => {
     expect(patched.captureMuted).toBe(true);
     expect(patched.wakeWordEnabled).toBe(true);
   });
+
+  it('notifies subscribers on save and stops after unsubscribe', () => {
+    const store = new InMemorySettingsStore();
+    const seen: boolean[] = [];
+    const unsubscribe = store.subscribe?.((next) => seen.push(next.wakeWordEnabled)) ?? (() => undefined);
+    store.save({ ...DEFAULT_SETTINGS, wakeWordEnabled: true });
+    unsubscribe();
+    store.save({ ...DEFAULT_SETTINGS, wakeWordEnabled: false });
+    expect(seen).toEqual([true]);
+  });
+
 });

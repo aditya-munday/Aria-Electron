@@ -10,6 +10,7 @@ import {
 
 export function createFileSettingsStore(directory: string): SettingsStore {
   const path = join(directory, 'shell-settings.json');
+  const listeners = new Set<(settings: ShellSettings) => void>();
   return {
     load: (): ShellSettings => {
       try {
@@ -23,6 +24,11 @@ export function createFileSettingsStore(directory: string): SettingsStore {
         writeFileSync(path, JSON.stringify(settings, null, 2), 'utf8');
       } catch {
       }
+      for (const listener of listeners) listener(settings);
+    },
+    subscribe: (listener: (settings: ShellSettings) => void): (() => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
   };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { registerIpcHandlers, type IpcHost } from './ipc-handlers.js';
 import { IPC_CHANNELS, type IpcHandler, type IpcRegistrar } from './ipc.js';
+import { DEFAULT_SETTINGS } from './settings.js';
 import type { ControlCenterState } from '../control-center/state.js';
 
 class RecordingRegistrar implements IpcRegistrar {
@@ -28,9 +29,14 @@ function emptyState(): ControlCenterState {
     activation: {
       pushToTalk: { enabled: true, mode: 'hold', key: 'Hold ?' },
       wakeWord: { enabled: false, phrase: 'hey aria', available: true },
-      chatShortcut: { enabled: true, accelerator: 'CommandOrControl+Alt+A' },
+      chatShortcut: { enabled: true, accelerator: 'Super+Alt+A' },
     },
-    ariaConfig: { backendBaseUrl: 'http://127.0.0.1:8080', requestTimeoutMs: 30000, options: [] },
+    ariaConfig: {
+      backendBaseUrl: 'https://api.beyonders.dev',
+      requestTimeoutMs: 30000,
+      model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)', fixed: true },
+      options: [],
+    },
     privacy: {
       tokenStored: 'memory_only',
       historyRetention: 'opted_out',
@@ -62,6 +68,7 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     cancelTask: () => ({ ok: false, reason: 'unsupported' }),
     muteCapture: () => ({ ok: true, detail: 'Capture muted.' }),
     interruptSpeech: () => ({ ok: true, detail: 'Speech interrupted.' }),
+    settings: () => DEFAULT_SETTINGS,
     emergencyStop: () => ({
       engaged: true,
       stopped: [],
@@ -97,6 +104,7 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.chatMuteCapture,
         IPC_CHANNELS.chatInterruptSpeech,
         IPC_CHANNELS.chatEmergencyStop,
+        IPC_CHANNELS.shellSettings,
       ].sort(),
     );
   });

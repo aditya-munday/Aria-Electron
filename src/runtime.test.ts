@@ -230,4 +230,19 @@ describe('AriaRuntime', () => {
     await runtime.startVoice();
     expect(runtime.voice?.diagnostics().lastError?.kind).toBe('invalid_configuration');
   });
+
+describe('AriaRuntime session', () => {
+  it('seeds the session token from the option without signing in by default', () => {
+    const signedOut = new AriaRuntime({ config: { backendBaseUrl: 'https://api.beyonders.dev', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } } });
+    expect(signedOut.isSignedIn()).toBe(false);
+    const seeded = new AriaRuntime({
+      config: { backendBaseUrl: 'https://api.beyonders.dev', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } },
+      sessionToken: 'tok-1',
+    });
+    expect(seeded.isSignedIn()).toBe(true);
+    seeded.setSessionToken(undefined);
+    expect(seeded.isSignedIn()).toBe(false);
+  });
+});
+
 });

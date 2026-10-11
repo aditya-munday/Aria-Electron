@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
 export interface SettingsStore {
   load(): ShellSettings;
   save(settings: ShellSettings): void;
+  subscribe?(listener: (settings: ShellSettings) => void): () => void;
 }
 
 const WINDOW_KINDS: ReadonlySet<string> = new Set(['control_center', 'orb', 'chat']);
@@ -77,6 +78,7 @@ export function normalizeSettings(value: unknown): ShellSettings {
 
 export class InMemorySettingsStore implements SettingsStore {
   private current: ShellSettings;
+  private readonly listeners = new Set<(settings: ShellSettings) => void>();
   constructor(initial: ShellSettings = DEFAULT_SETTINGS) {
     this.current = normalizeSettings(initial);
   }
@@ -85,6 +87,11 @@ export class InMemorySettingsStore implements SettingsStore {
   }
   save(settings: ShellSettings): void {
     this.current = normalizeSettings(settings);
+    for (const listener of this.listeners) listener(this.current);
+  }
+  subscribe(listener: (settings: ShellSettings) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 }
 

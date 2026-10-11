@@ -30,6 +30,10 @@ function h<K extends keyof HTMLElementTagNameMap>(
 function note(doc: Document, text: string, className = 'reason'): El {
   const node = h(doc, 'p', className);
   node.textContent = text;
+  if (className === 'outcome' || className === 'reason') {
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
+  }
   return node;
 }
 
@@ -43,6 +47,8 @@ function conversationSection(doc: Document, state: ChatState): El {
     return wrap;
   }
   const list = h(doc, 'ul', 'turns');
+  list.setAttribute('role', 'log');
+  list.setAttribute('aria-live', 'polite');
   for (const turn of state.turns) {
     const item = h(doc, 'li', `turn turn-${turn.role}`);
     item.setAttribute('data-state', turn.state);
@@ -127,10 +133,12 @@ function approvalSection(doc: Document, task: ChatTaskView, bridge: ChatBridge, 
   const approve = h(doc, 'button');
   approve.setAttribute('data-testid', `approve-${approval.approvalId}`);
   approve.textContent = 'Approve';
+  approve.setAttribute('aria-label', `Approve ${approval.scope.capability} for ${task.title}`);
   approve.addEventListener('click', () => decide('approved'));
   const reject = h(doc, 'button');
   reject.setAttribute('data-testid', `reject-${approval.approvalId}`);
   reject.textContent = 'Reject';
+  reject.setAttribute('aria-label', `Reject ${approval.scope.capability} for ${task.title}`);
   reject.addEventListener('click', () => decide('rejected'));
   actions.append(approve, reject);
   wrap.append(actions);
@@ -294,6 +302,7 @@ function cancelBlock(doc: Document, task: ChatTaskView, bridge: ChatBridge): El 
   const request = h(doc, 'button');
   request.setAttribute('data-testid', `cancel-${task.taskId}`);
   request.textContent = 'Request cancellation';
+  request.setAttribute('aria-label', `Request cancellation of ${task.title}`);
   request.addEventListener('click', () => {
     wrap.querySelectorAll('.reason').forEach((node) => node.remove());
     void bridge.cancelTask({ taskId: task.taskId }).then((result) => {
@@ -305,6 +314,7 @@ function cancelBlock(doc: Document, task: ChatTaskView, bridge: ChatBridge): El 
   const interrupt = h(doc, 'button');
   interrupt.setAttribute('data-testid', `interrupt-${task.taskId}`);
   interrupt.textContent = 'Interrupt speech';
+  interrupt.setAttribute('aria-label', `Interrupt speech for ${task.title}`);
   interrupt.addEventListener('click', () => {
     void bridge.interruptSpeech().then((result) => {
       wrap.append(note(doc, result.ok ? (result.detail ?? 'Speech interrupted.') : result.reason, 'muted'));
@@ -315,6 +325,7 @@ function cancelBlock(doc: Document, task: ChatTaskView, bridge: ChatBridge): El 
   const stop = h(doc, 'button');
   stop.setAttribute('data-testid', `stop-playback-${task.taskId}`);
   stop.textContent = 'Stop playback';
+  stop.setAttribute('aria-label', `Stop playback for ${task.title}`);
   stop.addEventListener('click', () => {
     void bridge.stopPlayback().then((result) => {
       wrap.append(note(doc, result.ok ? (result.detail ?? 'Playback stopped.') : result.reason, 'muted'));
@@ -335,6 +346,7 @@ function emergencySection(doc: Document, state: ChatState, bridge: ChatBridge, r
   const stop = h(doc, 'button');
   stop.setAttribute('data-testid', 'emergency-stop');
   stop.textContent = 'Emergency stop';
+  stop.setAttribute('aria-label', 'Emergency stop all work and speech');
   stop.addEventListener('click', () => {
     void bridge.emergencyStop().then(() => refresh());
   });
@@ -344,6 +356,7 @@ function emergencySection(doc: Document, state: ChatState, bridge: ChatBridge, r
   mute.setAttribute('data-testid', 'mute-capture');
   mute.textContent = state.mute?.muted === true ? 'Unmute capture' : 'Mute capture';
   mute.setAttribute('data-muted', String(state.mute?.muted === true));
+  mute.setAttribute('aria-pressed', String(state.mute?.muted === true));
   mute.addEventListener('click', () => {
     void bridge.muteCapture({ muted: state.mute?.muted !== true }).then(() => refresh());
   });
@@ -352,6 +365,7 @@ function emergencySection(doc: Document, state: ChatState, bridge: ChatBridge, r
   const interrupt = h(doc, 'button');
   interrupt.setAttribute('data-testid', 'interrupt-speech');
   interrupt.textContent = 'Interrupt speech';
+  interrupt.setAttribute('aria-label', 'Interrupt speech');
   interrupt.addEventListener('click', () => {
     void bridge.interruptSpeech().then(() => refresh());
   });
@@ -385,6 +399,7 @@ function composer(doc: Document, bridge: ChatBridge, refresh: () => void): El {
   input.type = 'text';
   input.placeholder = 'Type a message';
   input.setAttribute('data-testid', 'composer-input');
+  input.setAttribute('aria-label', 'Message');
   const send = h(doc, 'button', 'composer-send');
   send.type = 'submit';
   send.textContent = 'Send';

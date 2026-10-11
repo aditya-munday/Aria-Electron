@@ -14,7 +14,7 @@ Repository memory for agents working in this repo. Keep it current.
 ## What this is
 
 Aria-Electron is the native desktop shell for Aria. It speaks the Aria `/v1`
-wire contract and integrates the Aria backend, the Directioner Platform Backend
+wire contract and integrates the Beyonders backend, its product surface
 (`/api/v1`), and the AI-Engineer task executor.
 
 ## Build and test
@@ -22,10 +22,41 @@ wire contract and integrates the Aria backend, the Directioner Platform Backend
 - Node ≥ 20, TypeScript strict ESM (NodeNext, `exactOptionalPropertyTypes`,
   `noUncheckedIndexedAccess`, `verbatimModuleSyntax`).
 - `npm run ci` = `npm run typecheck && npm run test` (vitest).
-- `npm run build` = `tsc -p tsconfig.build.json`.
+- `npm run build` = `tsc -p tsconfig.build.json` plus the renderer copy/bundle.
+- `npm run pack:deb` = build, then `electron-builder --linux deb --x64` into
+  `release/` (`aria-electron_<version>_amd64.deb`). The package installs to
+  `/opt/Aria`, provides `/usr/bin/aria` and a `aria.desktop` launcher.
 - Optional-property style: never assign `undefined` to an optional field; build
   the object with a spread guard instead
   (`...(x !== undefined ? { x } : {})`).
+
+## Backend and configuration (`src/config.ts`, `src/runtime.ts`)
+
+The backend is **Beyonders** (`https://api.beyonders.dev` by default). Config is
+read from the environment: `ARIA_BACKEND_URL` overrides the base URL and
+`ARIA_SESSION_TOKEN` seeds the in-memory session token at startup (never written
+to disk). `normalizeBaseUrl` rejects a non-http(s) URL or one with embedded
+credentials.
+
+The Aria model is fixed: `ARIA_MODEL` is `groq/llama-3.3-70b-versatile`
+(provider `groq`, display name `Llama 3.3 70B (Groq)`). It is exposed on
+`AriaConfig.model` and rendered read-only in the Control Center — there is no
+provider chooser and no model selection surface. `AriaRuntime` exposes its
+`config` and seeds the session token from `loadSessionToken()` unless a
+`sessionToken` option is supplied.
+
+## Error reporting and settings propagation (`src/shell/error-reporting.ts`)
+
+`ErrorReporter` records renderer load failures, `render-process-gone` exits and
+process-level `uncaughtException`/`unhandledRejection` events with a source and
+message, keeping the most recent entries and forwarding each to a sink (the
+main process writes them to stderr). It never fabricates success.
+
+`SettingsStore.subscribe` (implemented by both the in-memory and file stores)
+lets the main process push a settings change to the voice runtime
+(`setWakeWordEnabled`, `setPushToTalkMode`) the moment it is saved, rather than
+only applying it on the next Control Center refresh. The renderer reads current
+settings through the `aria:shell:settings` IPC channel.
 
 ## Voice pipeline (`src/voice/`)
 
@@ -82,7 +113,7 @@ Rules the router enforces, all with tests:
   microphone permission.
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
-- `Win + Alt + A` → chat window, no capture.
+- `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
 - Typed text → chat, straight to orchestration, STT bypassed.
 - `stop_playback` (interrupt) / `task_cancellation_requested` / `emergency_stop`
   are three distinct control outputs. A cancellation is a request, never a
@@ -151,7 +182,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle.
 
-Test baseline: 404 tests / 47 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 412 tests / 48 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
 
