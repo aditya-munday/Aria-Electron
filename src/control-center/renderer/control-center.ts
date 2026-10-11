@@ -417,6 +417,8 @@ declare global {
   }
 }
 
-if (typeof document !== 'undefined' && typeof window !== 'undefined' && window.aria !== undefined) {
-  bootstrapControlCenter(document, window.aria);
+const injected = (globalThis as { aria?: ControlCenterBridge }).aria;
+
+if (typeof document !== 'undefined' && injected !== undefined) {
+  bootstrapControlCenter(document, injected);
 }

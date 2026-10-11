@@ -25,7 +25,21 @@ export interface WindowHandle {
 
 export interface WindowOptions {
   readonly startHidden: boolean;
+  readonly frame?: boolean;
+  readonly transparent?: boolean;
+  readonly alwaysOnTop?: boolean;
+  readonly clickThrough?: boolean;
+  readonly focusable?: boolean;
 }
+
+export const ORB_WINDOW_OPTIONS: WindowOptions = {
+  startHidden: true,
+  frame: false,
+  transparent: true,
+  alwaysOnTop: true,
+  clickThrough: true,
+  focusable: false,
+};
 
 export interface WindowFactory {
   create(kind: WindowKind, options: WindowOptions): WindowHandle;

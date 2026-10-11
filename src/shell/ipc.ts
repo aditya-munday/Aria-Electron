@@ -1,4 +1,5 @@
 import type { ControlCenterState } from '../control-center/state.js';
+import type { OrbState } from '../orb/state.js';
 import type { ShellSettings } from './settings.js';
 
 export const IPC_CHANNELS = {
@@ -9,6 +10,7 @@ export const IPC_CHANNELS = {
   settingsUpdate: 'aria:control-center:settings-update',
   accountSignIn: 'aria:control-center:sign-in',
   accountSignOut: 'aria:control-center:sign-out',
+  orbState: 'aria:orb:state',
 } as const;
 
 export interface ShellStatus {
@@ -32,6 +34,7 @@ export interface AriaBridge {
   updateSettings(patch: unknown): Promise<SettingsUpdateResult>;
   signIn(input: unknown): Promise<SignInResult>;
   signOut(): Promise<SignInResult>;
+  orbState(): Promise<OrbState>;
 }
 
 export const BRIDGE_API_KEY = 'aria';
@@ -44,6 +47,7 @@ export const BRIDGE_METHODS = [
   'updateSettings',
   'signIn',
   'signOut',
+  'orbState',
 ] as const;
 
 export const FORBIDDEN_BRIDGE_METHODS = [
@@ -85,6 +89,7 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
       ipc.invoke(IPC_CHANNELS.accountSignIn, input) as Promise<SignInResult>,
     signOut: (): Promise<SignInResult> =>
       ipc.invoke(IPC_CHANNELS.accountSignOut) as Promise<SignInResult>,
+    orbState: (): Promise<OrbState> => ipc.invoke(IPC_CHANNELS.orbState) as Promise<OrbState>,
   };
 }
 

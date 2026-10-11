@@ -29,6 +29,7 @@ function build(initial: ShellSettings = DEFAULT_SETTINGS) {
     environment: () => ({
       wakeWordEnabled: settings.load().wakeWordEnabled,
       microphonePermission: 'granted',
+      captureMuted: settings.load().captureMuted,
       voiceSessionActive: false,
     }),
     runtime: interactionRuntime,
@@ -180,6 +181,54 @@ describe('push-to-talk routing', () => {
     expect(voice.releases).toBe(1);
   });
 });
+describe('orb presence', () => {
+  it('creates the Orb pre-hidden, borderless, click-through and never focused', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(true);
+    const orb = platform.windows.handle('orb');
+    expect(orb?.options.startHidden).toBe(true);
+    expect(orb?.options.frame).toBe(false);
+    expect(orb?.options.alwaysOnTop).toBe(true);
+    expect(orb?.options.clickThrough).toBe(true);
+    expect(orb?.options.focusable).toBe(false);
+    expect(orb?.focused).toBe(0);
+    expect(orb?.shown).toBe(1);
+  });
+
+  it('is never raised by launch or the chat shortcut', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
+    await shell.whenIdle();
+    expect(platform.windows.handle('orb')).toBeUndefined();
+    expect(shell.isOpen('orb')).toBe(false);
+  });
+
+  it('raises only for a capture activation, not a refused one', async () => {
+    const { shell, platform } = build({ ...DEFAULT_SETTINGS, captureMuted: true });
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(false);
+    expect(platform.windows.handle('orb')).toBeUndefined();
+  });
+
+  it('focuses the chat window but never the Orb', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
+    await shell.whenIdle();
+    expect(platform.windows.handle('chat')?.focused).toBe(1);
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(platform.windows.handle('orb')?.focused).toBe(0);
+  });
+});
+
+
 
 describe('settings persistence', () => {
   it('persists which windows are open, excluding the activation-driven Orb', async () => {
