@@ -60,6 +60,8 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     decidePlan: () => ({ ok: false, reason: 'unsupported' }),
     decidePermission: () => ({ ok: false, reason: 'unsupported' }),
     cancelTask: () => ({ ok: false, reason: 'unsupported' }),
+    muteCapture: () => ({ ok: true, detail: 'Capture muted.' }),
+    interruptSpeech: () => ({ ok: true, detail: 'Speech interrupted.' }),
     emergencyStop: () => ({
       engaged: true,
       stopped: [],
@@ -92,6 +94,8 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.chatDecidePlan,
         IPC_CHANNELS.chatDecidePermission,
         IPC_CHANNELS.chatCancelTask,
+        IPC_CHANNELS.chatMuteCapture,
+        IPC_CHANNELS.chatInterruptSpeech,
         IPC_CHANNELS.chatEmergencyStop,
       ].sort(),
     );
@@ -135,6 +139,33 @@ describe('main-process IPC handlers', () => {
     );
     await registrar.invoke(IPC_CHANNELS.stopPlayback);
     expect(stopped).toBe(1);
+  });
+
+  it('routes mute capture and speech interrupt through their own channels', async () => {
+    const registrar = new RecordingRegistrar();
+    const seen: unknown[] = [];
+    registerIpcHandlers(
+      registrar,
+      host({
+        muteCapture: (input) => {
+          seen.push(input);
+          return { ok: true, detail: 'Capture muted.' };
+        },
+        interruptSpeech: () => {
+          seen.push('interrupt');
+          return { ok: true, detail: 'Speech interrupted.' };
+        },
+      }),
+    );
+    expect(await registrar.invoke(IPC_CHANNELS.chatMuteCapture, { muted: true })).toEqual({
+      ok: true,
+      detail: 'Capture muted.',
+    });
+    expect(await registrar.invoke(IPC_CHANNELS.chatInterruptSpeech)).toEqual({
+      ok: true,
+      detail: 'Speech interrupted.',
+    });
+    expect(seen).toEqual([{ muted: true }, 'interrupt']);
   });
 
   it('serves the control-center state on its own channel', async () => {

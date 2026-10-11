@@ -265,55 +265,28 @@ export class AriaSupervisor {
     return refreshed;
   }
 
-  /**
-   * The Backend's availability, as last observed by a write attempt. It starts
-   * `unknown` and only a definite rejection, a delivered write, or an outage
-   * moves it. Reads never fabricate availability.
-   */
   backendAvailability(): BackendAvailabilityState {
     return this.availability;
   }
 
-  /** The last backend outcome observed by a write attempt, if any. */
   lastBackendOutcome(): BackendOutcome | undefined {
     return this.lastOutcome;
   }
 
-  /**
-   * Whether new tracked work may start right now. It is refused while the
-   * emergency stop is engaged or the Backend was last observed offline, so Aria
-   * fails closed rather than starting work it cannot supervise.
-   */
   canStartWork(): boolean {
     return !this.emergencyStop && this.availability !== 'offline';
   }
 
-  /**
-   * Reload persisted state and re-converge every tracked task on the Backend.
-   * Called after a process/renderer restart. A restart never loses ongoing
-   * tasks, pending approvals, or pending questions: they are re-read from the
-   * Backend, and an unreachable Backend leaves the persisted view intact rather
-   * than clearing it.
-   */
   async recover(): Promise<readonly SupervisionRecord[]> {
     this.store.load();
     await this.refreshAvailability();
     return this.reconcile();
   }
 
-  /**
-   * Reconcile an uncertain outcome by reading authoritative status. It never
-   * resubmits and never guesses: the record reflects exactly what the Backend
-   * reports after the re-read.
-   */
   async reconcileUncertain(taskId: string): Promise<SupervisionRecord | undefined> {
     return this.refresh(taskId);
   }
 
-  /**
-   * Ask the Backend to requeue orphaned executions (for example after a worker
-   * crash) and re-read the tracked tasks. Bounded and read-confirmed.
-   */
   async reconcileExecutions(): Promise<Result<{ readonly requeued: number }>> {
     const result = await this.client.reconcile();
     if (!result.ok) {
@@ -404,14 +377,6 @@ export class AriaSupervisor {
     return this.refresh(taskId);
   }
 
-  /**
-   * Request cancellation and wait for the agent to actually stop before
-   * reporting the stop. It resolves `confirmed` only when the authoritative
-   * execution state was observed to reach `cancelled`; if the agent does not
-   * stop within the grace period it resolves `failed` with a reason, and a
-   * terminal task that never reached `cancelled` resolves `not_cancellable`.
-   * It never reports a false `cancelled`.
-   */
   async cancelAndConfirm(
     taskId: string,
     options: ConfirmCancellationOptions = {},

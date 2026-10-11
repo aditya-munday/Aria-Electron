@@ -20,7 +20,6 @@ describe('MuteController', () => {
 
     mute.mute();
     expect(mute.mayCapture(PUSH_TO_TALK)).toBe(false);
-    // A refused activation does not overwrite the remembered mode.
     expect(mute.captureMode()).toEqual(WAKE_WORD);
 
     mute.unmute();

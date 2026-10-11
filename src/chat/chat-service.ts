@@ -9,6 +9,8 @@ import { describeTaskPhase } from '../supervisor/supervisor.js';
 import type { SupervisionRecord } from '../supervisor/task-store.js';
 import { assembleChatState, emergencyStopView } from './assemble.js';
 import { deriveTitle, operationForRoute, shouldSubmit } from './submission.js';
+import { describeCancellation } from '../control/cancellation.js';
+import type { CancellationOutcome, ConfirmCancellationOptions } from '../control/cancellation.js';
 import type { RouteHint } from '../contract/aria-contract.js';
 import type {
   ApprovalDecisionOutcome,
@@ -35,6 +37,14 @@ export interface SubmittedWork {
 
 export interface ChatVoiceControl {
   sendText(text: string): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
+}
+
+export interface ChatControl {
+  readonly muteState: { readonly muted: boolean; readonly mode: string };
+  setMuted(muted: boolean): void;
+  interruptSpeech(): void;
+  stopPlayback(): void;
+  engageEmergencyStop(): void;
 }
 
 export interface ChatTaskControl {
@@ -64,12 +74,17 @@ export interface ChatTaskControl {
     reason?: string,
   ): Promise<void>;
   cancel(taskId: string): Promise<SupervisionRecord | undefined>;
+  cancelAndConfirm(
+    taskId: string,
+    options?: ConfirmCancellationOptions,
+  ): Promise<CancellationOutcome>;
   emergencyStop(): Promise<EmergencyStopView>;
 }
 
 export interface ChatRuntime {
   voice: ChatVoiceControl | undefined;
   tasks: ChatTaskControl;
+  control?: ChatControl;
 }
 
 export interface ChatDeps {
@@ -94,10 +109,13 @@ export class ChatService {
     await this.deps.runtime.tasks.reconcile();
     const now = this.now();
     const records = await this.recordViews();
+    const mute = this.deps.runtime.control?.muteState;
     return assembleChatState({
       turns: this.turns,
       records,
       emergencyStop: this.emergency,
+      mute:
+        mute !== undefined ? { muted: mute.muted, mode: mute.mode } : undefined,
       now,
     });
   }
@@ -273,18 +291,46 @@ export class ChatService {
     const taskId = parseTaskId(input);
     if (taskId === undefined) return { ok: false, reason: 'The task was malformed.' };
     try {
-      await this.deps.runtime.tasks.cancel(taskId);
-      return {
-        ok: true,
-        detail: 'Cancellation requested. The stop is confirmed only when the worker reports it.',
-      };
+      const outcome = await this.deps.runtime.tasks.cancelAndConfirm(taskId);
+      if (outcome.kind === 'confirmed') {
+        return { ok: true, detail: 'Cancelled: the worker confirmed the stop.' };
+      }
+      return { ok: false, reason: describeCancellation(outcome) };
     } catch (error) {
       return { ok: false, reason: messageOf(error) };
     }
   }
 
-  /** Emergency stop. Reports only what the supervisor confirmed. */
+  muteCapture(muted: boolean): ChatActionResult {
+    const control = this.deps.runtime.control;
+    if (control === undefined) {
+      return { ok: false, reason: 'Capture mute is unavailable on this build.' };
+    }
+    control.setMuted(muted);
+    return { ok: true, detail: muted ? 'Capture muted.' : 'Capture unmuted.' };
+  }
+
+  interruptSpeech(): ChatActionResult {
+    const control = this.deps.runtime.control;
+    if (control === undefined) {
+      return { ok: false, reason: 'Speech control is unavailable on this build.' };
+    }
+    control.interruptSpeech();
+    return { ok: true, detail: 'Speech interrupted.' };
+  }
+
+  stopPlayback(): ChatActionResult {
+    const control = this.deps.runtime.control;
+    if (control === undefined) {
+      return { ok: false, reason: 'Playback control is unavailable on this build.' };
+    }
+    control.stopPlayback();
+    return { ok: true, detail: 'Playback stopped.' };
+  }
+
+  /** Emergency stop. Engages the local halt first, then reports only confirmed stops. */
   async emergencyStop(): Promise<EmergencyStopView> {
+    this.deps.runtime.control?.engageEmergencyStop();
     const report = await this.deps.runtime.tasks.emergencyStop();
     this.emergency = emergencyStopView(report);
     return this.emergency;

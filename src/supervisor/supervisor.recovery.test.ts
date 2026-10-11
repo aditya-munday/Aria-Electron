@@ -20,7 +20,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-/** Wraps a real backend and returns an outage failure while `down` is true. */
 class FlakyBackend implements TaskApi {
   down = false;
   readonly inner = new InMemoryBackend();
@@ -110,7 +109,6 @@ describe('AriaSupervisor backend availability', () => {
     const backend = new FlakyBackend();
     const s = supervisor(backend);
     const record = await s.submitRequest({ title: 'deploy' });
-    // A read that fails leaves the persisted record intact; nothing is invented.
     backend.down = true;
     const after = await s.reconcileUncertain(record.taskId);
     expect(after?.taskId).toBe(record.taskId);
@@ -135,7 +133,6 @@ describe('AriaSupervisor crash recovery', () => {
       });
       await first.refresh(record.taskId);
 
-      // A fresh process loads the persisted file and re-converges.
       const second = new AriaSupervisor({ client: backend, store: new FileTaskStore(path) });
       const recovered = await second.recover();
       const restored = recovered.find((r) => r.taskId === record.taskId);
@@ -156,8 +153,6 @@ describe('AriaSupervisor crash recovery', () => {
     backend.down = true;
     const second = new AriaSupervisor({ client: backend, store });
     const recovered = await second.recover();
-    // The Backend is unreachable, so nothing new is learned, but the persisted
-    // task is not lost and no result is fabricated.
     expect(recovered.map((r) => r.taskId)).toContain(record.taskId);
     expect(second.backendAvailability()).toBe('offline');
     expect(store.get(record.taskId)?.taskId).toBe(record.taskId);

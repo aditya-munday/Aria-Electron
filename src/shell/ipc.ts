@@ -19,6 +19,8 @@ export const IPC_CHANNELS = {
   chatDecidePlan: 'aria:chat:decide-plan',
   chatDecidePermission: 'aria:chat:decide-permission',
   chatCancelTask: 'aria:chat:cancel-task',
+  chatMuteCapture: 'aria:chat:mute-capture',
+  chatInterruptSpeech: 'aria:chat:interrupt-speech',
   chatEmergencyStop: 'aria:chat:emergency-stop',
 } as const;
 
@@ -40,7 +42,6 @@ export type { ApprovalDecisionOutcome, ChatActionResult, EmergencyStopView };
 export interface AriaBridge {
   status(): Promise<ShellStatus>;
   sendText(text: string): Promise<void>;
-  stopPlayback(): Promise<void>;
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): Promise<SettingsUpdateResult>;
   signIn(input: unknown): Promise<SignInResult>;
@@ -53,6 +54,9 @@ export interface AriaBridge {
   decidePlan(input: unknown): Promise<ChatActionResult>;
   decidePermission(input: unknown): Promise<ChatActionResult>;
   cancelTask(input: unknown): Promise<ChatActionResult>;
+  muteCapture(input: unknown): Promise<ChatActionResult>;
+  interruptSpeech(): Promise<ChatActionResult>;
+  stopPlayback(): Promise<ChatActionResult>;
   emergencyStop(): Promise<EmergencyStopView>;
 }
 
@@ -61,7 +65,6 @@ export const BRIDGE_API_KEY = 'aria';
 export const BRIDGE_METHODS = [
   'status',
   'sendText',
-  'stopPlayback',
   'controlCenterState',
   'updateSettings',
   'signIn',
@@ -74,6 +77,9 @@ export const BRIDGE_METHODS = [
   'decidePlan',
   'decidePermission',
   'cancelTask',
+  'muteCapture',
+  'interruptSpeech',
+  'stopPlayback',
   'emergencyStop',
 ] as const;
 
@@ -106,8 +112,6 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
     status: (): Promise<ShellStatus> => ipc.invoke(IPC_CHANNELS.status) as Promise<ShellStatus>,
     sendText: (text: string): Promise<void> =>
       ipc.invoke(IPC_CHANNELS.sendText, text) as Promise<void>,
-    stopPlayback: (): Promise<void> =>
-      ipc.invoke(IPC_CHANNELS.stopPlayback) as Promise<void>,
     controlCenterState: (): Promise<ControlCenterState> =>
       ipc.invoke(IPC_CHANNELS.controlCenterState) as Promise<ControlCenterState>,
     updateSettings: (patch: unknown): Promise<SettingsUpdateResult> =>
@@ -130,6 +134,12 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
       ipc.invoke(IPC_CHANNELS.chatDecidePermission, input) as Promise<ChatActionResult>,
     cancelTask: (input: unknown): Promise<ChatActionResult> =>
       ipc.invoke(IPC_CHANNELS.chatCancelTask, input) as Promise<ChatActionResult>,
+    muteCapture: (input: unknown): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatMuteCapture, input) as Promise<ChatActionResult>,
+    interruptSpeech: (): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.chatInterruptSpeech) as Promise<ChatActionResult>,
+    stopPlayback: (): Promise<ChatActionResult> =>
+      ipc.invoke(IPC_CHANNELS.stopPlayback) as Promise<ChatActionResult>,
     emergencyStop: (): Promise<EmergencyStopView> =>
       ipc.invoke(IPC_CHANNELS.chatEmergencyStop) as Promise<EmergencyStopView>,
   };

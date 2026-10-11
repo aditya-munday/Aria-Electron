@@ -45,6 +45,9 @@ interface Recorder {
   plans: unknown[];
   permissions: unknown[];
   cancels: unknown[];
+  mutes: unknown[];
+  interrupts: number;
+  playbackStops: number;
   stops: number;
   texts: string[];
 }
@@ -56,6 +59,9 @@ function recorder(overrides: Partial<ChatBridge> = {}): Recorder {
     plans: [],
     permissions: [],
     cancels: [],
+    mutes: [],
+    interrupts: 0,
+    playbackStops: 0,
     stops: 0,
     texts: [],
     bridge: {} as ChatBridge,
@@ -92,6 +98,18 @@ function recorder(overrides: Partial<ChatBridge> = {}): Recorder {
     cancelTask: async (input) => {
       rec.cancels.push(input);
       return { ok: true, detail: 'Cancellation requested.' };
+    },
+    muteCapture: async (input) => {
+      rec.mutes.push(input);
+      return { ok: true, detail: 'Capture muted.' };
+    },
+    interruptSpeech: async () => {
+      rec.interrupts += 1;
+      return { ok: true, detail: 'Speech interrupted.' };
+    },
+    stopPlayback: async () => {
+      rec.playbackStops += 1;
+      return { ok: true, detail: 'Playback stopped.' };
     },
     emergencyStop: async () => {
       rec.stops += 1;
@@ -340,6 +358,46 @@ describe('chat renderer', () => {
     const rec = render(emptyState());
     (document.querySelector('[data-testid="emergency-stop"]') as HTMLButtonElement).click();
     expect(rec.stops).toBe(1);
+  });
+
+  it('mutes capture and reflects the muted state on the control', async () => {
+    const rec = render({
+      generatedAt: NOW,
+      turns: [],
+      tasks: [],
+      mute: { muted: true, mode: 'idle' },
+    });
+    const button = document.querySelector('[data-testid="mute-capture"]') as HTMLButtonElement;
+    expect(button.textContent).toBe('Unmute capture');
+    expect(button.getAttribute('data-muted')).toBe('true');
+    button.click();
+    expect(rec.mutes[0]).toEqual({ muted: false });
+  });
+
+  it('interrupts speech and stops playback from the emergency controls', async () => {
+    const rec = render(emptyState());
+    (document.querySelector('[data-testid="interrupt-speech"]') as HTMLButtonElement).click();
+    expect(rec.interrupts).toBe(1);
+    const task = render({
+      generatedAt: NOW,
+      turns: [],
+      tasks: [
+        {
+          taskId: 't7',
+          title: 'Long task',
+          phase: 'running',
+          status: 'running',
+          questions: [],
+          plans: [],
+          permissions: [],
+          updatedAt: NOW,
+        },
+      ],
+    });
+    (document.querySelector('[data-testid="stop-playback-t7"]') as HTMLButtonElement).click();
+    expect(task.playbackStops).toBe(1);
+    (document.querySelector('[data-testid="interrupt-t7"]') as HTMLButtonElement).click();
+    expect(task.interrupts).toBe(1);
   });
 
   it('sends a composed message and never opens a session for empty text', () => {

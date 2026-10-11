@@ -10,10 +10,6 @@ export interface MuteStateView {
   readonly mode: CaptureMode;
 }
 
-function normalize(mode: CaptureMode): CaptureMode {
-  return mode;
-}
-
 function sameMode(a: CaptureMode, b: CaptureMode): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'push_to_talk' && b.kind === 'push_to_talk') return a.mode === b.mode;
@@ -21,27 +17,19 @@ function sameMode(a: CaptureMode, b: CaptureMode): boolean {
   return true;
 }
 
-/**
- * The microphone mute control. While muted it refuses every capture activation
- * (push-to-talk, wake word) locally, before any device is opened, so no input
- * reaches the runtime. Unmuting restores the exact prior mode. The muted flag is
- * a persisted value the controller is constructed with, so the state survives a
- * window reopen.
- */
 export class MuteController {
   private muted: boolean;
   private mode: CaptureMode;
 
   constructor(options: { readonly muted: boolean; readonly mode?: CaptureMode } = { muted: false }) {
     this.muted = options.muted;
-    this.mode = normalize(options.mode ?? IDLE_CAPTURE);
+    this.mode = options.mode ?? IDLE_CAPTURE;
   }
 
   isMuted(): boolean {
     return this.muted;
   }
 
-  /** The mode capture would run in were it not muted. */
   captureMode(): CaptureMode {
     return this.mode;
   }
@@ -58,19 +46,13 @@ export class MuteController {
     this.muted = false;
   }
 
-  /** Record the mode the user activated. It is restored verbatim on unmute. */
   rememberMode(mode: CaptureMode): void {
-    this.mode = normalize(mode);
+    this.mode = mode;
   }
 
-  /**
-   * Whether a capture activation of `mode` may open the microphone right now.
-   * A muted control refuses it, and the refused mode is not remembered — the
-   * prior mode is what unmuting restores.
-   */
   mayCapture(mode: CaptureMode): boolean {
     if (this.muted) return false;
-    if (!sameMode(this.mode, mode)) this.mode = normalize(mode);
+    if (!sameMode(this.mode, mode)) this.mode = mode;
     return true;
   }
 }

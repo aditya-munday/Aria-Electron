@@ -57,14 +57,6 @@ export function describeCancellation(outcome: CancellationOutcome): string {
   }
 }
 
-/**
- * Request cancellation and only report `confirmed` when the authoritative
- * execution state was observed to reach `cancelled`. If the agent does not stop
- * within the grace period the outcome is `failed`; a non-terminal task whose
- * cancellation is still pending is `unconfirmed`; a terminal task that never
- * reached `cancelled` is `not_cancellable`. An unknown is never reported as a
- * confirmed stop.
- */
 export async function confirmCancellation(
   taskId: string,
   deps: ConfirmCancellationDeps,

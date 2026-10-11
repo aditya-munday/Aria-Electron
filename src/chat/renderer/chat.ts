@@ -9,6 +9,9 @@ export interface ChatBridge {
   decidePlan(input: unknown): Promise<ChatActionResult>;
   decidePermission(input: unknown): Promise<ChatActionResult>;
   cancelTask(input: unknown): Promise<ChatActionResult>;
+  muteCapture(input: unknown): Promise<ChatActionResult>;
+  interruptSpeech(): Promise<ChatActionResult>;
+  stopPlayback(): Promise<ChatActionResult>;
   emergencyStop(): Promise<EmergencyStopView>;
 }
 
@@ -281,17 +284,43 @@ function taskSection(doc: Document, task: ChatTaskView, bridge: ChatBridge, refr
   if (task.result !== undefined) wrap.append(resultBlock(doc, task));
 
   if (task.phase !== 'completed_verified' && task.phase !== 'failed' && task.phase !== 'cancelled_confirmed') {
-    const cancel = h(doc, 'button');
-    cancel.setAttribute('data-testid', `cancel-${task.taskId}`);
-    cancel.textContent = 'Request cancellation';
-    cancel.addEventListener('click', () => {
-      void bridge.cancelTask({ taskId: task.taskId }).then((result) => {
-        if (!result.ok) wrap.append(note(doc, result.reason));
-        else wrap.append(note(doc, result.detail ?? 'Cancellation requested.', 'muted'));
-      });
-    });
-    wrap.append(cancel);
+    wrap.append(cancelBlock(doc, task, bridge));
   }
+  return wrap;
+}
+
+function cancelBlock(doc: Document, task: ChatTaskView, bridge: ChatBridge): El {
+  const wrap = h(doc, 'div', 'cancel-controls');
+  const request = h(doc, 'button');
+  request.setAttribute('data-testid', `cancel-${task.taskId}`);
+  request.textContent = 'Request cancellation';
+  request.addEventListener('click', () => {
+    wrap.querySelectorAll('.reason').forEach((node) => node.remove());
+    void bridge.cancelTask({ taskId: task.taskId }).then((result) => {
+      wrap.append(note(doc, result.ok ? (result.detail ?? 'Cancellation requested.') : result.reason, result.ok ? 'outcome' : 'reason'));
+    });
+  });
+  wrap.append(request);
+
+  const interrupt = h(doc, 'button');
+  interrupt.setAttribute('data-testid', `interrupt-${task.taskId}`);
+  interrupt.textContent = 'Interrupt speech';
+  interrupt.addEventListener('click', () => {
+    void bridge.interruptSpeech().then((result) => {
+      wrap.append(note(doc, result.ok ? (result.detail ?? 'Speech interrupted.') : result.reason, 'muted'));
+    });
+  });
+  wrap.append(interrupt);
+
+  const stop = h(doc, 'button');
+  stop.setAttribute('data-testid', `stop-playback-${task.taskId}`);
+  stop.textContent = 'Stop playback';
+  stop.addEventListener('click', () => {
+    void bridge.stopPlayback().then((result) => {
+      wrap.append(note(doc, result.ok ? (result.detail ?? 'Playback stopped.') : result.reason, 'muted'));
+    });
+  });
+  wrap.append(stop);
   return wrap;
 }
 
@@ -301,13 +330,34 @@ function emergencySection(doc: Document, state: ChatState, bridge: ChatBridge, r
   heading.textContent = 'Emergency stop';
   wrap.append(heading);
 
+  const controls = h(doc, 'div', 'emergency-controls');
+
   const stop = h(doc, 'button');
   stop.setAttribute('data-testid', 'emergency-stop');
   stop.textContent = 'Emergency stop';
   stop.addEventListener('click', () => {
     void bridge.emergencyStop().then(() => refresh());
   });
-  wrap.append(stop);
+  controls.append(stop);
+
+  const mute = h(doc, 'button');
+  mute.setAttribute('data-testid', 'mute-capture');
+  mute.textContent = state.mute?.muted === true ? 'Unmute capture' : 'Mute capture';
+  mute.setAttribute('data-muted', String(state.mute?.muted === true));
+  mute.addEventListener('click', () => {
+    void bridge.muteCapture({ muted: state.mute?.muted !== true }).then(() => refresh());
+  });
+  controls.append(mute);
+
+  const interrupt = h(doc, 'button');
+  interrupt.setAttribute('data-testid', 'interrupt-speech');
+  interrupt.textContent = 'Interrupt speech';
+  interrupt.addEventListener('click', () => {
+    void bridge.interruptSpeech().then(() => refresh());
+  });
+  controls.append(interrupt);
+
+  wrap.append(controls);
 
   const report = state.emergencyStop;
   if (report !== undefined) {
