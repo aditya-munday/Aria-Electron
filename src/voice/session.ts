@@ -39,6 +39,13 @@ export interface Orchestrator {
     readonly sessionId: string;
     readonly signal: AbortSignal;
   }): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
+  /**
+   * Optional: an orchestrator without it is used through the batch `respond`.
+   */
+  respondStream?(
+    input: { readonly text: string; readonly sessionId: string; readonly signal: AbortSignal },
+    onDelta: (delta: string) => void,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
 }
 
 export interface VoiceSessionDeps {
@@ -55,6 +62,8 @@ export interface VoiceSessionDeps {
   /** Whether the Backend advertised streaming transcription / synthesis. */
   readonly streamingStt?: boolean;
   readonly streamingTts?: boolean;
+  /** Whether the Backend advertised streaming chat. */
+  readonly streamingChat?: boolean;
 }
 
 /** How the session decides when the utterance ends. */
@@ -72,6 +81,7 @@ export class VoiceSession {
   private readonly deviceId: string | undefined;
   private readonly streamingStt: boolean;
   private readonly streamingTts: boolean;
+  private readonly streamingChat: boolean;
 
   private readonly controller = new AbortController();
   private state: VoiceSessionState = 'idle';
@@ -97,6 +107,7 @@ export class VoiceSession {
     this.deviceId = deps.deviceId;
     this.streamingStt = deps.streamingStt ?? false;
     this.streamingTts = deps.streamingTts ?? false;
+    this.streamingChat = deps.streamingChat ?? false;
   }
 
   get signal(): AbortSignal {
@@ -465,8 +476,11 @@ export class VoiceSession {
   ): Promise<{ readonly text: string; readonly route?: RouteHint | null } | undefined> {
     this.setState('thinking');
     try {
+      const useStream = this.streamingChat && this.orchestrator.respondStream !== undefined;
       const response = await raceWithSignal(
-        this.orchestrator.respond({ text, sessionId: this.id, signal: this.controller.signal }),
+        useStream
+          ? this.respondStreaming(text)
+          : this.orchestrator.respond({ text, sessionId: this.id, signal: this.controller.signal }),
         this.controller.signal,
         this.config.responseTimeoutMs,
       );
@@ -476,6 +490,30 @@ export class VoiceSession {
       // it, but a TTS failure later must still not erase a text response.
       throw this.classifyStageError(error, 'backend_unavailable');
     }
+  }
+
+  /**
+   * The authoritative text comes from the returned value, never from the
+   * accumulated deltas, so a late or missing fragment cannot fabricate one.
+   */
+  private async respondStreaming(
+    text: string,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
+    let accumulated = '';
+    return this.orchestrator.respondStream!(
+      { text, sessionId: this.id, signal: this.controller.signal },
+      (delta) => {
+        if (this.isCancelled()) return;
+        accumulated += delta;
+        this.events.emit({
+          type: 'response.delta',
+          sessionId: this.id,
+          at: this.now(),
+          text: accumulated,
+          delta,
+        });
+      },
+    );
   }
 
   private async speak(text: string): Promise<void> {
@@ -497,6 +535,9 @@ export class VoiceSession {
           ...(this.config.language !== undefined ? { language: this.config.language } : {}),
           ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
           ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
+          ...(this.config.pitch !== undefined ? { pitch: this.config.pitch } : {}),
+          ...(this.config.volume !== undefined ? { volume: this.config.volume } : {}),
+          ...(this.config.style !== undefined ? { style: this.config.style } : {}),
           sampleRate: SPEECH_SAMPLE_RATE,
         }),
         this.controller.signal,
@@ -628,6 +669,9 @@ export class VoiceSession {
       ...(this.config.language !== undefined ? { language: this.config.language } : {}),
       ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
       ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
+      ...(this.config.pitch !== undefined ? { pitch: this.config.pitch } : {}),
+      ...(this.config.volume !== undefined ? { volume: this.config.volume } : {}),
+      ...(this.config.style !== undefined ? { style: this.config.style } : {}),
       sampleRate: SPEECH_SAMPLE_RATE,
       signal: this.controller.signal,
     })) {

@@ -48,6 +48,11 @@ export type VoiceEvent =
       readonly text: string;
       readonly route?: RouteHint | null;
     })
+  | (VoiceEventBase & {
+      readonly type: 'response.delta';
+      readonly text: string;
+      readonly delta: string;
+    })
   | (VoiceEventBase & { readonly type: 'synthesis.started'; readonly text: string })
   | (VoiceEventBase & { readonly type: 'playback.started' })
   | (VoiceEventBase & { readonly type: 'playback.finished' })

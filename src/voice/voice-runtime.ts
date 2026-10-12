@@ -20,7 +20,7 @@
  */
 
 import type { AudioDevice, Microphone } from './device.js';
-import type { RouteHint } from '../contract/aria-contract.js';
+import type { OutputControls, RouteHint } from '../contract/aria-contract.js';
 import { VoiceError, asVoiceError } from './errors.js';
 import { VoiceEventBus, type VoiceEventListener } from './events.js';
 import type { Speaker } from './playback.js';
@@ -88,6 +88,7 @@ export class VoiceRuntime {
   private unsubscribeDeviceChange: (() => void) | undefined;
   private streamingStt = false;
   private streamingTts = false;
+  private streamingChat = false;
 
   constructor(deps: VoiceRuntimeDeps) {
     validateVoiceConfig(deps.config);
@@ -142,9 +143,40 @@ export class VoiceRuntime {
    * transcription and synthesis only when the Backend can serve them. A false
    * value (or a proxy without the streaming path) falls back to the batch call.
    */
-  setStreamingSupport(streaming: { readonly stt: boolean; readonly tts: boolean }): void {
+  setStreamingSupport(streaming: {
+    readonly stt: boolean;
+    readonly tts: boolean;
+    readonly chat?: boolean;
+  }): void {
     this.streamingStt = streaming.stt && this.speech.transcribeStream !== undefined;
     this.streamingTts = streaming.tts && this.speech.synthesizeStream !== undefined;
+    this.streamingChat = streaming.chat === true && this.orchestrator.respondStream !== undefined;
+  }
+
+  /**
+   * A control the Backend does not offer is dropped here, so a session never
+   * sends one it cannot be sure is honored.
+   */
+  setOutputControls(controls: OutputControls | undefined): void {
+    const next = { ...this.config };
+    const config = next as {
+      outputControls?: OutputControls;
+      pitch?: number;
+      volume?: number;
+      style?: string;
+    };
+    if (controls === undefined) {
+      delete config.outputControls;
+      delete config.pitch;
+      delete config.volume;
+      delete config.style;
+    } else {
+      config.outputControls = controls;
+      if (!controls.pitch) delete config.pitch;
+      if (!controls.volume) delete config.volume;
+      if (!controls.styles) delete config.style;
+    }
+    this.config = next;
   }
 
   diagnostics(): VoiceRuntimeDiagnostics {
@@ -270,18 +302,30 @@ export class VoiceRuntime {
     readonly voice?: string | null;
     readonly language?: string | null;
     readonly speed?: number;
+    readonly pitch?: number | null;
+    readonly volume?: number | null;
+    readonly style?: string | null;
   }): void {
     const next: VoiceRuntimeConfig = { ...this.config };
     const config = next as {
       voice?: string;
       language?: string;
       speed?: number;
+      pitch?: number;
+      volume?: number;
+      style?: string;
     };
     if (output.voice === null) delete config.voice;
     else if (output.voice !== undefined) config.voice = output.voice;
     if (output.language === null) delete config.language;
     else if (output.language !== undefined) config.language = output.language;
     if (output.speed !== undefined) config.speed = Math.min(2, Math.max(0.5, output.speed));
+    if (output.pitch === null) delete config.pitch;
+    else if (output.pitch !== undefined) config.pitch = output.pitch;
+    if (output.volume === null) delete config.volume;
+    else if (output.volume !== undefined) config.volume = output.volume;
+    if (output.style === null) delete config.style;
+    else if (output.style !== undefined) config.style = output.style;
     try {
       validateVoiceConfig(next);
     } catch (error) {
@@ -416,6 +460,7 @@ export class VoiceRuntime {
       ...(this.deviceId !== undefined ? { deviceId: this.deviceId } : {}),
       streamingStt: this.streamingStt,
       streamingTts: this.streamingTts,
+      streamingChat: this.streamingChat,
     });
     this.current = session;
     this.events.emit({ type: 'session.started', sessionId: id, at: this.now(), source });

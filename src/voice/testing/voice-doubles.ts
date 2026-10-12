@@ -194,10 +194,13 @@ export class FakeWakeWordDetector implements WakeWordDetector {
 
 export class RecordingOrchestrator implements Orchestrator {
   readonly calls: { text: string; sessionId: string }[] = [];
+  readonly streamCalls: { text: string; sessionId: string }[] = [];
   private readonly respond_: (text: string) => string;
   private readonly error: Error | undefined;
   private readonly delayTicks: number;
   private readonly route: RouteHint | null | undefined;
+  private readonly streamDeltas: readonly string[] | undefined;
+  private readonly streamError: Error | undefined;
 
   constructor(
     options: {
@@ -205,12 +208,17 @@ export class RecordingOrchestrator implements Orchestrator {
       error?: Error;
       delayTicks?: number;
       route?: RouteHint | null;
+      /** When set, `respondStream` is implemented and yields these deltas. */
+      streamDeltas?: readonly string[];
+      streamError?: Error;
     } = {},
   ) {
     this.respond_ = options.respond ?? ((text) => `response:${text}`);
     this.error = options.error;
     this.delayTicks = options.delayTicks ?? 0;
     this.route = options.route;
+    this.streamDeltas = options.streamDeltas;
+    this.streamError = options.streamError;
   }
 
   async respond(input: {
@@ -223,6 +231,26 @@ export class RecordingOrchestrator implements Orchestrator {
     if (this.error !== undefined) throw this.error;
     return {
       text: this.respond_(input.text),
+      ...(this.route !== undefined ? { route: this.route } : {}),
+    };
+  }
+
+  async respondStream(
+    input: { readonly text: string; readonly sessionId: string; readonly signal: AbortSignal },
+    onDelta: (delta: string) => void,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
+    this.streamCalls.push({ text: input.text, sessionId: input.sessionId });
+    for (let i = 0; i < this.delayTicks; i += 1) await Promise.resolve();
+    if (this.streamError !== undefined) throw this.streamError;
+    const deltas = this.streamDeltas ?? [this.respond_(input.text)];
+    let text = '';
+    for (const delta of deltas) {
+      text += delta;
+      onDelta(delta);
+      await Promise.resolve();
+    }
+    return {
+      text,
       ...(this.route !== undefined ? { route: this.route } : {}),
     };
   }

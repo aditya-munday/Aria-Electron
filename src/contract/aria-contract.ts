@@ -83,6 +83,18 @@ export interface Language {
   readonly native_name?: string;
 }
 
+/**
+ * Which synthesis output controls the Backend accepts, beyond the always-present
+ * `voice`/`language`/`speed`. Additive and optional: omitting a flag (or setting
+ * it false) means the Backend does not accept that control, and a client must
+ * never send one it cannot be sure is honored.
+ */
+export interface OutputControls {
+  readonly pitch: boolean;
+  readonly volume: boolean;
+  readonly styles: boolean;
+}
+
 export interface CapabilitiesResponse {
   readonly contract_version: number;
   readonly backend_version: string;
@@ -94,6 +106,7 @@ export interface CapabilitiesResponse {
   readonly streaming_stt: boolean;
   readonly streaming_chat: boolean;
   readonly streaming_tts: boolean;
+  readonly output_controls?: OutputControls;
 }
 
 export type ChatRole = 'system' | 'user' | 'assistant';
@@ -166,6 +179,9 @@ export interface TtsRequest {
   readonly voice?: string | null;
   readonly speed?: number;
   readonly sample_rate?: number;
+  readonly pitch?: number;
+  readonly volume?: number;
+  readonly style?: string | null;
 }
 
 export interface TtsResponse {

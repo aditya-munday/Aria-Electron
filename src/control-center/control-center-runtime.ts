@@ -43,6 +43,15 @@ export function createControlCenterRuntime(
           })),
           languages,
           sttLanguages: value.stt_languages ?? [],
+          ...(value.output_controls !== undefined
+            ? {
+                outputControls: {
+                  pitch: value.output_controls.pitch,
+                  volume: value.output_controls.volume,
+                  styles: value.output_controls.styles,
+                },
+              }
+            : {}),
         },
       };
     },

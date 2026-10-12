@@ -16,7 +16,7 @@ export interface AriaConfig {
   readonly model: AriaModel;
 }
 
-const DEFAULT_BACKEND_BASE_URL = 'https://api.beyonders.dev';
+const DEFAULT_BACKEND_BASE_URL = 'https://api.adityamunday.codes';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AriaConfig {

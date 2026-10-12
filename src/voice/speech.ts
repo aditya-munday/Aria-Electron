@@ -31,6 +31,9 @@ export interface TtsOptions {
   readonly voice?: string | null;
   readonly speed?: number;
   readonly sampleRate?: number;
+  readonly pitch?: number;
+  readonly volume?: number;
+  readonly style?: string | null;
 }
 
 /** One event of a streaming transcription: `text` is the transcript so far. */
@@ -52,6 +55,9 @@ export interface TtsStreamInput {
   readonly voice?: string | null;
   readonly speed?: number;
   readonly sampleRate?: number;
+  readonly pitch?: number;
+  readonly volume?: number;
+  readonly style?: string | null;
   readonly signal?: AbortSignal;
 }
 
@@ -66,9 +72,20 @@ export interface SpeechProxy {
   capabilities(): Promise<{
     readonly sttLanguages: readonly string[];
     readonly ttsLanguages: readonly string[];
-    readonly voices: readonly { id: string; name: string; language: string }[];
+    readonly voices: readonly {
+      id: string;
+      name: string;
+      language: string;
+      accent?: string;
+      gender?: string;
+    }[];
     readonly streamingStt: boolean;
     readonly streamingTts: boolean;
+    readonly outputControls?: {
+      readonly pitch: boolean;
+      readonly volume: boolean;
+      readonly styles: boolean;
+    };
   }>;
   /**
    * A streaming transcription (`/v1/stt/stream`), when the Backend advertises
@@ -179,6 +196,9 @@ export class BackendSpeechProxy implements SpeechProxy {
       ...(input.voice !== undefined ? { voice: input.voice } : {}),
       ...(input.speed !== undefined ? { speed: input.speed } : {}),
       ...(input.sampleRate !== undefined ? { sampleRate: input.sampleRate } : {}),
+      ...(input.pitch !== undefined ? { pitch: input.pitch } : {}),
+      ...(input.volume !== undefined ? { volume: input.volume } : {}),
+      ...(input.style !== undefined ? { style: input.style } : {}),
     });
     if (!result.ok) throw voiceErrorFromBackend(result.error);
     return result.value;
@@ -187,12 +207,24 @@ export class BackendSpeechProxy implements SpeechProxy {
   async capabilities(): Promise<{
     readonly sttLanguages: readonly string[];
     readonly ttsLanguages: readonly string[];
-    readonly voices: readonly { id: string; name: string; language: string }[];
+    readonly voices: readonly {
+      id: string;
+      name: string;
+      language: string;
+      accent?: string;
+      gender?: string;
+    }[];
     readonly streamingStt: boolean;
     readonly streamingTts: boolean;
+    readonly outputControls?: {
+      readonly pitch: boolean;
+      readonly volume: boolean;
+      readonly styles: boolean;
+    };
   }> {
     const result = await this.client.capabilities();
     if (!result.ok) throw voiceErrorFromBackend(result.error);
+    const controls = result.value.output_controls;
     return {
       sttLanguages: result.value.stt_languages,
       ttsLanguages: result.value.tts_languages,
@@ -200,9 +232,20 @@ export class BackendSpeechProxy implements SpeechProxy {
         id: v.id,
         name: v.name,
         language: v.language,
+        ...(v.accent !== undefined ? { accent: v.accent.tag } : {}),
+        ...(v.gender !== undefined ? { gender: v.gender } : {}),
       })),
       streamingStt: result.value.streaming_stt,
       streamingTts: result.value.streaming_tts,
+      ...(controls !== undefined
+        ? {
+            outputControls: {
+              pitch: controls.pitch,
+              volume: controls.volume,
+              styles: controls.styles,
+            },
+          }
+        : {}),
     };
   }
 
@@ -246,6 +289,9 @@ export class BackendSpeechProxy implements SpeechProxy {
           ...(input.voice !== undefined ? { voice: input.voice } : {}),
           ...(input.speed !== undefined ? { speed: input.speed } : {}),
           ...(input.sampleRate !== undefined ? { sampleRate: input.sampleRate } : {}),
+          ...(input.pitch !== undefined ? { pitch: input.pitch } : {}),
+          ...(input.volume !== undefined ? { volume: input.volume } : {}),
+          ...(input.style !== undefined ? { style: input.style } : {}),
         },
         { ...(input.signal !== undefined ? { signal: input.signal } : {}) },
       )) {

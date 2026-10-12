@@ -45,13 +45,7 @@ export class ChatOrchestrator implements Orchestrator {
     if (input.signal.aborted) {
       throw new VoiceError('cancelled', 'The voice turn was cancelled.');
     }
-    const messages: ChatMessage[] = [
-      ...(this.systemPrompt !== undefined
-        ? [{ role: 'system', content: this.systemPrompt } as const]
-        : []),
-      ...this.history,
-      { role: 'user', content: input.text },
-    ];
+    const messages = this.buildMessages(input.text);
     const result = await this.client.chat({
       messages,
       ...(this.language !== undefined ? { language: this.language } : {}),
@@ -60,13 +54,67 @@ export class ChatOrchestrator implements Orchestrator {
       throw new VoiceError('backend_unavailable', result.error.message, result.error);
     }
     const text = result.value.text;
-    this.history.push({ role: 'user', content: input.text });
-    this.history.push({ role: 'assistant', content: text });
-    while (this.history.length > this.maxHistory) this.history.shift();
+    this.remember(input.text, text);
     return {
       text,
       ...(result.value.route !== undefined ? { route: result.value.route } : {}),
     };
+  }
+
+  /**
+   * The authoritative text is the returned value, not the accumulated deltas; a
+   * route hint is surfaced, never treated as authorization.
+   */
+  async respondStream(
+    input: { readonly text: string; readonly sessionId: string; readonly signal: AbortSignal },
+    onDelta: (delta: string) => void,
+  ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
+    if (input.signal.aborted) {
+      throw new VoiceError('cancelled', 'The voice turn was cancelled.');
+    }
+    const messages = this.buildMessages(input.text);
+    let text = '';
+    let route: RouteHint | null | undefined;
+    try {
+      for await (const event of this.client.chatStream(
+        { messages, ...(this.language !== undefined ? { language: this.language } : {}) },
+        { signal: input.signal },
+      )) {
+        if (event.delta !== '') {
+          text += event.delta;
+          onDelta(event.delta);
+        }
+        if (event.route !== undefined) route = event.route;
+        if (event.is_final) break;
+      }
+    } catch (error) {
+      if (input.signal.aborted) {
+        throw new VoiceError('cancelled', 'The voice turn was cancelled.');
+      }
+      throw new VoiceError(
+        'backend_unavailable',
+        error instanceof Error ? error.message : 'The chat stream failed.',
+        error,
+      );
+    }
+    this.remember(input.text, text);
+    return { text, ...(route !== undefined ? { route } : {}) };
+  }
+
+  private buildMessages(text: string): ChatMessage[] {
+    return [
+      ...(this.systemPrompt !== undefined
+        ? [{ role: 'system', content: this.systemPrompt } as const]
+        : []),
+      ...this.history,
+      { role: 'user', content: text },
+    ];
+  }
+
+  private remember(userText: string, responseText: string): void {
+    this.history.push({ role: 'user', content: userText });
+    this.history.push({ role: 'assistant', content: responseText });
+    while (this.history.length > this.maxHistory) this.history.shift();
   }
 
   /** Forget the conversation history (a new conversation). */

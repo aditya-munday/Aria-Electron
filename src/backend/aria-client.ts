@@ -51,6 +51,11 @@ const languageSchema = z.object({
   name: z.string(),
   native_name: z.string().optional(),
 });
+const outputControlsSchema = z.object({
+  pitch: z.boolean(),
+  volume: z.boolean(),
+  styles: z.boolean(),
+});
 const capabilitiesSchema = z.object({
   contract_version: z.literal(ARIA_CONTRACT_VERSION),
   backend_version: z.string(),
@@ -62,6 +67,7 @@ const capabilitiesSchema = z.object({
   streaming_stt: z.boolean(),
   streaming_chat: z.boolean(),
   streaming_tts: z.boolean(),
+  output_controls: outputControlsSchema.optional(),
 });
 const routeSchema = z.object({ capability: z.string(), requires_confirmation: z.boolean() });
 const chatResponseSchema = z.object({
@@ -127,6 +133,9 @@ export interface AriaTtsInput {
   readonly voice?: string | null;
   readonly speed?: number;
   readonly sampleRate?: number;
+  readonly pitch?: number;
+  readonly volume?: number;
+  readonly style?: string | null;
 }
 
 export interface AriaClientOptions {
@@ -191,6 +200,9 @@ export class AriaClient {
       ...(input.voice !== undefined ? { voice: input.voice } : {}),
       ...(input.speed !== undefined ? { speed: input.speed } : {}),
       ...(input.sampleRate !== undefined ? { sample_rate: input.sampleRate } : {}),
+      ...(input.pitch !== undefined ? { pitch: input.pitch } : {}),
+      ...(input.volume !== undefined ? { volume: input.volume } : {}),
+      ...(input.style !== undefined ? { style: input.style } : {}),
     });
     if (!raw.ok) return raw;
     const parsed = ttsResponseSchema.safeParse(raw.value);
@@ -254,6 +266,9 @@ export class AriaClient {
       ...(input.voice !== undefined ? { voice: input.voice } : {}),
       ...(input.speed !== undefined ? { speed: input.speed } : {}),
       ...(input.sampleRate !== undefined ? { sample_rate: input.sampleRate } : {}),
+      ...(input.pitch !== undefined ? { pitch: input.pitch } : {}),
+      ...(input.volume !== undefined ? { volume: input.volume } : {}),
+      ...(input.style !== undefined ? { style: input.style } : {}),
     };
     for await (const value of this.streamJson(
       ARIA_ENDPOINTS.ttsStream,

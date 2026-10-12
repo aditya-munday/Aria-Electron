@@ -820,6 +820,22 @@ function voiceControls(
   rate.append(head, slider);
   wrap.append(rate);
 
+  const controls = voice.outputControls;
+  const missing: string[] = [];
+  if (controls?.pitch !== true) missing.push('pitch');
+  if (controls?.volume !== true) missing.push('volume');
+  if (controls?.styles !== true) missing.push('style');
+  if (missing.length > 0) {
+    wrap.append(
+      hint(
+        doc,
+        `Unavailable: ${missing.join(', ')}. The Backend does not advertise ${
+          missing.length === 1 ? 'this control' : 'these controls'
+        }, so Aria does not send ${missing.length === 1 ? 'it' : 'them'}.`,
+      ),
+    );
+  }
+
   const languageOptions = [
     { value: '', label: 'Automatic (follow the voice)' },
     ...(voice.languages.length > 0

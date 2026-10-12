@@ -8,9 +8,14 @@ import { ariaError } from '../backend/product-errors.js';
 import type { SupervisionRecord } from '../supervisor/task-store.js';
 import type { ActivationInputs } from './state.js';
 import type { AriaConfig } from '../config.js';
+import {
+  FIXTURE_LANGUAGES,
+  FIXTURE_STT_LANGUAGES,
+  FIXTURE_VOICE_CATALOG,
+} from '../voice/testing/fixture-catalog.js';
 
 const CONFIG: AriaConfig = {
-  backendBaseUrl: 'https://api.beyonders.dev',
+  backendBaseUrl: 'https://api.adityamunday.codes',
   requestTimeoutMs: 30_000,
   model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' },
 };
@@ -40,6 +45,7 @@ interface HarnessOptions {
   }[];
   readonly languages?: readonly { tag: string; name: string; nativeName?: string }[];
   readonly sttLanguages?: readonly string[];
+  readonly outputControls?: { pitch: boolean; volume: boolean; styles: boolean };
   readonly records?: readonly SupervisionRecord[];
   readonly voicePresent?: boolean;
   readonly previewError?: string;
@@ -73,6 +79,9 @@ function harness(options: HarnessOptions = {}) {
             voices: options.voices ?? [{ id: 'v1', name: 'Aria', language: 'en-US' }],
             ...(options.languages !== undefined ? { languages: options.languages } : {}),
             ...(options.sttLanguages !== undefined ? { sttLanguages: options.sttLanguages } : {}),
+            ...(options.outputControls !== undefined
+              ? { outputControls: options.outputControls }
+              : {}),
           }),
     records: () => options.records ?? [],
     settings: () => settings,
@@ -178,16 +187,28 @@ describe('ControlCenterService.buildState', () => {
     expect(state.diagnostics.backendState).toBe('outage');
   });
 
-  it('lists voices the Backend advertises', async () => {
+  it('lists the voices the fixture Backend advertises', async () => {
     const { service } = harness({
-      voices: [
-        { id: 'v1', name: 'Aria', language: 'en-US' },
-        { id: 'v2', name: 'Sol', language: 'en-GB' },
-      ],
+      voices: FIXTURE_VOICE_CATALOG.voices.map((voice) => ({
+        id: voice.id,
+        name: voice.name,
+        language: voice.language,
+        ...(voice.accent !== undefined ? { accent: voice.accent.tag } : {}),
+        ...(voice.gender !== undefined ? { gender: voice.gender } : {}),
+      })),
+      languages: FIXTURE_LANGUAGES,
+      sttLanguages: FIXTURE_STT_LANGUAGES,
+      outputControls: FIXTURE_VOICE_CATALOG.outputControls,
     });
     const state = await service.buildState();
     expect(state.voice.catalogState).toBe('available');
-    expect(state.voice.voices).toHaveLength(2);
+    expect(state.voice.voices.map((voice) => voice.id)).toEqual([
+      'aria-en-us',
+      'sol-en-gb',
+      'kira-de-de',
+    ]);
+    expect(state.voice.sttLanguages).toEqual(['en-US', 'en-GB', 'de-DE']);
+    expect(state.voice.outputControls).toEqual({ pitch: true, volume: true, styles: true });
   });
 
   it('preserves the rich voice metadata the Backend advertises', async () => {
@@ -227,6 +248,18 @@ describe('ControlCenterService.buildState', () => {
     expect(state.voice.configured).toBe('v1');
     expect(state.voice.language).toBe('en-US');
     expect(state.voice.speechRate).toBe(1.25);
+  });
+
+  it('surfaces the output controls the Backend advertises', async () => {
+    const { service } = harness({ outputControls: { pitch: true, volume: false, styles: true } });
+    const state = await service.buildState();
+    expect(state.voice.outputControls).toEqual({ pitch: true, volume: false, styles: true });
+  });
+
+  it('omits output controls entirely when the Backend does not advertise them', async () => {
+    const { service } = harness();
+    const state = await service.buildState();
+    expect(state.voice.outputControls).toBeUndefined();
   });
 
   it('disables the voice catalog with a reason when capabilities fail', async () => {

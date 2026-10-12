@@ -30,6 +30,11 @@ interface CapabilitiesLike {
   readonly voices: readonly VoiceCatalogEntry[];
   readonly languages?: readonly LanguageCatalogEntry[];
   readonly sttLanguages?: readonly string[];
+  readonly outputControls?: {
+    readonly pitch: boolean;
+    readonly volume: boolean;
+    readonly styles: boolean;
+  };
 }
 
 interface VoiceControlLike {
@@ -118,6 +123,9 @@ export class ControlCenterService {
           voices: capabilitiesResult.value.voices.map(toCatalogEntry),
           languages: toLanguageEntries(capabilitiesResult.value),
           sttLanguages: capabilitiesResult.value.sttLanguages ?? [],
+          ...(capabilitiesResult.value.outputControls !== undefined
+            ? { outputControls: capabilitiesResult.value.outputControls }
+            : {}),
         }
       : {
           ok: false,

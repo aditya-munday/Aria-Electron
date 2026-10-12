@@ -233,10 +233,10 @@ describe('AriaRuntime', () => {
 
 describe('AriaRuntime session', () => {
   it('seeds the session token from the option without signing in by default', () => {
-    const signedOut = new AriaRuntime({ config: { backendBaseUrl: 'https://api.beyonders.dev', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } } });
+    const signedOut = new AriaRuntime({ config: { backendBaseUrl: 'https://api.adityamunday.codes', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } } });
     expect(signedOut.isSignedIn()).toBe(false);
     const seeded = new AriaRuntime({
-      config: { backendBaseUrl: 'https://api.beyonders.dev', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } },
+      config: { backendBaseUrl: 'https://api.adityamunday.codes', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } },
       sessionToken: 'tok-1',
     });
     expect(seeded.isSignedIn()).toBe(true);

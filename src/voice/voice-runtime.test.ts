@@ -342,6 +342,45 @@ describe('VoiceRuntime speech output', () => {
   });
 });
 
+describe('VoiceRuntime output controls', () => {
+  it('sends pitch/volume/style when the Backend advertises them', async () => {
+    const built = build({});
+    built.runtime.setOutputControls({ pitch: true, volume: true, styles: true });
+    built.runtime.setSpeechOutput({ pitch: 1.1, volume: 0.9, style: 'warm' });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]).toMatchObject({ pitch: 1.1, volume: 0.9, style: 'warm' });
+  });
+
+  it('never sends an output control the Backend does not advertise', async () => {
+    const built = build({});
+    built.runtime.setOutputControls({ pitch: false, volume: false, styles: false });
+    built.runtime.setSpeechOutput({ pitch: 1.1, volume: 0.9, style: 'warm' });
+    expect(built.runtime.diagnostics().lastError?.kind).toBe('invalid_configuration');
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.pitch).toBeUndefined();
+    expect(built.speech.ttsCalls[0]?.volume).toBeUndefined();
+    expect(built.speech.ttsCalls[0]?.style).toBeUndefined();
+  });
+
+  it('drops a previously accepted control when the Backend stops advertising it', async () => {
+    const built = build({});
+    built.runtime.setOutputControls({ pitch: true, volume: true, styles: true });
+    built.runtime.setSpeechOutput({ pitch: 1.1 });
+    built.runtime.setOutputControls(undefined);
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.pitch).toBeUndefined();
+  });
+});
+
 describe('VoiceRuntime voice discovery', () => {
   it('flags a configured voice the Backend does not offer', async () => {
     const built = build({ config: config({ voice: 'nope' }) });

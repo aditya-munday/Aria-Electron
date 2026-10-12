@@ -36,6 +36,7 @@ function harness(options: {
   speaker?: ManualSpeaker;
   streamingStt?: boolean;
   streamingTts?: boolean;
+  streamingChat?: boolean;
 }): Harness {
   const microphone = options.microphone ?? new FakeMicrophone();
   const speaker = options.speaker ?? new ManualSpeaker();
@@ -55,6 +56,7 @@ function harness(options: {
     now: () => 0,
     ...(options.streamingStt !== undefined ? { streamingStt: options.streamingStt } : {}),
     ...(options.streamingTts !== undefined ? { streamingTts: options.streamingTts } : {}),
+    ...(options.streamingChat !== undefined ? { streamingChat: options.streamingChat } : {}),
   });
   return { session, microphone, speaker, speech, orchestrator, events };
 }
@@ -424,5 +426,39 @@ describe('VoiceSession streaming', () => {
       h.events.find((e) => e.type === 'session.failed' && e.kind === 'speech_failed'),
     ).toBeDefined();
     expect(types(h.events)).not.toContain('playback.finished');
+  });
+});
+
+describe('VoiceSession chat streaming', () => {
+  it('streams the response as deltas and speaks the authoritative text', async () => {
+    const h = harness({
+      orchestrator: new RecordingOrchestrator({ streamDeltas: ['Hel', 'lo', ' world'] }),
+      streamingChat: true,
+    });
+    const run = h.session.runText('greet');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
+    h.speaker.advance();
+    await run;
+    const deltas = h.events.filter((e) => e.type === 'response.delta');
+    expect(deltas.map((e) => e.text)).toEqual(['Hel', 'Hello', 'Hello world']);
+    expect(h.events.find((e) => e.type === 'response')).toMatchObject({
+      text: 'Hello world',
+    });
+    expect(h.orchestrator.streamCalls).toHaveLength(1);
+    expect(h.orchestrator.calls).toHaveLength(0);
+  });
+
+  it('falls back to batch orchestration when chat streaming is not advertised', async () => {
+    const h = harness({
+      orchestrator: new RecordingOrchestrator({ streamDeltas: ['x'] }),
+      streamingChat: false,
+    });
+    const run = h.session.runText('greet');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
+    h.speaker.advance();
+    await run;
+    expect(h.orchestrator.calls).toHaveLength(1);
+    expect(h.orchestrator.streamCalls).toHaveLength(0);
+    expect(types(h.events)).not.toContain('response.delta');
   });
 });
