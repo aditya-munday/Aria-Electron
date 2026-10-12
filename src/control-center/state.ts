@@ -83,6 +83,12 @@ export interface IntegrationView {
   readonly aiEngineer: { readonly state: BackendState; readonly reason?: string };
 }
 
+export interface ReportedIncident {
+  readonly at: string;
+  readonly source: string;
+  readonly message: string;
+}
+
 export interface DiagnosticView {
   readonly backendState: BackendState;
   readonly backendReason?: string;
@@ -91,6 +97,7 @@ export interface DiagnosticView {
   readonly voiceDetail?: string;
   readonly listening: boolean;
   readonly checkedAt: string;
+  readonly incidents: readonly ReportedIncident[];
 }
 
 export interface TaskHistoryItem {
@@ -170,6 +177,7 @@ export interface ControlCenterSources {
   readonly integrations: IntegrationView;
   readonly tasks: readonly TaskHistoryItem[];
   readonly activation: ActivationInputs;
+  readonly incidents: readonly ReportedIncident[];
   readonly now: string;
 }
 

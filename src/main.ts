@@ -84,7 +84,7 @@ function main(): void {
   });
 
   const controlCenter = new ControlCenterService({
-    runtime: createControlCenterRuntime(runtime, shell),
+    runtime: createControlCenterRuntime(runtime, shell, errors),
     config,
     activation: {
       request: 'Hold ?',
