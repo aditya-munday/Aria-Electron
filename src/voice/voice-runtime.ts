@@ -26,7 +26,7 @@ import { VoiceEventBus, type VoiceEventListener } from './events.js';
 import type { Speaker } from './playback.js';
 import { createPushToTalk, type PushToTalkController, type PushToTalkIntent, type PushToTalkMode } from './push-to-talk.js';
 import type { SpeechProxy } from './speech.js';
-import { VoiceSession, type Orchestrator, type UtteranceBoundary } from './session.js';
+import { VoiceSession, base64ToPcm, type Orchestrator, type UtteranceBoundary } from './session.js';
 import type { VoiceRuntimeConfig } from './voice-config.js';
 import { validateVoiceConfig } from './voice-config.js';
 import {
@@ -69,7 +69,7 @@ export interface VoiceRuntimeDeps {
 }
 
 export class VoiceRuntime {
-  private readonly config: VoiceRuntimeConfig;
+  private config: VoiceRuntimeConfig;
   private readonly microphone: Microphone;
   private readonly speaker: Speaker;
   private readonly speech: SpeechProxy;
@@ -86,6 +86,8 @@ export class VoiceRuntime {
   private lastError: VoiceError | undefined;
   private devices: readonly AudioDevice[] = [];
   private unsubscribeDeviceChange: (() => void) | undefined;
+  private streamingStt = false;
+  private streamingTts = false;
 
   constructor(deps: VoiceRuntimeDeps) {
     validateVoiceConfig(deps.config);
@@ -135,6 +137,16 @@ export class VoiceRuntime {
     }
   }
 
+  /**
+   * Record the streaming modalities the Backend advertised, so a session streams
+   * transcription and synthesis only when the Backend can serve them. A false
+   * value (or a proxy without the streaming path) falls back to the batch call.
+   */
+  setStreamingSupport(streaming: { readonly stt: boolean; readonly tts: boolean }): void {
+    this.streamingStt = streaming.stt && this.speech.transcribeStream !== undefined;
+    this.streamingTts = streaming.tts && this.speech.synthesizeStream !== undefined;
+  }
+
   diagnostics(): VoiceRuntimeDiagnostics {
     return {
       pushToTalkEnabled: this.pushToTalk.isEnabled(),
@@ -173,7 +185,31 @@ export class VoiceRuntime {
       this.lastError = asVoiceError(error);
       return;
     }
+    if (!(await this.canStreamCapture())) {
+      // The wake-word listener needs a long-lived stream. A buffer-only backend
+      // still serves push-to-talk, so this is reported, not fatal.
+      this.lastError = new VoiceError(
+        'device_unavailable',
+        'No streaming capture device is available; wake-word listening is off, push-to-talk still works.',
+      );
+      return;
+    }
     await this.wakeListener.start();
+  }
+
+  /**
+   * Whether the microphone can hold a long-lived capture stream. A backend that
+   * only supports per-utterance capture reports no capture-capable devices, so
+   * the wake-word listener stands down rather than failing on every start.
+   */
+  private async canStreamCapture(): Promise<boolean> {
+    const capable = this.microphone.captureCapableDevices;
+    if (capable === undefined) return true;
+    try {
+      return (await capable.call(this.microphone)).length > 0;
+    } catch {
+      return false;
+    }
   }
 
   async stop(): Promise<void> {
@@ -203,6 +239,56 @@ export class VoiceRuntime {
 
   setPushToTalkMode(mode: PushToTalkMode): void {
     this.pushToTalk.setMode(mode);
+  }
+
+  /** An explicit user action, not an agent turn: it never opens or interrupts a session. */
+  async previewSpeech(input: {
+    readonly text: string;
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): Promise<void> {
+    const text = input.text.trim();
+    if (text === '') return;
+    const speed = input.speed ?? this.config.speed;
+    const audio = await this.speech.synthesize({
+      text,
+      voice: input.voice ?? this.config.voice ?? null,
+      language: input.language ?? this.config.language ?? null,
+      ...(speed !== undefined ? { speed } : {}),
+      sampleRate: this.config.sampleRate,
+    });
+    const pcm = base64ToPcm(audio.samples_le_base64);
+    if (pcm.length === 0) {
+      throw new VoiceError('speech_failed', 'The Backend returned no audio to preview.');
+    }
+    await this.speaker.play(pcm, { sampleRate: audio.sample_rate, channels: audio.channels });
+  }
+
+  /** An in-flight session keeps its output; the next activation picks up the new values. */
+  setSpeechOutput(output: {
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): void {
+    const next: VoiceRuntimeConfig = { ...this.config };
+    const config = next as {
+      voice?: string;
+      language?: string;
+      speed?: number;
+    };
+    if (output.voice === null) delete config.voice;
+    else if (output.voice !== undefined) config.voice = output.voice;
+    if (output.language === null) delete config.language;
+    else if (output.language !== undefined) config.language = output.language;
+    if (output.speed !== undefined) config.speed = Math.min(2, Math.max(0.5, output.speed));
+    try {
+      validateVoiceConfig(next);
+    } catch (error) {
+      this.lastError = asVoiceError(error);
+      return;
+    }
+    this.config = next;
   }
 
   /** Push-to-talk: press the configured control. */
@@ -328,6 +414,8 @@ export class VoiceRuntime {
       events: this.events,
       now: this.now,
       ...(this.deviceId !== undefined ? { deviceId: this.deviceId } : {}),
+      streamingStt: this.streamingStt,
+      streamingTts: this.streamingTts,
     });
     this.current = session;
     this.events.emit({ type: 'session.started', sessionId: id, at: this.now(), source });

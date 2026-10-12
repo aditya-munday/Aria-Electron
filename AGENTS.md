@@ -63,9 +63,11 @@ main process writes them to stderr). It never fabricates success.
 
 `SettingsStore.subscribe` (implemented by both the in-memory and file stores)
 lets the main process push a settings change to the voice runtime
-(`setWakeWordEnabled`, `setPushToTalkMode`) the moment it is saved, rather than
-only applying it on the next Control Center refresh. The renderer reads current
-settings through the `aria:shell:settings` IPC channel.
+(`setWakeWordEnabled`, `setPushToTalkMode`, `setSpeechOutput`) the moment it is
+saved, rather than only applying it on the next Control Center refresh. The
+renderer reads current settings through the `aria:shell:settings` IPC channel.
+`setSpeechOutput` changes the voice/language/speed used by subsequent sessions
+only; a session already in flight keeps the output it started with.
 
 ## Voice pipeline (`src/voice/`)
 
@@ -82,6 +84,33 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   and voice reconciliation (`discoverVoices`).
 - `speech.ts` (`BackendSpeechProxy`) and `orchestrator.ts` (`ChatOrchestrator`)
   are the only pieces that touch the backend, through `AriaClient`.
+  `SpeechProxy` also exposes optional `transcribeStream`/`synthesizeStream`; when
+  the Backend advertises `streaming_stt`/`streaming_tts` (wired in through
+  `VoiceRuntime.setStreamingSupport`), `VoiceSession` consumes the stream:
+  partial `transcript` events are emitted as they arrive (the authoritative
+  final transcript still comes from the caller), and synthesis chunks are played
+  incrementally through `Speaker.playStream`. A stream that ends without a final
+  event, or a synthesis stream that fails, is a failed turn — never a fabricated
+  transcript or a claimed playback. Stream failures are mapped onto the same
+  `VoiceError` taxonomy as the batch calls (`voiceErrorFromStream`).
+- `device.ts` defines the `Microphone`/`Speaker`/capture seams; `audio-tool.ts`
+  probes the host (once, at startup) for a command-line recorder and player
+  (`parec`/`arecord`/`pw-record`, `pacat`/`aplay`/`pw-play`) and exposes the
+  raw-PCM argv for each. `capture-tool.ts` (`StreamingCapture`, `PcmPlayback`)
+  drives those processes: it slices the recorder stream into fixed frames and
+  converts s16le to Float64. `native-audio.ts` (`createNativeAudio`) composes a
+  `Microphone`/`Speaker` over that backend; with no recorder the microphone
+  denies permission and offers no devices, so push-to-talk is honestly inert
+  rather than silently broken.
+- `voice-runtime.ts` `start()` awaits `refreshDevices()` and only starts the
+  wake listener when a capture-capable device exists; a buffer-only microphone
+  (the fake, or a host with no recorder) stands the listener down with a
+  `device_unavailable` diagnostic while push-to-talk keeps working. This is why
+  the wake listener is gated on real capture capability, not merely on the
+  detector being enabled.
+- `session.ts` finalizes the utterance on push-to-talk release even when no
+  speech was detected (the VAD is off by one at the boundary), and a release
+  that lands before the first frame completes the turn instead of hanging.
 - `testing/` holds deterministic doubles (`FakeMicrophone`, `ManualSpeaker`,
   `SpeechDouble`, `RecordingOrchestrator`, `manualClock`); tests use these, not
   mocks of the module under test.
@@ -152,7 +181,19 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   make key/shortcut tests deterministic.
 - `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
   `Platform`) — the seam that keeps the shell testable without Electron.
-  `Platform = { windows, keys, shortcuts }`.
+  `Platform = { windows, keys, shortcuts, tray }`. `WindowOptions.launchHidden`
+  marks the window the shell preloads but leaves off screen on a login launch
+  (`--hidden`); `Platform.tray` (`TrayHost`) is optional so a desktop without a
+  status area is reported, not faked.
+- Always-available presence: `AriaShell` creates a tray (`tray-icon.ts` holds an
+  embedded 32×32 PNG) with Open Control Center / Open Chat / Show-Hide Orb
+  actions, refreshed as visibility changes; `main.ts` passes `launchHidden` from
+  `process.argv.includes('--hidden')`. `shell/autostart.ts`
+  (`createAutostartManager`, `autostartEntry`) writes an XDG autostart desktop
+  entry whose `Exec` carries the same hidden-launch argument and an
+  `X-GNOME-Autostart-Delay`, so a login launch comes up in the background and
+  never steals focus. The autostart entry and settings persistence are both
+  skipped while signed out.
 - `interaction-runtime.ts` (`VoiceInteractionRuntime`) — adapts a
   `VoiceRuntimeLike` to the controller's `InteractionRuntime` seam and counts
   captures started, so tests can assert "a capture start is the only thing that
@@ -160,8 +201,8 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
 - `ipc.ts` / `ipc-handlers.ts` / `security.ts` — the renderer boundary. The
   bridge exposes exactly `status`, `sendText`, `stopPlayback` plus the
   Control Center operations `controlCenterState`, `settingsUpdate`,
-  `accountSignIn`, `accountSignOut`; no token, capability or raw-`ipcRenderer`
-  accessor crosses it. Renderer windows are context-isolated,
+  `accountSignIn`, `accountSignOut`, `previewVoice`; no token, capability or
+  raw-`ipcRenderer` accessor crosses it. Renderer windows are context-isolated,
   `nodeIntegration: false`, web-security on, and deny external navigation and
   `window.open`. The main process registers a `window-all-closed` handler on
   purpose so Electron does not quit when the last window closes.
@@ -184,10 +225,33 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   returns one typed `ControlCenterState`. Failures stay honest: signed-out
   identity, backend outage with reason, empty/unknown voice catalog, denied
   microphone. `control-center-runtime.ts` adapts `AriaRuntime` + `AriaShell`.
+  The renderer exposes the ten canonical sections from All-Knowledge §7.2 as
+  tabs: Profile, Account, Voice & Language, Activation, Aria Configuration,
+  Privacy & Permissions, Integrations, Tasks & History, Diagnostics, General.
+  The Integrations tab also renders the versioned capability catalog.
+- `contract/capability-catalog.ts` — the versioned capability catalog
+  (`CAPABILITY_CATALOG_VERSION`, `CapabilityEntry`, `resolveCapabilities`). It
+  describes what the runtime can do (identifiers, privilege, approval policy,
+  risk, side effects, verification, cancellation, retry, reversibility,
+  recovery) and marks each entry `supported` with an honest `reason` when the
+  live runtime cannot honor it. The catalog *describes*; it never grants
+  authority (All-Knowledge §9.1, §8.5). Do not fabricate a capability: gate on a
+  real signal (voice engine present, signed in) and report the limitation.
 - `control-center/renderer/control-center.ts` — the Control Center UI. Renders
   every section from the received state and enables a control only when its
-  source allows it. Bundled by `scripts/bundle-renderer.mjs` with esbuild into a
-  deferred classic script, because Chromium refuses `file://` ES-module imports.
+  source allows it. The Voice & Language tab is a studio: a summary of the
+  current output, a searchable/filterable voice grid (accent/language facets)
+  with per-voice selection and inline audition, a speed slider, STT-language
+  chips, a push-to-talk mode control and spoken-response toggle. Audition goes
+  through `previewVoice` → the voice runtime; nothing is enabled unless the
+  Backend actually advertises it. Bundled by `scripts/bundle-renderer.mjs` with
+  esbuild into a deferred classic script, because Chromium refuses `file://`
+  ES-module imports.
+- Typography: `src/renderer/theme.css` self-hosts two variable fonts — `Space
+  Grotesk` (display) and `Public Sans` (body), each split into latin /
+  latin-ext subsets with `unicode-range` — so the UI reads as a deliberate,
+  non-generic product rather than a default sans stack. There is no network
+  font fetch at runtime; the `.woff2` files ship in the renderer bundle.
 - `electron-platform.ts`, `main.ts`, `preload.ts` are the only files that
   import `electron`; everything under `src/shell/` is dependency-free.
 - `orb/` — the floating presence. `window-options.ts` holds the frameless /
@@ -198,11 +262,22 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   click-through except inside that circle via the `orbSetInteractive` channel
   and the pure `orb/hit-test.ts`. `orb/backdrop.ts` plans a full-screen material
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
-  rather than faking a blur with an opaque rectangle.
+  rather than faking a blur with an opaque rectangle. `state.ts` defines
+  `OrbPresence` — the All-Knowledge §7.3 conceptual states, reusing the repo's
+  existing lifecycle names where they already matched (`idle`/`listening`/
+  `thinking`/`speaking`/`error`/`muted`); the canonical extras are `hidden`,
+  `interrupted`, `awaiting_approval`, `awaiting_input`, `task_running`,
+  `recovering`. `OrbService.buildState` reports `hidden` when `orbVisible()` is
+  false, so no animation claims the Orb is present when it is not. `assemble.ts`
+  (`resolvePresence`, `taskPresence`) maps live signals — pending plans or
+  permissions → approval, pending questions → input, a cancelled voice session →
+  interrupted — to a state plus a non-color cue; `orb-service.ts`'s
+  `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 412 tests / 48 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 537 tests / 57 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
-`FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
+`FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
+`FakeVoiceRuntime`.
 
 ## Chat and task submission (`src/chat/`)
 

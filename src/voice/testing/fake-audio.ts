@@ -93,12 +93,15 @@ export interface FakeMicrophoneOptions {
   readonly devices?: readonly AudioDevice[];
   /** Fail `open()` with this error (device unavailable). */
   readonly failOpen?: VoiceError;
+  /** Whether a long-lived capture stream can be opened (default true). */
+  readonly captureCapable?: boolean;
 }
 
 export class FakeMicrophone implements Microphone {
   private permissionState: MicrophonePermission;
   private devices: readonly AudioDevice[];
   private readonly failOpen: VoiceError | undefined;
+  private readonly captureCapable: boolean;
   private readonly changeHandlers = new Set<(event: DeviceChangeEvent) => void>();
   readonly handles: FakeCaptureHandle[] = [];
   openCount = 0;
@@ -108,6 +111,7 @@ export class FakeMicrophone implements Microphone {
     this.devices =
       options.devices ?? [{ id: 'default', label: 'Default Microphone', isDefault: true }];
     this.failOpen = options.failOpen;
+    this.captureCapable = options.captureCapable ?? true;
   }
 
   async permission(): Promise<MicrophonePermission> {
@@ -124,6 +128,10 @@ export class FakeMicrophone implements Microphone {
 
   async listDevices(): Promise<readonly AudioDevice[]> {
     return this.devices;
+  }
+
+  async captureCapableDevices(): Promise<readonly AudioDevice[]> {
+    return this.captureCapable ? this.devices : [];
   }
 
   onDeviceChange(handler: (event: DeviceChangeEvent) => void): () => void {

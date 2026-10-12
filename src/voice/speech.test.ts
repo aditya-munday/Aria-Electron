@@ -143,3 +143,56 @@ describe('voiceErrorFromBackend', () => {
     expect(error.recovery).toBe('reconcile');
   });
 });
+
+describe('BackendSpeechProxy streaming', () => {
+  async function collect<T>(gen: AsyncIterable<T>): Promise<T[]> {
+    const out: T[] = [];
+    for await (const item of gen) out.push(item);
+    return out;
+  }
+
+  it('reads a streaming transcript, yielding partials and the final text', async () => {
+    const transport = new InMemoryTransport().onStream({
+      method: 'POST',
+      path: ARIA_ENDPOINTS.sttStream,
+      status: 200,
+      lines: [
+        '{"contract_version":1,"is_final":false,"text":"hello","language":"en-US"}',
+        '{"contract_version":1,"is_final":false,"text":"hello world","language":"en-US"}',
+        '{"contract_version":1,"is_final":true,"text":"hello world","language":"en-US"}',
+      ],
+    });
+    const chunks = await collect(proxy(transport).transcribeStream({ audio: AUDIO }));
+    expect(chunks.map((c) => c.text)).toEqual(['hello', 'hello world', 'hello world']);
+    expect(chunks.at(-1)?.final).toBe(true);
+    expect(transport.recorded()[0]?.path).toBe('/v1/stt/stream');
+  });
+
+  it('yields only audio-bearing chunks from a streaming synthesis', async () => {
+    const transport = new InMemoryTransport().onStream({
+      method: 'POST',
+      path: ARIA_ENDPOINTS.ttsStream,
+      status: 200,
+      lines: [
+        '{"contract_version":1,"sequence":0,"is_final":false,"audio":{"sample_rate":16000,"channels":1,"samples_le_base64":"AQACAAMABAA="}}',
+        '{"contract_version":1,"sequence":1,"is_final":false,"audio":{"sample_rate":16000,"channels":1,"samples_le_base64":"AQACAAMABAA="}}',
+        '{"contract_version":1,"sequence":2,"is_final":true,"audio":{"sample_rate":16000,"channels":1,"samples_le_base64":""}}',
+      ],
+    });
+    const chunks = await collect(proxy(transport).synthesizeStream({ text: 'hi' }));
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.samples_le_base64).toBe('AQACAAMABAA=');
+  });
+
+  it('maps a rejected transcription stream onto the voice taxonomy', async () => {
+    const transport = new InMemoryTransport().onStream({
+      method: 'POST',
+      path: ARIA_ENDPOINTS.sttStream,
+      status: 401,
+      lines: [],
+    });
+    await expect(collect(proxy(transport).transcribeStream({ audio: AUDIO }))).rejects.toMatchObject({
+      kind: 'not_signed_in',
+    });
+  });
+});

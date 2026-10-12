@@ -12,7 +12,40 @@ export function createControlCenterRuntime(
 ): ControlCenterRuntime {
   return {
     identity: () => runtime.identity(),
-    capabilities: () => runtime.aria.capabilities(),
+    capabilities: async () => {
+      const result = await runtime.aria.capabilities();
+      if (!result.ok) return result;
+      const value = result.value;
+      const ttsDetails = value.tts_language_details ?? [];
+      const ttsTags = value.tts_languages ?? [];
+      const languages = (
+        ttsDetails.length > 0
+          ? ttsDetails
+          : ttsTags.map((tag) => ({ tag, name: tag, native_name: undefined }))
+      ).map((language) => ({
+        tag: language.tag,
+        name: language.name,
+        ...(language.native_name !== undefined ? { nativeName: language.native_name } : {}),
+      }));
+      return {
+        ok: true,
+        value: {
+          voices: value.voices.map((voice) => ({
+            id: voice.id,
+            name: voice.name,
+            language: voice.language,
+            ...(voice.accent !== undefined ? { accent: voice.accent.tag } : {}),
+            ...(voice.gender !== undefined ? { gender: voice.gender } : {}),
+            ...(voice.age !== undefined ? { age: voice.age } : {}),
+            ...(voice.styles !== undefined ? { styles: voice.styles } : {}),
+            ...(voice.sample_rate !== undefined ? { sampleRate: voice.sample_rate } : {}),
+            ...(voice.description !== undefined ? { description: voice.description } : {}),
+          })),
+          languages,
+          sttLanguages: value.stt_languages ?? [],
+        },
+      };
+    },
     records: () => runtime.supervisor.records(),
     settings: (): ShellSettings => shell.currentSettings(),
     saveSettings: (next: ShellSettings): void => {
@@ -48,6 +81,11 @@ export function createControlCenterRuntime(
             setPushToTalkMode: (mode: 'hold' | 'toggle'): void => {
               runtime.voice?.setPushToTalkMode(mode);
             },
+            setSpeechOutput: (output): void => {
+              runtime.voice?.setSpeechOutput(output);
+            },
+            previewSpeech: (input): Promise<void> =>
+              runtime.voice?.previewSpeech(input) ?? Promise.resolve(),
           },
   };
 }

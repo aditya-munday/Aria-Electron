@@ -13,6 +13,8 @@ export interface ShellSettings {
   readonly voice?: string;
   readonly language?: string;
   readonly speakResponses: boolean;
+  /** Synthesis speed multiplier; 1 is the Backend default. */
+  readonly speechRate: number;
   readonly captureDeviceId?: string;
 }
 
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   startOnLogin: false,
   accent: 'aurora',
   speakResponses: true,
+  speechRate: 1,
 };
 
 export interface SettingsStore {
@@ -47,6 +50,11 @@ function optionalId(value: unknown): string | undefined {
 
 function isAccentTheme(value: unknown): value is AccentTheme {
   return typeof value === 'string' && (ACCENT_THEMES as readonly string[]).includes(value);
+}
+
+function normalizeSpeechRate(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS.speechRate;
+  return Math.min(2, Math.max(0.5, value));
 }
 
 export function normalizeSettings(value: unknown): ShellSettings {
@@ -91,6 +99,7 @@ export function normalizeSettings(value: unknown): ShellSettings {
       typeof record['speakResponses'] === 'boolean'
         ? record['speakResponses']
         : DEFAULT_SETTINGS.speakResponses,
+    speechRate: normalizeSpeechRate(record['speechRate']),
     ...(voice !== undefined ? { voice } : {}),
     ...(language !== undefined ? { language } : {}),
     ...(captureDeviceId !== undefined ? { captureDeviceId } : {}),
@@ -128,6 +137,7 @@ export interface SettingsPatchInput {
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
+  readonly speechRate?: number;
   readonly captureDeviceId?: string | null;
 }
 
@@ -154,6 +164,7 @@ export function patchSettings(
     ...(patch.startOnLogin !== undefined ? { startOnLogin: patch.startOnLogin } : {}),
     ...(patch.accent !== undefined ? { accent: patch.accent } : {}),
     ...(patch.speakResponses !== undefined ? { speakResponses: patch.speakResponses } : {}),
+    ...(patch.speechRate !== undefined ? { speechRate: patch.speechRate } : {}),
   };
   if (next['voice'] === null) {
     delete merged['voice'];

@@ -51,11 +51,36 @@ export interface Accent {
   readonly tag: string;
 }
 
+/**
+ * A voice the Backend can synthesize.
+ *
+ * `id`, `name` and `language` are the contract's required fields. Everything
+ * else is **additive**: an enriched deployment may describe a voice's `gender`,
+ * `age`, `styles`, `sample_rate` and a human `description`, and a leaner one
+ * may omit them. A client must render what is present and never invent the
+ * rest.
+ */
 export interface Voice {
   readonly id: string;
   readonly name: string;
   readonly language: string;
   readonly accent?: Accent;
+  readonly gender?: string;
+  readonly age?: string;
+  readonly styles?: readonly string[];
+  readonly sample_rate?: number;
+  readonly description?: string;
+}
+
+/**
+ * A language Aria can recognize or speak, with a display name. Optional and
+ * additive: `stt_languages` / `tts_languages` remain the bare-tag source of
+ * truth, and this carries the labels when the Backend offers them.
+ */
+export interface Language {
+  readonly tag: string;
+  readonly name: string;
+  readonly native_name?: string;
 }
 
 export interface CapabilitiesResponse {
@@ -64,6 +89,8 @@ export interface CapabilitiesResponse {
   readonly stt_languages: readonly string[];
   readonly tts_languages: readonly string[];
   readonly voices: readonly Voice[];
+  readonly stt_language_details?: readonly Language[];
+  readonly tts_language_details?: readonly Language[];
   readonly streaming_stt: boolean;
   readonly streaming_chat: boolean;
   readonly streaming_tts: boolean;

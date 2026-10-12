@@ -33,6 +33,28 @@ export interface TtsOptions {
   readonly sampleRate?: number;
 }
 
+/** One event of a streaming transcription: `text` is the transcript so far. */
+export interface SttStreamChunk {
+  readonly text: string;
+  readonly final: boolean;
+  readonly language?: string | null;
+}
+
+export interface SttStreamInput {
+  readonly audio: AudioPayload;
+  readonly language?: string | null;
+  readonly signal?: AbortSignal;
+}
+
+export interface TtsStreamInput {
+  readonly text: string;
+  readonly language?: string | null;
+  readonly voice?: string | null;
+  readonly speed?: number;
+  readonly sampleRate?: number;
+  readonly signal?: AbortSignal;
+}
+
 export interface SpeechProxy {
   transcribe(input: {
     readonly audio: AudioPayload;
@@ -48,6 +70,18 @@ export interface SpeechProxy {
     readonly streamingStt: boolean;
     readonly streamingTts: boolean;
   }>;
+  /**
+   * A streaming transcription (`/v1/stt/stream`), when the Backend advertises
+   * it. Optional so a proxy that cannot stream simply omits it; a caller reads
+   * the real transcribed text from the final chunk.
+   */
+  transcribeStream?(input: SttStreamInput): AsyncIterable<SttStreamChunk>;
+  /**
+   * A streaming synthesis (`/v1/tts/stream`). Yields audio chunks in order so
+   * playback can begin before the synthesis finishes; the final chunk carries no
+   * audio and is not yielded.
+   */
+  synthesizeStream?(input: TtsStreamInput): AsyncIterable<AudioPayload>;
 }
 
 /** Adapt a backend error to a voice error, preserving the distinctions. */
@@ -90,7 +124,7 @@ export function voiceErrorFromBackend(error: AriaBackendError): VoiceError {
 
 function voiceErrorFromStream(error: AriaStreamError): VoiceError {
   const kind: VoiceErrorKind =
-    error.kind === 'unauthenticated'
+    error.kind === 'no_token' || error.kind === 'unauthenticated'
       ? 'not_signed_in'
       : error.kind === 'transport'
         ? 'backend_unavailable'
@@ -100,7 +134,17 @@ function voiceErrorFromStream(error: AriaStreamError): VoiceError {
             : 'backend_unavailable'
           : error.kind === 'timeout'
             ? 'timeout'
-            : 'speech_failed';
+            : error.kind === 'forbidden' ||
+                error.kind === 'rate_limited' ||
+                error.kind === 'conflict' ||
+                error.kind === 'not_found'
+              ? 'speech_rejected'
+              : error.kind === 'validation' ||
+                  error.kind === 'unprocessable' ||
+                  error.kind === 'too_large' ||
+                  error.kind === 'malformed'
+                ? 'malformed_audio'
+                : 'speech_failed';
   return new VoiceError(kind, error.message, error);
 }
 
@@ -161,6 +205,64 @@ export class BackendSpeechProxy implements SpeechProxy {
       streamingTts: result.value.streaming_tts,
     };
   }
+
+  /**
+   * Stream a transcription. Each event is a partial transcript that replaces
+   * the previous one; the caller takes the text from the final event. A stream
+   * failure is a failed transcription, never a fabricated transcript.
+   */
+  async *transcribeStream(input: SttStreamInput): AsyncIterable<SttStreamChunk> {
+    try {
+      for await (const event of this.client.sttStream(
+        {
+          audio: input.audio,
+          ...(input.language !== undefined ? { language: input.language } : {}),
+        },
+        { ...(input.signal !== undefined ? { signal: input.signal } : {}) },
+      )) {
+        yield {
+          text: event.text,
+          final: event.is_final,
+          ...(event.language !== undefined ? { language: event.language } : {}),
+        };
+        if (event.is_final) return;
+      }
+    } catch (error) {
+      throw streamVoiceError(error);
+    }
+  }
+
+  /**
+   * Stream a synthesis. Chunks are yielded as they arrive so playback can begin
+   * before synthesis finishes; a zero-length or final chunk carries no audio and
+   * is not yielded.
+   */
+  async *synthesizeStream(input: TtsStreamInput): AsyncIterable<AudioPayload> {
+    try {
+      for await (const event of this.client.ttsStream(
+        {
+          text: input.text,
+          ...(input.language !== undefined ? { language: input.language } : {}),
+          ...(input.voice !== undefined ? { voice: input.voice } : {}),
+          ...(input.speed !== undefined ? { speed: input.speed } : {}),
+          ...(input.sampleRate !== undefined ? { sampleRate: input.sampleRate } : {}),
+        },
+        { ...(input.signal !== undefined ? { signal: input.signal } : {}) },
+      )) {
+        if (event.audio.samples_le_base64 !== '') yield event.audio;
+        if (event.is_final) return;
+      }
+    } catch (error) {
+      throw streamVoiceError(error);
+    }
+  }
+}
+
+/** Map a streaming failure onto the voice taxonomy, preserving a real error. */
+function streamVoiceError(error: unknown): VoiceError {
+  if (error instanceof VoiceError) return error;
+  if (error instanceof AriaStreamError) return voiceErrorFromStream(error);
+  return new VoiceError('speech_failed', 'The speech stream failed.', error);
 }
 
 /** Re-export for callers that build a stream and need the same mapping. */

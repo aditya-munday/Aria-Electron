@@ -125,6 +125,10 @@ export class AriaRuntime {
       const capabilities = await this.aria.capabilities();
       if (!capabilities.ok) return;
       await voice.discoverVoices(capabilities.value.voices);
+      voice.setStreamingSupport({
+        stt: capabilities.value.streaming_stt,
+        tts: capabilities.value.streaming_tts,
+      });
     } catch {
       // Capabilities is advisory; push-to-talk and wake word still work.
     }

@@ -22,6 +22,15 @@ export interface Speaker {
   play(pcm: Int16Array, format: { sampleRate: number; channels: number }): Promise<void>;
   /** Interrupt any current playback promptly. Idempotent. */
   stop(): Promise<void>;
+  /**
+   * Play PCM chunks as they arrive, so playback begins before synthesis ends
+   * rather than buffering the whole stream. Optional: a speaker without it uses
+   * the batch {@link Speaker.play} path.
+   */
+  playStream?(
+    chunks: AsyncIterable<Int16Array>,
+    format: { sampleRate: number; channels: number },
+  ): Promise<void>;
 }
 
 /** A deterministic speaker for tests: it plays only when `advance()` is called. */
@@ -33,6 +42,8 @@ export class ManualSpeaker implements Speaker {
         pcm: Int16Array;
       }
     | undefined;
+  private streamReject: ((error: VoiceError) => void) | undefined;
+  private stopped = false;
   private readonly played: Int16Array[] = [];
 
   async play(pcm: Int16Array): Promise<void> {
@@ -46,12 +57,42 @@ export class ManualSpeaker implements Speaker {
     });
   }
 
+  async playStream(
+    chunks: AsyncIterable<Int16Array>,
+    _format: { sampleRate: number; channels: number },
+  ): Promise<void> {
+    this.stopped = false;
+    return new Promise<void>((resolve, reject) => {
+      this.streamReject = reject;
+      void (async () => {
+        try {
+          for await (const chunk of chunks) {
+            // `stop()` has already rejected; the chunk is simply dropped.
+            if (this.stopped) return;
+            this.played.push(chunk);
+          }
+          resolve();
+        } catch (error) {
+          reject(
+            error instanceof VoiceError ? error : new VoiceError('playback_failed', String(error)),
+          );
+        } finally {
+          this.streamReject = undefined;
+        }
+      })();
+    });
+  }
+
   async stop(): Promise<void> {
+    this.stopped = true;
     if (this.pending !== undefined) {
       const { reject } = this.pending;
       this.pending = undefined;
       reject(new VoiceError('cancelled', 'Playback was interrupted.'));
     }
+    const rejectStream = this.streamReject;
+    this.streamReject = undefined;
+    rejectStream?.(new VoiceError('cancelled', 'Playback was interrupted.'));
   }
 
   /** Finish the current playback naturally. */

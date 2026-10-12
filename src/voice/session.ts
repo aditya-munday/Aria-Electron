@@ -52,6 +52,9 @@ export interface VoiceSessionDeps {
   readonly now: () => number;
   /** The device to capture from; omitted means the default device. */
   readonly deviceId?: string;
+  /** Whether the Backend advertised streaming transcription / synthesis. */
+  readonly streamingStt?: boolean;
+  readonly streamingTts?: boolean;
 }
 
 /** How the session decides when the utterance ends. */
@@ -67,6 +70,8 @@ export class VoiceSession {
   private readonly events: VoiceEventBus;
   private readonly now: () => number;
   private readonly deviceId: string | undefined;
+  private readonly streamingStt: boolean;
+  private readonly streamingTts: boolean;
 
   private readonly controller = new AbortController();
   private state: VoiceSessionState = 'idle';
@@ -90,6 +95,8 @@ export class VoiceSession {
     this.events = deps.events;
     this.now = deps.now;
     this.deviceId = deps.deviceId;
+    this.streamingStt = deps.streamingStt ?? false;
+    this.streamingTts = deps.streamingTts ?? false;
   }
 
   get signal(): AbortSignal {
@@ -370,9 +377,13 @@ export class VoiceSession {
     if (!this.finalizeRequested) {
       await new Promise<void>((resolve) => {
         this.utteranceResolve = resolve;
+        // A release can arrive after capture opened but before the first frame
+        // is delivered; without this the wait would never be resolved.
+        if (this.finalizeRequested) resolve();
       });
     }
     this.finalizeRequested = false;
+    this.utteranceResolve = undefined;
     if (this.isCancelled()) return { kind: 'empty' };
     return assembler.finish();
   }
@@ -395,6 +406,9 @@ export class VoiceSession {
       samples_le_base64: bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
     };
     try {
+      if (this.streamingStt && this.speech.transcribeStream !== undefined) {
+        return await this.transcribeStreaming(audio);
+      }
       const result = await raceWithSignal(
         this.speech.transcribe({
           audio,
@@ -408,6 +422,42 @@ export class VoiceSession {
     } catch (error) {
       throw this.classifyStageError(error, 'speech_failed');
     }
+  }
+
+  /**
+   * Stream the transcription: each partial replaces the previous transcript and
+   * the final event carries the authoritative text. A stream that ends without a
+   * final event is a failed transcription, never a fabricated transcript.
+   */
+  private async transcribeStreaming(audio: AudioPayload): Promise<string> {
+    let final: string | undefined;
+    const consume = async (): Promise<void> => {
+      for await (const chunk of this.speech.transcribeStream!({
+        audio,
+        ...(this.config.language !== undefined ? { language: this.config.language } : {}),
+        signal: this.controller.signal,
+      })) {
+        if (this.isCancelled()) return;
+        if (chunk.final) {
+          final = chunk.text;
+          return;
+        }
+        // Partial transcripts are surfaced as they arrive; the authoritative
+        // final transcript is emitted by the caller that consumes the result.
+        this.events.emit({
+          type: 'transcript',
+          sessionId: this.id,
+          at: this.now(),
+          text: chunk.text,
+          final: false,
+        });
+      }
+    };
+    await raceWithSignal(consume(), this.controller.signal, this.config.sttTimeoutMs);
+    if (final === undefined) {
+      throw new VoiceError('speech_failed', 'The transcription stream ended without a final transcript.');
+    }
+    return final;
   }
 
   private async respond(
@@ -435,6 +485,10 @@ export class VoiceSession {
     }
     this.setState('speaking');
     this.events.emit({ type: 'synthesis.started', sessionId: this.id, at: this.now(), text });
+    if (this.streamingTts && this.speech.synthesizeStream !== undefined) {
+      await this.speakStreaming(text);
+      return;
+    }
     let audio: AudioPayload;
     try {
       audio = await raceWithSignal(
@@ -442,6 +496,7 @@ export class VoiceSession {
           text,
           ...(this.config.language !== undefined ? { language: this.config.language } : {}),
           ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
+          ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
           sampleRate: SPEECH_SAMPLE_RATE,
         }),
         this.controller.signal,
@@ -495,6 +550,88 @@ export class VoiceSession {
         error: voiceError.message,
         kind: voiceError.kind,
       });
+    }
+  }
+
+  /**
+   * Stream the response speech. Chunks are played as they arrive through the
+   * speaker's streaming path when it offers one; a speaker without it falls back
+   * to buffering the whole stream and playing it once. A stream failure is a TTS
+   * failure that does not erase the text response.
+   */
+  private async speakStreaming(text: string): Promise<void> {
+    const chunks = this.synthesizeChunks(text);
+    this.events.emit({ type: 'playback.started', sessionId: this.id, at: this.now() });
+    try {
+      if (this.speaker.playStream !== undefined) {
+        await raceWithSignal(
+          this.speaker.playStream(chunks, {
+            sampleRate: SPEECH_SAMPLE_RATE,
+            channels: 1,
+          }),
+          this.controller.signal,
+          undefined,
+        );
+      } else {
+        const collected: Int16Array[] = [];
+        let total = 0;
+        for await (const pcm of chunks) {
+          if (this.isCancelled()) return;
+          collected.push(pcm);
+          total += pcm.length;
+        }
+        if (total === 0) {
+          this.events.emit({
+            type: 'session.failed',
+            sessionId: this.id,
+            at: this.now(),
+            error: 'Synthesis returned no audio.',
+            kind: 'malformed_audio',
+          });
+          return;
+        }
+        const merged = new Int16Array(total);
+        let offset = 0;
+        for (const pcm of collected) {
+          merged.set(pcm, offset);
+          offset += pcm.length;
+        }
+        await raceWithSignal(
+          this.speaker.play(merged, { sampleRate: SPEECH_SAMPLE_RATE, channels: 1 }),
+          this.controller.signal,
+          undefined,
+        );
+      }
+      this.events.emit({ type: 'playback.finished', sessionId: this.id, at: this.now() });
+    } catch (error) {
+      const voiceError = asVoiceError(error, 'playback_failed');
+      if (voiceError.kind === 'cancelled' || this.isCancelled()) {
+        this.events.emit({ type: 'playback.interrupted', sessionId: this.id, at: this.now() });
+        return;
+      }
+      // A synthesis stream failure is a TTS failure: the text response stands.
+      const kind = voiceError.kind === 'playback_failed' ? 'speech_failed' : voiceError.kind;
+      this.events.emit({
+        type: 'session.failed',
+        sessionId: this.id,
+        at: this.now(),
+        error: voiceError.message,
+        kind,
+      });
+    }
+  }
+
+  /** Decode the streaming synthesis into raw PCM chunks, in order. */
+  private async *synthesizeChunks(text: string): AsyncGenerator<Int16Array, void, void> {
+    for await (const chunk of this.speech.synthesizeStream!({
+      text,
+      ...(this.config.language !== undefined ? { language: this.config.language } : {}),
+      ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
+      ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
+      sampleRate: SPEECH_SAMPLE_RATE,
+      signal: this.controller.signal,
+    })) {
+      yield base64ToPcm(chunk.samples_le_base64);
     }
   }
 

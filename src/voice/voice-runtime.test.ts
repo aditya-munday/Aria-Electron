@@ -120,6 +120,21 @@ describe('VoiceRuntime push-to-talk', () => {
 });
 
 describe('VoiceRuntime wake word', () => {
+  it('stands down the streaming listener when the microphone cannot stream', async () => {
+    const microphone = new FakeMicrophone({ captureCapable: false });
+    const built = build({
+      config: config({ wakeWord: { ...DEFAULT_VOICE_CONFIG.wakeWord, enabled: true } }),
+      microphone,
+      detector: new FakeWakeWordDetector({ id: 'local' }),
+    });
+    await built.runtime.start();
+    expect(built.runtime.diagnostics().listening).toBe(false);
+    expect(built.runtime.diagnostics().lastError?.kind).toBe('device_unavailable');
+    // Push-to-talk still works on the same buffer-only microphone.
+    await built.runtime.pushToTalkPress();
+    await waitFor(() => built.microphone.openCount === 1, 'capture open');
+  });
+
   it('activates a session from a local detection and emits an activation event', async () => {
     const detector = new FakeWakeWordDetector({
       id: 'local-detector',
@@ -273,6 +288,60 @@ describe('VoiceRuntime text turn', () => {
   });
 });
 
+describe('VoiceRuntime speech output', () => {
+  it('applies a new voice and language to the next synthesized turn', async () => {
+    const built = build({});
+    built.runtime.setSpeechOutput({ voice: 'magnus', language: 'en-GB' });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]).toMatchObject({ voice: 'magnus', language: 'en-GB' });
+  });
+
+  it('clamps an out-of-range speed instead of sending it to the Backend', async () => {
+    const built = build({});
+    built.runtime.setSpeechOutput({ speed: 9 });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.speed).toBe(2);
+  });
+
+  it('clears the voice so the Backend default is used', async () => {
+    const built = build({ config: config({ voice: 'magnus' }) });
+    built.runtime.setSpeechOutput({ voice: null });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.voice).toBeUndefined();
+  });
+
+  it('auditions a voice without opening a session or capturing audio', async () => {
+    const built = build({});
+    const preview = built.runtime.previewSpeech({ text: 'hi', voice: 'vera', speed: 1.2 });
+    await waitFor(() => built.speech.ttsCalls.length === 1, 'synthesis');
+    built.speaker.advance();
+    await preview;
+    expect(built.speech.ttsCalls[0]).toMatchObject({ text: 'hi', voice: 'vera', speed: 1.2 });
+    expect(built.microphone.openCount).toBe(0);
+    expect(built.orchestrator.calls).toHaveLength(0);
+  });
+
+  it('does not synthesize an empty preview', async () => {
+    const built = build({});
+    await built.runtime.previewSpeech({ text: '   ' });
+    expect(built.speech.ttsCalls).toHaveLength(0);
+  });
+
+  it('rejects a preview when the Backend returns no audio', async () => {
+    const built = build({ speech: new SpeechDouble({ ttsSamples: 0 }) });
+    await expect(built.runtime.previewSpeech({ text: 'hi' })).rejects.toThrow(VoiceError);
+  });
+});
+
 describe('VoiceRuntime voice discovery', () => {
   it('flags a configured voice the Backend does not offer', async () => {
     const built = build({ config: config({ voice: 'nope' }) });
@@ -291,6 +360,42 @@ describe('VoiceRuntime voice discovery', () => {
     const built = build({ config: config({ voice: 'magnus' }) });
     await built.runtime.discoverVoices([]);
     expect(built.runtime.diagnostics().lastError).toBeUndefined();
+  });
+});
+
+describe('VoiceRuntime streaming support', () => {
+  async function runPushToTalk(built: Built): Promise<void> {
+    await built.runtime.pushToTalkPress();
+    await waitFor(() => built.microphone.lastHandle()?.isStarted === true, 'capture start');
+    for (let i = 0; i < 20; i += 1) built.microphone.lastHandle()?.emit(FRAME);
+    built.clock.advance(300);
+    await built.runtime.pushToTalkRelease();
+  }
+
+  it('streams transcription and synthesis when the Backend advertises both', async () => {
+    const speech = new SpeechDouble({
+      sttText: 'hello',
+      sttStreamPartials: ['hel'],
+      ttsStreamChunks: 2,
+    });
+    const built = build({ speech });
+    built.runtime.setStreamingSupport({ stt: true, tts: true });
+    await runPushToTalk(built);
+    await waitFor(() => built.speech.ttsStreamCalls.length === 1, 'stream synthesis');
+    expect(built.speech.sttCalls).toHaveLength(0);
+    expect(built.speech.sttStreamCalls).toHaveLength(1);
+    expect(built.speech.ttsCalls).toHaveLength(0);
+  });
+
+  it('uses the batch speech path when streaming is not advertised', async () => {
+    const speech = new SpeechDouble({ sttText: 'hello' });
+    const built = build({ speech });
+    built.runtime.setStreamingSupport({ stt: false, tts: false });
+    await runPushToTalk(built);
+    await waitFor(() => built.speech.ttsCalls.length === 1, 'batch tts');
+    expect(built.speech.sttCalls).toHaveLength(1);
+    expect(built.speech.sttStreamCalls).toHaveLength(0);
+    expect(built.speech.ttsStreamCalls).toHaveLength(0);
   });
 });
 

@@ -21,19 +21,25 @@ export interface AutostartManager {
 export interface AutostartDeps {
   readonly directory: string;
   readonly execPath: string;
+  /** The argument that makes a login launch stay in the background. */
+  readonly hiddenLaunchArg?: string;
   readonly fs?: AutostartFileSystem;
 }
 
-export function autostartEntry(execPath: string): string {
+export function autostartEntry(execPath: string, hiddenLaunchArg = '--hidden'): string {
   return [
     '[Desktop Entry]',
     'Type=Application',
     'Version=1.0',
     'Name=Aria',
     'Comment=Start Aria when you sign in',
-    `Exec=${execPath}`,
+    // The launch argument keeps a login launch off screen.
+    `Exec=${execPath} ${hiddenLaunchArg}`,
     'Terminal=false',
+    'StartupNotify=false',
     'X-GNOME-Autostart-enabled=true',
+    // Let the session settle before Aria grabs its global shortcuts.
+    'X-GNOME-Autostart-Delay=3',
     '',
   ].join('\n');
 }
@@ -66,7 +72,7 @@ export function createAutostartManager(deps: AutostartDeps): AutostartManager {
           fs.remove(path);
           return { ok: true, enabled: false, path };
         }
-        fs.write(path, autostartEntry(deps.execPath));
+        fs.write(path, autostartEntry(deps.execPath, deps.hiddenLaunchArg ?? '--hidden'));
         return { ok: true, enabled: true, path };
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

@@ -55,4 +55,11 @@ export interface Microphone {
   onDeviceChange(handler: (event: DeviceChangeEvent) => void): () => void;
   /** Open a capture handle on a device (or the default when `deviceId` is omitted). */
   open(options: { deviceId?: string; format: AudioFormat }): Promise<CaptureHandle>;
+  /**
+   * The devices Aria can actually open a capture on, when that differs from
+   * {@link listDevices}. A microphone backend that can play a whole buffer but
+   * not stream reports `[]` here, so the runtime keeps push-to-talk (buffer
+   * capture) while the streaming wake-word listener honestly stands down.
+   */
+  captureCapableDevices?(): Promise<readonly AudioDevice[]>;
 }

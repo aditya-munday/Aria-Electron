@@ -1,8 +1,9 @@
-import type { ControlCenterState } from '../state.js';
+import type { ControlCenterState, VoiceOption } from '../state.js';
 
 export interface ControlCenterBridge {
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): Promise<{ ok: boolean; reason?: string }>;
+  previewVoice(input: unknown): Promise<{ ok: boolean; reason?: string }>;
   signIn(input: unknown): Promise<{ ok: boolean; reason?: string }>;
   signOut(): Promise<{ ok: boolean; reason?: string }>;
   openChat(): Promise<void>;
@@ -10,7 +11,18 @@ export interface ControlCenterBridge {
 
 type El = HTMLElement;
 
-const TABS = ['overview', 'voice', 'account', 'appearance', 'diagnostics'] as const;
+const TABS = [
+  'profile',
+  'account',
+  'voice',
+  'activation',
+  'ariaConfig',
+  'privacy',
+  'integrations',
+  'tasks',
+  'diagnostics',
+  'general',
+] as const;
 type TabId = (typeof TABS)[number];
 
 const ACCENT_OPTIONS = [
@@ -21,30 +33,55 @@ const ACCENT_OPTIONS = [
 ] as const;
 
 const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }> = {
-  overview: {
-    label: 'Overview',
-    subtitle: 'Connection, tasks and privacy at a glance.',
-    icon: 'M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-5H4v5Zm10-11h6V4h-6v5Z',
-  },
-  voice: {
-    label: 'Voice & Keys',
-    subtitle: 'How Aria wakes, listens and answers.',
-    icon: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm7 9a7 7 0 0 1-6 6.9V22h-2v-3.1A7 7 0 0 1 5 12h2a5 5 0 0 0 10 0h2Z',
+  profile: {
+    label: 'Profile',
+    subtitle: 'Who you are and how Aria presents itself.',
+    icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2.2-7 5v1h14v-1c0-2.8-3-5-7-5Z',
   },
   account: {
     label: 'Account',
     subtitle: 'Sign in to the Beyonders backend.',
-    icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2.2-7 5v1h14v-1c0-2.8-3-5-7-5Z',
+    icon: 'M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z',
   },
-  appearance: {
-    label: 'Appearance',
-    subtitle: 'Orb presence, accent and startup behaviour.',
-    icon: 'M12 3a9 9 0 1 0 0 18 4 4 0 0 0 0-8 4 4 0 0 1 0-8Z',
+  voice: {
+    label: 'Voice & Language',
+    subtitle: 'The voice and language Aria answers with.',
+    icon: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm7 9a7 7 0 0 1-6 6.9V22h-2v-3.1A7 7 0 0 1 5 12h2a5 5 0 0 0 10 0h2Z',
+  },
+  activation: {
+    label: 'Activation',
+    subtitle: 'Wake word, push to talk and shortcuts.',
+    icon: 'M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-5H4v5Zm10-11h6V4h-6v5Z',
+  },
+  ariaConfig: {
+    label: 'Aria Configuration',
+    subtitle: 'Model, timeouts and assistant defaults.',
+    icon: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 4-2.1-.6-.4-1 1.1-1.9-1.4-1.4-1.9 1.1-1-.4L15 5h-2l-.6 2.1-1 .4L9.5 6.4 8.1 7.8l1.1 1.9-.4 1L6 11v2l2.1.6.4 1-1.1 1.9 1.4 1.4 1.9-1.1 1 .4L11 19h2l.6-2.1 1-.4 1.9 1.1 1.4-1.4-1.1-1.9.4-1L18 13Z',
+  },
+  privacy: {
+    label: 'Privacy & Permissions',
+    subtitle: 'Microphone, capture and data controls.',
+    icon: 'M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Zm-1 13-3-3 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6Z',
+  },
+  integrations: {
+    label: 'Integrations',
+    subtitle: 'Backend connectivity and available capabilities.',
+    icon: 'M7 7h10v10H7zM3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4Z',
+  },
+  tasks: {
+    label: 'Tasks & History',
+    subtitle: 'Tracked work, results and recovery.',
+    icon: 'M6 2h9l5 5v15H6V2Zm8 1.5V8h4.5L14 3.5ZM8 11h8v2H8v-2Zm0 4h8v2H8v-2Z',
   },
   diagnostics: {
     label: 'Diagnostics',
-    subtitle: 'Raw capability and connectivity state.',
-    icon: 'M3 13h4l2 5 4-13 2 8h6',
+    subtitle: 'Audio, wake-word health and backend errors.',
+    icon: 'M3 13h4l3 6 4-16 3 10h4v2h-5.5l-1.5-5-3.5 14-4.5-9H3v-2Z',
+  },
+  general: {
+    label: 'General',
+    subtitle: 'Orb presence, startup and appearance.',
+    icon: 'M12 3a9 9 0 1 0 0 18 4 4 0 0 0 0-8 4 4 0 0 1 0-8Z',
   },
 };
 
@@ -190,16 +227,6 @@ function badge(doc: Document, value: string, tone: 'ok' | 'warn' | 'bad' | 'neut
   return node;
 }
 
-function stat(doc: Document, value: string, label: string): El {
-  const wrap = h(doc, 'div', 'stat');
-  const v = h(doc, 'div', 'stat-value');
-  text(v, value);
-  const l = h(doc, 'div', 'stat-label');
-  text(l, label);
-  wrap.append(v, l);
-  return wrap;
-}
-
 function emptyState(doc: Document, title: string, detail: string): El {
   const wrap = h(doc, 'div', 'empty');
   const big = h(doc, 'div', 'big');
@@ -226,6 +253,39 @@ function backendTone(state: ControlCenterState['diagnostics']['backendState']): 
   return 'warn';
 }
 
+function capabilityCatalog(doc: Document, view: ControlCenterState['integrations']): El {
+  const list = h(doc, 'ul', 'capabilities');
+  list.setAttribute('data-testid', 'capability-catalog');
+  for (const capability of view.capabilities) {
+    const item = h(doc, 'li', 'capability');
+    item.setAttribute('data-supported', capability.supported ? 'yes' : 'no');
+    const top = h(doc, 'div', 'capability-top');
+    const title = h(doc, 'span', 'capability-title');
+    text(title, capability.title);
+    top.append(
+      title,
+      badge(doc, capability.supported ? 'Available' : 'Unavailable', capability.supported ? 'ok' : 'neutral'),
+    );
+    const meta = h(doc, 'div', 'capability-meta');
+    text(
+      meta,
+      `${capability.id} · privilege ${capability.privilege} · approval ${capability.approval} · risk ${capability.risk}`,
+    );
+    item.append(top, meta);
+    if (!capability.supported && capability.reason !== undefined) {
+      const reason = h(doc, 'p', 'muted reason');
+      text(reason, capability.reason);
+      item.append(reason);
+    }
+    list.append(item);
+  }
+  const note = h(doc, 'p', 'muted');
+  text(note, `Capability catalog v${view.catalogVersion}`);
+  const wrap = h(doc, 'div', 'capability-block');
+  wrap.append(list, note);
+  return wrap;
+}
+
 function backendWord(state: ControlCenterState['diagnostics']['backendState']): string {
   switch (state) {
     case 'ok':
@@ -241,22 +301,12 @@ function backendWord(state: ControlCenterState['diagnostics']['backendState']): 
   }
 }
 
-function overviewPanel(doc: Document, state: ControlCenterState): El {
+function integrationsPanel(doc: Document, state: ControlCenterState): El {
   const panel = h(doc, 'div', 'panel');
   panel.setAttribute('role', 'tabpanel');
-  panel.id = 'panel-overview';
+  panel.id = 'panel-integrations';
 
-  const summary = card(doc, 'At a glance', 'span-2');
-  const stats = h(doc, 'div', 'stats');
-  stats.append(
-    stat(doc, backendWord(state.diagnostics.backendState), 'Backend'),
-    stat(doc, String(state.tasks.length), state.tasks.length === 1 ? 'Task' : 'Tasks'),
-    stat(doc, state.voice.speakResponses ? 'On' : 'Off', 'Spoken replies'),
-    stat(doc, state.account.state === 'signed_in' ? 'Yes' : 'No', 'Signed in'),
-  );
-  summary.append(stats);
-
-  const integrations = card(doc, 'Integrations');
+  const integrations = card(doc, 'Integrations', 'span-2');
   integrations.append(
     row(
       doc,
@@ -271,9 +321,19 @@ function overviewPanel(doc: Document, state: ControlCenterState): El {
       state.integrations.aiEngineer.reason,
     ),
   );
+  integrations.append(capabilityCatalog(doc, state.integrations));
 
-  const privacy = card(doc, 'Privacy & data');
-  privacy.append(
+  panel.append(integrations);
+  return panel;
+}
+
+function privacyPanel(doc: Document, state: ControlCenterState): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-privacy';
+
+  const data = card(doc, 'Privacy & data', 'span-2');
+  data.append(
     row(
       doc,
       'Token storage',
@@ -284,8 +344,33 @@ function overviewPanel(doc: Document, state: ControlCenterState): El {
   for (const note of state.privacy.notes) {
     const line = h(doc, 'p', 'muted');
     text(line, note);
-    privacy.append(line);
+    data.append(line);
   }
+
+  const permissions = card(doc, 'Permissions', 'span-2');
+  permissions.append(
+    row(
+      doc,
+      'Microphone capture',
+      state.diagnostics.voiceReady ? 'Available' : 'Not available',
+      state.diagnostics.voiceReason,
+    ),
+    row(
+      doc,
+      'Wake word',
+      state.activation.wakeWord.available ? 'Available' : 'Not available',
+      state.activation.wakeWord.reason,
+    ),
+  );
+
+  panel.append(data, permissions);
+  return panel;
+}
+
+function tasksPanel(doc: Document, state: ControlCenterState): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-tasks';
 
   const tasks = card(doc, 'Task history', 'span-2');
   if (state.tasks.length === 0) {
@@ -308,11 +393,11 @@ function overviewPanel(doc: Document, state: ControlCenterState): El {
     tasks.append(list);
   }
 
-  panel.append(summary, integrations, privacy, tasks);
+  panel.append(tasks);
   return panel;
 }
 
-function appearancePanel(
+function generalPanel(
   doc: Document,
   state: ControlCenterState,
   bridge: ControlCenterBridge,
@@ -320,7 +405,7 @@ function appearancePanel(
 ): El {
   const panel = h(doc, 'div', 'panel');
   panel.setAttribute('role', 'tabpanel');
-  panel.id = 'panel-appearance';
+  panel.id = 'panel-general';
 
   const appearance = state.appearance;
   const presence = card(doc, 'Presence & startup');
@@ -370,7 +455,75 @@ function appearancePanel(
     ),
   );
 
-  panel.append(presence, theme);
+  const notifications = card(doc, 'Notifications & updates');
+  notifications.append(
+    row(
+      doc,
+      'Desktop notifications',
+      'Not wired',
+      'Aria does not raise desktop notifications in this release.',
+    ),
+    row(
+      doc,
+      'Automatic updates',
+      'Not wired',
+      'This build is installed from a package; it does not self-update.',
+    ),
+  );
+
+  panel.append(presence, theme, notifications);
+  return panel;
+}
+
+function profilePanel(doc: Document, state: ControlCenterState): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-profile';
+
+  const identity = card(doc, 'Identity', 'span-2');
+  const signedIn = state.account.state === 'signed_in';
+  identity.append(
+    row(doc, 'Display name', signedIn ? state.account.email ?? state.account.userId ?? '—' : 'Not signed in'),
+    row(doc, 'Backend account', signedIn ? 'Connected' : 'Not connected', state.account.reason),
+    row(doc, 'Assistant', 'Aria', 'The Beyonders local-first voice assistant.'),
+  );
+
+  const personalization = card(doc, 'Personalization', 'span-2');
+  personalization.append(
+    hint(
+      doc,
+      'Aria does not store personalization profiles in this release. Voice and appearance are set in their own sections.',
+    ),
+  );
+
+  panel.append(identity, personalization);
+  return panel;
+}
+
+function ariaConfigPanel(doc: Document, state: ControlCenterState): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-ariaConfig';
+
+  const config = card(doc, 'Assistant configuration', 'span-2');
+  config.append(
+    row(doc, 'Model', state.ariaConfig.model.displayName, 'Fixed for this release.'),
+    row(doc, 'Request timeout', `${state.ariaConfig.requestTimeoutMs} ms`),
+    row(
+      doc,
+      'Microphone device',
+      state.ariaConfig.microphoneDeviceId ?? 'System default',
+      'Device selection is not wired in this release.',
+    ),
+    row(
+      doc,
+      'Speak responses',
+      state.voice.speakResponses ? 'On' : 'Off',
+      'Change this under Voice & Language.',
+    ),
+  );
+
+  panel.append(config);
   return panel;
 }
 
@@ -394,61 +547,377 @@ function voicePanel(
   panel.id = 'panel-voice';
 
   const voice = state.voice;
-  const speech = card(doc, 'Speech');
-  speech.append(hint(doc, 'Pick the synthesis voice and language the backend should speak with.'));
-  const catalogEnabled = voice.catalogState === 'available';
-  const catalogReason =
-    voice.catalogState === 'available'
-      ? undefined
-      : voice.reason ?? 'The voice catalog is unavailable right now.';
-  const options =
-    voice.voices.length > 0
-      ? voice.voices.map((v) => ({ value: v.id, label: `${v.name} (${v.language})` }))
-      : [{ value: '', label: 'No voices available' }];
-  speech.append(
-    select(
+  const catalogAvailable = voice.catalogState === 'available';
+
+  panel.append(voiceSummary(doc, state));
+  panel.append(voiceStudio(doc, state, bridge, refresh));
+  panel.append(voiceControls(doc, state, bridge, refresh, catalogAvailable));
+  if (!catalogAvailable) {
+    panel.append(
+      voiceNotice(
+        doc,
+        voice.catalogState === 'empty'
+          ? 'The Backend advertises no voices right now.'
+          : 'The voice catalog could not be reached.',
+        voice.reason ?? 'Voice selection is disabled until the catalog is available.',
+      ),
+    );
+  }
+  return panel;
+}
+
+function voiceSummary(doc: Document, state: ControlCenterState): El {
+  const voice = state.voice;
+  const selected = voice.voices.find((entry) => entry.id === voice.configured);
+  const wrap = card(doc, 'Now speaking', 'span-2 voice-summary');
+  const line = h(doc, 'div', 'voice-hero');
+
+  const orb = h(doc, 'div', 'voice-hero-orb');
+  orb.setAttribute('aria-hidden', 'true');
+  const meta = h(doc, 'div', 'voice-hero-meta');
+  const name = h(doc, 'p', 'voice-hero-name');
+  text(name, selected?.name ?? 'Backend default');
+  const sub = h(doc, 'p', 'voice-hero-sub');
+  text(sub, describeVoice(selected) || `${voice.language ?? 'Automatic language'} · ${rateLabel(voice.speechRate)}`);
+  meta.append(name, sub);
+
+  const chips = h(doc, 'div', 'voice-hero-chips');
+  chips.append(
+    badge(doc, voice.speakResponses ? 'Speech on' : 'Speech off', voice.speakResponses ? 'ok' : 'neutral'),
+    badge(doc, rateLabel(voice.speechRate), 'neutral'),
+    ...(voice.language !== undefined ? [badge(doc, voice.language, 'neutral')] : []),
+  );
+  line.append(orb, meta, chips);
+  wrap.append(line);
+  return wrap;
+}
+
+function voiceStudio(
+  doc: Document,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+): El {
+  const voice = state.voice;
+  const wrap = card(doc, 'Voice studio', 'span-2 voice-studio');
+
+  if (voice.voices.length === 0) {
+    wrap.append(
+      emptyState(
+        doc,
+        'No voices to browse',
+        voice.catalogState === 'available'
+          ? 'The Backend advertised an empty catalog.'
+          : 'Connect to the Backend to load the voice catalog.',
+      ),
+    );
+    return wrap;
+  }
+
+  const genders = unique(voice.voices.map((v) => v.gender).filter(isString));
+  const accents = unique(voice.voices.map((v) => v.accent).filter(isString));
+  const languages = unique(voice.voices.map((v) => v.language));
+
+  const toolbar = h(doc, 'div', 'studio-toolbar');
+  const search = h(doc, 'input', 'studio-search');
+  search.type = 'search';
+  search.placeholder = 'Search voices, accents, styles…';
+  search.setAttribute('aria-label', 'Search voices');
+  toolbar.append(search);
+
+  const filters = h(doc, 'div', 'studio-filters');
+  filters.append(
+    facet(doc, 'language', languages, 'All languages'),
+    facet(doc, 'accent', accents, 'All accents'),
+    facet(doc, 'gender', genders, 'Any gender'),
+  );
+  toolbar.append(filters);
+  wrap.append(toolbar);
+
+  const grid = h(doc, 'div', 'voice-grid');
+  grid.setAttribute('role', 'list');
+  const count = h(doc, 'p', 'studio-count');
+  wrap.append(grid, count);
+
+  const facetState = { language: '', accent: '', gender: '', query: '' };
+  const renderGrid = (): void => {
+    const query = facetState.query.trim().toLowerCase();
+    const shown = voice.voices.filter((entry) => {
+      if (facetState.language !== '' && entry.language !== facetState.language) return false;
+      if (facetState.accent !== '' && entry.accent !== facetState.accent) return false;
+      if (facetState.gender !== '' && entry.gender !== facetState.gender) return false;
+      if (query === '') return true;
+      const haystack = [
+        entry.name,
+        entry.id,
+        entry.language,
+        entry.accent ?? '',
+        entry.gender ?? '',
+        entry.description ?? '',
+        ...entry.styles,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+
+    count.textContent =
+      shown.length === voice.voices.length
+        ? `${voice.voices.length} voices`
+        : `${shown.length} of ${voice.voices.length} voices`;
+    grid.replaceChildren(
+      ...(shown.length === 0
+        ? [emptyState(doc, 'No matches', 'Try a different search or filter.')]
+        : shown.map((entry) => voiceCard(doc, entry, state, bridge, refresh))),
+    );
+  };
+
+  search.addEventListener('input', () => {
+    facetState.query = search.value;
+    renderGrid();
+  });
+  for (const node of Array.from(filters.querySelectorAll('select'))) {
+    const select = node as HTMLSelectElement;
+    select.addEventListener('change', () => {
+      facetState[select.dataset['facet'] as 'language' | 'accent' | 'gender'] = select.value;
+      renderGrid();
+    });
+  }
+
+  renderGrid();
+  return wrap;
+}
+
+function facet(doc: Document, name: string, values: readonly string[], allLabel: string): El {
+  const node = h(doc, 'select', 'studio-facet');
+  node.dataset['facet'] = name;
+  node.setAttribute('aria-label', `${name} filter`);
+  const all = h(doc, 'option');
+  all.value = '';
+  all.textContent = allLabel;
+  node.append(all);
+  for (const value of values) {
+    const option = h(doc, 'option');
+    option.value = value;
+    option.textContent = value;
+    node.append(option);
+  }
+  return node;
+}
+
+function voiceCard(
+  doc: Document,
+  entry: VoiceOption,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+): El {
+  const selected = state.voice.configured === entry.id;
+  const node = h(doc, 'div', 'voice-card');
+  node.setAttribute('role', 'listitem');
+  node.setAttribute('data-selected', String(selected));
+
+  const top = h(doc, 'div', 'voice-card-top');
+  const avatar = h(doc, 'div', 'voice-avatar');
+  avatar.setAttribute('aria-hidden', 'true');
+  text(avatar, initials(entry.name));
+  const title = h(doc, 'div', 'voice-card-title');
+  const name = h(doc, 'p', 'voice-card-name');
+  text(name, entry.name);
+  const sub = h(doc, 'p', 'voice-card-sub');
+  text(sub, describeVoice(entry) || entry.id);
+  title.append(name, sub);
+  top.append(avatar, title, ...(selected ? [badge(doc, 'Active', 'ok')] : []));
+  node.append(top);
+
+  if (entry.description !== undefined) {
+    const desc = h(doc, 'p', 'voice-card-desc');
+    text(desc, entry.description);
+    node.append(desc);
+  }
+
+  const tags = h(doc, 'div', 'voice-tags');
+  if (entry.gender !== undefined) tags.append(tag(doc, entry.gender));
+  if (entry.age !== undefined) tags.append(tag(doc, entry.age));
+  if (entry.accent !== undefined) tags.append(tag(doc, entry.accent));
+  for (const style of entry.styles) tags.append(tag(doc, style));
+  if (entry.sampleRate !== undefined) tags.append(tag(doc, `${Math.round(entry.sampleRate / 1000)} kHz`));
+  if (tags.childElementCount > 0) node.append(tags);
+
+  const actions = h(doc, 'div', 'voice-card-actions');
+  const preview = button(doc, `preview-${entry.id}`, 'Preview', 'ghost small', true, () => {
+    preview.setAttribute('data-busy', 'true');
+    text(preview, 'Playing…');
+    void bridge
+      .previewVoice({
+        text: `Hi, I'm ${entry.name}. This is how I sound.`,
+        voice: entry.id,
+        ...(state.voice.language !== undefined ? { language: state.voice.language } : {}),
+        speed: state.voice.speechRate,
+      })
+      .then((result) => {
+        preview.removeAttribute('data-busy');
+        text(preview, result.ok ? 'Preview' : 'Unavailable');
+        if (!result.ok) preview.setAttribute('title', result.reason ?? 'Preview failed.');
+      });
+  });
+  const use = button(
+    doc,
+    `use-${entry.id}`,
+    selected ? 'Selected' : 'Use voice',
+    selected ? 'ghost small' : 'primary small',
+    !selected,
+    () => {
+      void bridge.updateSettings({ voice: entry.id, language: entry.language }).then(refresh);
+    },
+  );
+  actions.append(preview, use);
+  node.append(actions);
+  return node;
+}
+
+function voiceControls(
+  doc: Document,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+  catalogAvailable: boolean,
+): El {
+  const voice = state.voice;
+  const wrap = card(doc, 'Output', 'span-2');
+  wrap.append(
+    hint(
       doc,
-      'voice-select',
-      'Synthesis voice',
-      voice.configured ?? '',
-      options,
-      catalogEnabled,
-      catalogReason,
-      (next) => {
-        void bridge.updateSettings({ voice: next === '' ? null : next }).then(refresh);
-      },
+      'Choose what Aria speaks with. Changes apply to the next spoken response; the Backend is the only source of audio.',
     ),
+  );
+
+  wrap.append(
+    toggle(doc, 'speak-responses', 'Speak responses aloud', voice.speakResponses, true, undefined, (next) => {
+      void bridge.updateSettings({ speakResponses: next }).then(refresh);
+    }),
+  );
+
+  const rate = h(doc, 'div', 'control rate-control');
+  const rateLabelNode = h(doc, 'span', 'row-label');
+  text(rateLabelNode, 'Speech rate');
+  const rateValue = h(doc, 'span', 'rate-value');
+  text(rateValue, rateLabel(voice.speechRate));
+  const slider = h(doc, 'input', 'rate-slider');
+  slider.id = 'rate-slider';
+  slider.type = 'range';
+  slider.min = '0.5';
+  slider.max = '2';
+  slider.step = '0.05';
+  slider.value = String(voice.speechRate);
+  slider.setAttribute('aria-label', 'Speech rate');
+  slider.addEventListener('input', () => text(rateValue, rateLabel(Number.parseFloat(slider.value))));
+  slider.addEventListener('change', () => {
+    void bridge.updateSettings({ speechRate: Number.parseFloat(slider.value) }).then(refresh);
+  });
+  const head = h(doc, 'div', 'rate-head');
+  head.append(rateLabelNode, rateValue);
+  rate.append(head, slider);
+  wrap.append(rate);
+
+  const languageOptions = [
+    { value: '', label: 'Automatic (follow the voice)' },
+    ...(voice.languages.length > 0
+      ? voice.languages.map((l) => ({
+          value: l.tag,
+          label: l.nativeName !== undefined && l.nativeName !== l.name ? `${l.name} · ${l.nativeName}` : l.name,
+        }))
+      : voice.voices.map((v) => ({ value: v.language, label: v.language })).filter(uniqueByValue)),
+  ];
+  wrap.append(
     select(
       doc,
       'language-select',
-      'Language',
+      'Spoken language',
       voice.language ?? '',
-      [
-        { value: '', label: 'Backend default' },
-        { value: 'en-US', label: 'English (United States)' },
-        { value: 'en-GB', label: 'English (United Kingdom)' },
-      ],
+      languageOptions,
       true,
       undefined,
       (next) => {
         void bridge.updateSettings({ language: next === '' ? null : next }).then(refresh);
       },
     ),
-    toggle(
-      doc,
-      'speak-responses',
-      'Speak responses aloud',
-      voice.speakResponses,
-      true,
-      undefined,
-      (next) => {
-        void bridge.updateSettings({ speakResponses: next }).then(refresh);
-      },
-    ),
   );
 
+  if (voice.sttLanguages.length > 0) {
+    const recognized = h(doc, 'div', 'control');
+    const label = h(doc, 'span', 'row-label');
+    text(label, 'Recognized languages');
+    const chips = h(doc, 'div', 'voice-tags');
+    for (const code of voice.sttLanguages) chips.append(tag(doc, code));
+    recognized.append(label, chips);
+    wrap.append(recognized);
+  }
+
+  if (!catalogAvailable) {
+    wrap.append(hint(doc, 'Voice selection re-enables when the catalog is reachable.'));
+  }
+  return wrap;
+}
+
+function voiceNotice(doc: Document, title: string, detail: string): El {
+  const wrap = h(doc, 'div', 'voice-notice span-2');
+  wrap.setAttribute('role', 'status');
+  const heading = h(doc, 'p', 'voice-notice-title');
+  text(heading, title);
+  const body = h(doc, 'p', 'voice-notice-body');
+  text(body, detail);
+  wrap.append(heading, body);
+  return wrap;
+}
+
+function tag(doc: Document, value: string): El {
+  const node = h(doc, 'span', 'tag');
+  text(node, value);
+  return node;
+}
+
+function unique(values: readonly string[]): readonly string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function uniqueByValue(option: { value: string }, index: number, all: readonly { value: string }[]): boolean {
+  return all.findIndex((entry) => entry.value === option.value) === index;
+}
+
+function isString(value: string | undefined): value is string {
+  return value !== undefined && value !== '';
+}
+
+function describeVoice(entry: VoiceOption | undefined): string {
+  if (entry === undefined) return '';
+  const parts = [entry.language];
+  if (entry.accent !== undefined) parts.push(entry.accent);
+  if (entry.gender !== undefined) parts.push(entry.gender);
+  return parts.join(' · ');
+}
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).slice(0, 2);
+  return words.map((word) => word.charAt(0).toUpperCase()).join('') || '·';
+}
+
+function rateLabel(rate: number): string {
+  return `${rate.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}×`;
+}
+
+function activationPanel(
+  doc: Document,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-activation';
+
   const activation = state.activation;
-  const keysCard = card(doc, 'Activation & keys');
+  const keysCard = card(doc, 'Activation & keys', 'span-2');
   keysCard.append(
     toggle(
       doc,
@@ -532,7 +1001,7 @@ function voicePanel(
     keysCard.append(warn);
   }
 
-  panel.append(speech, keysCard);
+  panel.append(keysCard);
   return panel;
 }
 
@@ -674,18 +1143,6 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
   );
   if (d.voiceDetail !== undefined) backend.append(row(doc, 'Detail', d.voiceDetail));
 
-  const runtime = card(doc, 'Runtime');
-  runtime.append(
-    row(doc, 'Model', state.ariaConfig.model.displayName, 'Fixed for this release.'),
-    row(doc, 'Request timeout', `${state.ariaConfig.requestTimeoutMs} ms`),
-    row(
-      doc,
-      'Microphone device',
-      state.ariaConfig.microphoneDeviceId ?? 'System default',
-      'Device selection is not wired in this release.',
-    ),
-  );
-
   const errorsCard = card(doc, `Reported errors (${d.incidents.length})`);
   if (d.incidents.length === 0) {
     errorsCard.append(hint(doc, 'No errors have been reported this session.'));
@@ -695,7 +1152,7 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
     }
   }
 
-  panel.append(backend, runtime, errorsCard);
+  panel.append(backend, errorsCard);
   return panel;
 }
 
@@ -770,7 +1227,7 @@ export function renderControlCenter(
   doc: Document,
   state: ControlCenterState,
   bridge: ControlCenterBridge,
-  activeTab: TabId = 'overview',
+  activeTab: TabId = 'profile',
 ): void {
   const root = doc.getElementById('control-center');
   if (root === null) return;
@@ -809,22 +1266,21 @@ export function renderControlCenter(
   topbar.replaceChildren(titleWrap, actions);
 
   const panelsToRender: Record<TabId, El> = {
-    overview: overviewPanel(doc, state),
-    voice: voicePanel(doc, state, bridge, refresh),
+    profile: profilePanel(doc, state),
     account: accountPanel(doc, state, bridge, refresh),
-    appearance: appearancePanel(doc, state, bridge, refresh),
+    voice: voicePanel(doc, state, bridge, refresh),
+    activation: activationPanel(doc, state, bridge, refresh),
+    ariaConfig: ariaConfigPanel(doc, state),
+    privacy: privacyPanel(doc, state),
+    integrations: integrationsPanel(doc, state),
+    tasks: tasksPanel(doc, state),
     diagnostics: diagnosticsPanel(doc, state),
+    general: generalPanel(doc, state, bridge, refresh),
   };
   for (const id of TABS) {
     panelsToRender[id].setAttribute('data-active', String(id === activeTab));
   }
-  panels.replaceChildren(
-    panelsToRender.overview,
-    panelsToRender.voice,
-    panelsToRender.account,
-    panelsToRender.appearance,
-    panelsToRender.diagnostics,
-  );
+  panels.replaceChildren(...TABS.map((id) => panelsToRender[id]));
 }
 
 export function bootstrapControlCenter(doc: Document, bridge: ControlCenterBridge): void {

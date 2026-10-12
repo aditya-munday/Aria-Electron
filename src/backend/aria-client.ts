@@ -40,6 +40,16 @@ const voiceSchema = z.object({
   name: z.string(),
   language: z.string(),
   accent: accentSchema.optional(),
+  gender: z.string().optional(),
+  age: z.string().optional(),
+  styles: z.array(z.string()).optional(),
+  sample_rate: z.number().optional(),
+  description: z.string().optional(),
+});
+const languageSchema = z.object({
+  tag: z.string(),
+  name: z.string(),
+  native_name: z.string().optional(),
 });
 const capabilitiesSchema = z.object({
   contract_version: z.literal(ARIA_CONTRACT_VERSION),
@@ -47,6 +57,8 @@ const capabilitiesSchema = z.object({
   stt_languages: z.array(z.string()),
   tts_languages: z.array(z.string()),
   voices: z.array(voiceSchema),
+  stt_language_details: z.array(languageSchema).optional(),
+  tts_language_details: z.array(languageSchema).optional(),
   streaming_stt: z.boolean(),
   streaming_chat: z.boolean(),
   streaming_tts: z.boolean(),

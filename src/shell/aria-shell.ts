@@ -10,10 +10,12 @@ import {
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
+  type TrayMenuItem,
   type WindowHandle,
   type WindowKind,
   type WindowOptions,
 } from './window.js';
+import { TRAY_ICON_DATA_URL } from './tray-icon.js';
 import type { SettingsStore, ShellSettings } from './settings.js';
 
 function sizeFor(kind: WindowKind): { readonly width: number; readonly height: number } {
@@ -33,6 +35,11 @@ export interface ShellDeps {
   readonly settings: SettingsStore;
   readonly keys?: KeyRepertoire;
   readonly backdrop?: OrbBackdropPlan;
+  /**
+   * Launch straight into the background: preload the Control Center but keep it
+   * hidden. Used when the app starts at login, so it does not steal the screen.
+   */
+  readonly launchHidden?: boolean;
 }
 
 export class AriaShell {
@@ -42,6 +49,7 @@ export class AriaShell {
   private readonly settings: SettingsStore;
   private readonly keys: KeyRepertoire;
   private readonly backdrop: OrbBackdropPlan | undefined;
+  private readonly launchHidden: boolean;
   private readonly windows = new Map<WindowKind, WindowHandle>();
   private backdropOpen = false;
 
@@ -50,6 +58,7 @@ export class AriaShell {
   private chatShortcutRegistered = false;
   private pushToTalkRegistered = false;
   private started = false;
+  private trayCreated = false;
   private pending: Promise<void> = Promise.resolve();
   private unsubscribeKeys: (() => void) | undefined;
 
@@ -60,13 +69,15 @@ export class AriaShell {
     this.settings = deps.settings;
     this.keys = deps.keys ?? DEFAULT_KEY_REPERTOIRE;
     this.backdrop = deps.backdrop;
+    this.launchHidden = deps.launchHidden === true;
   }
 
   start(): void {
     if (this.started) return;
     this.started = true;
     this.runtime.start();
-    this.createWindow('control_center');
+    this.createTray();
+    this.createWindow('control_center', { startHidden: false, launchHidden: this.launchHidden });
     this.open('control_center');
     this.chatShortcutRegistered = this.platform.shortcuts.register(
       CHAT_SHORTCUT_ACCELERATOR,
@@ -97,6 +108,40 @@ export class AriaShell {
     return { chat: this.chatShortcutRegistered, pushToTalk: this.pushToTalkRegistered };
   }
 
+  /** Whether a tray icon is actually present (the desktop may not support one). */
+  trayActive(): boolean {
+    return this.trayCreated;
+  }
+
+  private createTray(): void {
+    const tray = this.platform.tray;
+    if (tray === undefined) return;
+    tray.create({
+      tooltip: 'Aria',
+      iconDataUrl: TRAY_ICON_DATA_URL,
+      items: this.trayItems(),
+    });
+    this.trayCreated = tray.isActive();
+  }
+
+  /** Keep the tray menu in step with what is actually on screen. */
+  private refreshTray(): void {
+    this.platform.tray?.setMenu(this.trayItems());
+  }
+
+  private trayItems(): readonly TrayMenuItem[] {
+    const orbVisible = this.isOpen('orb');
+    return [
+      { id: 'control-center', label: 'Open Control Center', onClick: () => this.open('control_center') },
+      { id: 'chat', label: 'Open Chat', onClick: () => this.open('chat') },
+      {
+        id: 'orb',
+        label: orbVisible ? 'Hide Orb' : 'Show Orb',
+        onClick: () => this.setOrbVisible(!orbVisible),
+      },
+    ];
+  }
+
   whenIdle(): Promise<void> {
     return this.pending;
   }
@@ -120,6 +165,8 @@ export class AriaShell {
     this.unsubscribeKeys?.();
     this.unsubscribeKeys = undefined;
     this.platform.keys.stop();
+    this.platform.tray?.destroy();
+    this.trayCreated = false;
     this.started = false;
   }
 
@@ -216,9 +263,10 @@ export class AriaShell {
     // The Orb is a presence: borderless, always-on-top and click-through. It is
     // never focused, because taking focus would steal it from whatever the user
     // was doing when the capture activation fired.
-    if (kind !== 'orb') handle.focus();
+    if (kind !== 'orb' && handle.visible) handle.focus();
     if (kind === 'orb') this.showBackdrop();
     if (persist) this.persistOpenWindows();
+    this.refreshTray();
     return handle;
   }
 
@@ -226,6 +274,7 @@ export class AriaShell {
     this.windows.get(kind)?.hide();
     if (kind === 'orb') this.hideBackdrop();
     this.persistOpenWindows();
+    this.refreshTray();
   }
 
   /**

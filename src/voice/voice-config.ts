@@ -41,6 +41,8 @@ export interface VoiceRuntimeConfig {
   /** The synthesis voice id, when the Backend advertises voices. */
   readonly voice?: string;
   readonly language?: string;
+  /** Synthesis speed multiplier (0.5–2.0); the Backend clamps out-of-range. */
+  readonly speed?: number;
   /**
    * Voices the Backend advertised at startup, when known. A deployment that
    * advertises no voices is `[]`; an un-enriched config leaves this undefined.
@@ -88,6 +90,11 @@ export function validateVoiceConfig(config: VoiceRuntimeConfig): void {
   if (config.vad.frameMs <= 0) {
     throw new VoiceError('invalid_configuration', 'VAD frame size must be > 0 ms.');
   }
+  if (config.speed !== undefined) {
+    if (!Number.isFinite(config.speed) || config.speed < 0.5 || config.speed > 2) {
+      throw new VoiceError('invalid_configuration', 'Synthesis speed must be between 0.5 and 2.');
+    }
+  }
   if (config.voice !== undefined) {
     if (config.voice.trim() === '') {
       throw new VoiceError('invalid_configuration', 'A configured voice id must not be empty.');
@@ -128,6 +135,12 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     const raw = env[name]?.trim();
     return raw === undefined || raw === '' ? undefined : raw;
   };
+  const optionalNumber = (name: string): number | undefined => {
+    const raw = env[name]?.trim();
+    if (raw === undefined || raw === '') return undefined;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
 
   return {
     ...DEFAULT_VOICE_CONFIG,
@@ -154,5 +167,8 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     speakResponses: bool('ARIA_SPEAK_RESPONSES', DEFAULT_VOICE_CONFIG.speakResponses),
     ...(str('ARIA_VOICE') !== undefined ? { voice: str('ARIA_VOICE') as string } : {}),
     ...(str('ARIA_LANGUAGE') !== undefined ? { language: str('ARIA_LANGUAGE') as string } : {}),
+    ...(optionalNumber('ARIA_SPEECH_RATE') !== undefined
+      ? { speed: optionalNumber('ARIA_SPEECH_RATE') as number }
+      : {}),
   };
 }

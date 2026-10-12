@@ -29,9 +29,20 @@ interface HarnessOptions {
   readonly signedIn?: boolean;
   readonly identityError?: { kind: string; message: string };
   readonly capabilitiesError?: { kind: string; message: string };
-  readonly voices?: readonly { id: string; name: string; language: string }[];
+  readonly voices?: readonly {
+    id: string;
+    name: string;
+    language: string;
+    accent?: string;
+    gender?: string;
+    styles?: readonly string[];
+    description?: string;
+  }[];
+  readonly languages?: readonly { tag: string; name: string; nativeName?: string }[];
+  readonly sttLanguages?: readonly string[];
   readonly records?: readonly SupervisionRecord[];
   readonly voicePresent?: boolean;
+  readonly previewError?: string;
   readonly permission?: 'granted' | 'denied' | 'prompt';
   readonly incidents?: readonly { at: string; source: string; message: string }[];
 }
@@ -39,6 +50,8 @@ interface HarnessOptions {
 function harness(options: HarnessOptions = {}) {
   let settings: ShellSettings = { ...DEFAULT_SETTINGS };
   const applied: { wakeWordEnabled?: boolean; pushToTalkMode?: string }[] = [];
+  const speechOutputs: { voice?: string | null; language?: string | null; speed?: number }[] = [];
+  const previews: { text: string; voice?: string | null; language?: string | null; speed?: number }[] = [];
   const saved: ShellSettings[] = [];
   const orbVisibility: boolean[] = [];
 
@@ -56,7 +69,11 @@ function harness(options: HarnessOptions = {}) {
     capabilities: async () =>
       options.capabilitiesError !== undefined
         ? fail(ariaError(options.capabilitiesError.kind as never, options.capabilitiesError.message))
-        : ok({ voices: options.voices ?? [{ id: 'v1', name: 'Aria', language: 'en-US' }] }),
+        : ok({
+            voices: options.voices ?? [{ id: 'v1', name: 'Aria', language: 'en-US' }],
+            ...(options.languages !== undefined ? { languages: options.languages } : {}),
+            ...(options.sttLanguages !== undefined ? { sttLanguages: options.sttLanguages } : {}),
+          }),
     records: () => options.records ?? [],
     settings: () => settings,
     saveSettings: (next) => {
@@ -72,7 +89,7 @@ function harness(options: HarnessOptions = {}) {
         ? undefined
         : {
             wakeWordEnabled: settings.wakeWordEnabled,
-            wakeWordStatus: 'idle',
+            wakeWordStatus: 'ready',
             listening: false,
           },
     voice:
@@ -84,6 +101,13 @@ function harness(options: HarnessOptions = {}) {
             },
             setPushToTalkMode: (mode) => {
               applied.push({ pushToTalkMode: mode });
+            },
+            setSpeechOutput: (output) => {
+              speechOutputs.push(output);
+            },
+            previewSpeech: async (input) => {
+              previews.push(input);
+              if (options.previewError !== undefined) throw new Error(options.previewError);
             },
           },
   };
@@ -101,6 +125,8 @@ function harness(options: HarnessOptions = {}) {
   return {
     service,
     applied,
+    speechOutputs,
+    previews,
     saved,
     orbVisibility,
     setSettings: (s: ShellSettings) => (settings = s),
@@ -162,6 +188,45 @@ describe('ControlCenterService.buildState', () => {
     const state = await service.buildState();
     expect(state.voice.catalogState).toBe('available');
     expect(state.voice.voices).toHaveLength(2);
+  });
+
+  it('preserves the rich voice metadata the Backend advertises', async () => {
+    const { service } = harness({
+      voices: [
+        {
+          id: 'v1',
+          name: 'Aria',
+          language: 'en-US',
+          accent: 'en-us',
+          gender: 'female',
+          styles: ['warm', 'news'],
+          description: 'A bright American voice.',
+        },
+      ],
+      languages: [{ tag: 'en-US', name: 'English (United States)', nativeName: 'English (US)' }],
+      sttLanguages: ['en-US', 'de-DE'],
+    });
+    const state = await service.buildState();
+    expect(state.voice.voices[0]).toMatchObject({
+      id: 'v1',
+      accent: 'en-us',
+      gender: 'female',
+      styles: ['warm', 'news'],
+      description: 'A bright American voice.',
+    });
+    expect(state.voice.languages).toEqual([
+      { tag: 'en-US', name: 'English (United States)', nativeName: 'English (US)' },
+    ]);
+    expect(state.voice.sttLanguages).toEqual(['en-US', 'de-DE']);
+  });
+
+  it('carries the configured voice and speech rate into the view', async () => {
+    const { service, setSettings } = harness();
+    setSettings({ ...DEFAULT_SETTINGS, voice: 'v1', language: 'en-US', speechRate: 1.25 });
+    const state = await service.buildState();
+    expect(state.voice.configured).toBe('v1');
+    expect(state.voice.language).toBe('en-US');
+    expect(state.voice.speechRate).toBe(1.25);
   });
 
   it('disables the voice catalog with a reason when capabilities fail', async () => {
@@ -237,6 +302,80 @@ describe('ControlCenterService.applySettings', () => {
     const result = service.applySettings({ pushToTalkMode: 'hold' });
     expect(result.ok).toBe(true);
     await Promise.resolve();
+  });
+
+  it('pushes a voice/language/rate change to the voice runtime', async () => {
+    const { service, speechOutputs } = harness();
+    service.applySettings({ voice: 'v2', language: 'en-GB', speechRate: 1.4 });
+    await Promise.resolve();
+    expect(speechOutputs).toContainEqual({ voice: 'v2', language: 'en-GB', speed: 1.4 });
+  });
+
+  it('clears the voice on the runtime when the Backend default is chosen', async () => {
+    const { service, speechOutputs } = harness();
+    service.applySettings({ voice: null });
+    await Promise.resolve();
+    expect(speechOutputs).toContainEqual({ voice: null });
+  });
+});
+
+describe('ControlCenterService.previewVoice', () => {
+  it('auditions the requested voice through the runtime', async () => {
+    const { service, previews } = harness();
+    const result = await service.previewVoice({ text: 'hello', voice: 'v1', speed: 1 });
+    expect(result.ok).toBe(true);
+    expect(previews).toContainEqual({ text: 'hello', voice: 'v1', language: null, speed: 1 });
+  });
+
+  it('rejects a malformed preview request without touching the runtime', async () => {
+    const { service, previews } = harness();
+    expect((await service.previewVoice({ text: '   ' })).ok).toBe(false);
+    expect((await service.previewVoice(null)).ok).toBe(false);
+    expect(previews).toHaveLength(0);
+  });
+
+  it('reports the failure reason when the engine cannot synthesize', async () => {
+    const { service } = harness({ previewError: 'No audio output device.' });
+    const result = await service.previewVoice({ text: 'hello' });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('No audio output device.');
+  });
+
+  it('reports honestly when the build has no bound audio output', async () => {
+    const { service } = harness({ voicePresent: false });
+    const result = await service.previewVoice({ text: 'hello' });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('audio output');
+  });
+});
+
+describe('ControlCenterService capability catalog', () => {
+  it('exposes the versioned catalog with all capabilities supported on a healthy build', async () => {
+    const { service } = harness();
+    const state = await service.buildState();
+    expect(state.integrations.catalogVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(state.integrations.capabilities.length).toBeGreaterThan(0);
+    expect(state.integrations.capabilities.every((c) => c.supported)).toBe(true);
+  });
+
+  it('marks voice capabilities unsupported when the build has no voice engine', async () => {
+    const { service } = harness({ voicePresent: false });
+    const state = await service.buildState();
+    const ptt = state.integrations.capabilities.find((c) => c.id === 'voice.push_to_talk');
+    expect(ptt?.supported).toBe(false);
+    expect(ptt?.reason).toMatch(/microphone/i);
+    const stop = state.integrations.capabilities.find((c) => c.id === 'control.emergency_stop');
+    expect(stop?.supported).toBe(true);
+  });
+
+  it('marks tracked work unsupported while signed out', async () => {
+    const { service } = harness({
+      identityError: { kind: 'no_token', message: 'Sign in.' },
+    });
+    const state = await service.buildState();
+    const submit = state.integrations.capabilities.find((c) => c.id === 'task.submit');
+    expect(submit?.supported).toBe(false);
+    expect(submit?.reason).toMatch(/sign in/i);
   });
 });
 

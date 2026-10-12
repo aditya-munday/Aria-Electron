@@ -1,6 +1,11 @@
 import type { Identity } from '../contract/product-contract.js';
 import type { Result } from '../backend/result.js';
 import type { AriaConfig } from '../config.js';
+import {
+  CAPABILITY_CATALOG_VERSION,
+  resolveCapabilityCatalog,
+  type CapabilityEntry,
+} from '../contract/capability-catalog.js';
 import { describeTaskPhase } from '../supervisor/supervisor.js';
 import type { SupervisionRecord } from '../supervisor/task-store.js';
 import type { ShellSettings, SettingsPatchInput } from '../shell/settings.js';
@@ -12,6 +17,7 @@ import type {
   ControlCenterSources,
   ControlCenterState,
   IntegrationView,
+  LanguageCatalogEntry,
   PermissionState,
   ReportedIncident,
   TaskHistoryItem,
@@ -22,11 +28,24 @@ import { assembleControlCenterState } from './assemble.js';
 
 interface CapabilitiesLike {
   readonly voices: readonly VoiceCatalogEntry[];
+  readonly languages?: readonly LanguageCatalogEntry[];
+  readonly sttLanguages?: readonly string[];
 }
 
 interface VoiceControlLike {
   setWakeWordEnabled(enabled: boolean): Promise<void>;
   setPushToTalkMode(mode: 'hold' | 'toggle'): void;
+  setSpeechOutput?(output: {
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): void;
+  previewSpeech?(input: {
+    readonly text: string;
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): Promise<void>;
 }
 
 export interface VoiceDiagnosticsLike {
@@ -94,7 +113,12 @@ export class ControlCenterService {
 
     const capabilitiesResult = await this.deps.runtime.capabilities();
     const capabilities: ControlCenterSources['capabilities'] = capabilitiesResult.ok
-      ? { ok: true, voices: capabilitiesResult.value.voices.map(toCatalogEntry) }
+      ? {
+          ok: true,
+          voices: capabilitiesResult.value.voices.map(toCatalogEntry),
+          languages: toLanguageEntries(capabilitiesResult.value),
+          sttLanguages: capabilitiesResult.value.sttLanguages ?? [],
+        }
       : {
           ok: false,
           error: { kind: capabilitiesResult.error.kind, message: capabilitiesResult.error.message },
@@ -108,7 +132,7 @@ export class ControlCenterService {
       voice: this.voiceView(settings),
       microphonePermission: this.deps.microphonePermission(),
       voiceEngine: this.deps.voiceEngine(),
-      integrations: this.integrationView(capabilities),
+      integrations: this.integrationView(capabilities, account.ok),
       tasks: this.taskHistory(),
       activation: this.deps.activation,
       incidents: this.deps.runtime.incidents(),
@@ -125,6 +149,24 @@ export class ControlCenterService {
     this.deps.runtime.saveSettings(next);
     void this.applyToRuntime(patch);
     return { ok: true, settings: next };
+  }
+
+  /** Handed to the voice runtime, which owns the audio device. */
+  async previewVoice(input: unknown): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
+    const voice = this.deps.runtime.voice;
+    if (voice?.previewSpeech === undefined) {
+      return { ok: false, reason: 'This build ships without a bound audio output.' };
+    }
+    const request = normalizePreviewRequest(input);
+    if (request === undefined) {
+      return { ok: false, reason: 'The preview request was malformed.' };
+    }
+    try {
+      await voice.previewSpeech(request);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: describeVoiceError(error) };
+    }
   }
 
   private voiceView(settings: ShellSettings): VoiceDiagnosticsView {
@@ -158,17 +200,35 @@ export class ControlCenterService {
     if (patch.pushToTalkMode !== undefined) {
       voice.setPushToTalkMode(patch.pushToTalkMode);
     }
+    if (
+      patch.voice !== undefined ||
+      patch.language !== undefined ||
+      patch.speechRate !== undefined
+    ) {
+      voice.setSpeechOutput?.({
+        ...(patch.voice !== undefined ? { voice: patch.voice } : {}),
+        ...(patch.language !== undefined ? { language: patch.language } : {}),
+        ...(patch.speechRate !== undefined ? { speed: patch.speechRate } : {}),
+      });
+    }
   }
 
-  private integrationView(capabilities: ControlCenterSources['capabilities']): IntegrationView {
+  private integrationView(
+    capabilities: ControlCenterSources['capabilities'],
+    signedIn: boolean,
+  ): IntegrationView {
     const backend: { state: BackendState; reason?: string } = capabilities.ok
       ? { state: 'ok' }
       : { state: backendStateFromKind(capabilities.error.kind), reason: capabilities.error.message };
+
+    const catalog = this.capabilityCatalog(backend.state, signedIn);
 
     if (!capabilities.ok) {
       return {
         backend,
         aiEngineer: { state: backend.state, reason: 'Unreachable while the Backend is unavailable.' },
+        catalogVersion: CAPABILITY_CATALOG_VERSION,
+        capabilities: catalog,
       };
     }
 
@@ -183,7 +243,21 @@ export class ControlCenterService {
             state: 'unknown',
             reason: 'No engineering execution observed yet; work is dispatched through the Backend.',
           },
+      catalogVersion: CAPABILITY_CATALOG_VERSION,
+      capabilities: catalog,
     };
+  }
+
+  private capabilityCatalog(backend: BackendState, signedIn: boolean): readonly CapabilityEntry[] {
+    const diagnostics = this.deps.runtime.voiceDiagnostics();
+    const engine = this.deps.voiceEngine();
+    return resolveCapabilityCatalog({
+      voiceEngine: engine.kind === 'native',
+      wakeWord: diagnostics?.wakeWordStatus === 'ready',
+      backend: backend !== 'outage' && backend !== 'unknown',
+      signedIn,
+      platform: process.platform,
+    });
   }
 
   private taskHistory(): readonly TaskHistoryItem[] {
@@ -203,7 +277,56 @@ export class ControlCenterService {
 }
 
 function toCatalogEntry(voice: VoiceCatalogEntry): VoiceCatalogEntry {
-  return { id: voice.id, name: voice.name, language: voice.language };
+  return {
+    id: voice.id,
+    name: voice.name,
+    language: voice.language,
+    ...(voice.accent !== undefined ? { accent: voice.accent } : {}),
+    ...(voice.gender !== undefined ? { gender: voice.gender } : {}),
+    ...(voice.age !== undefined ? { age: voice.age } : {}),
+    ...(voice.styles !== undefined ? { styles: voice.styles } : {}),
+    ...(voice.sampleRate !== undefined ? { sampleRate: voice.sampleRate } : {}),
+    ...(voice.description !== undefined ? { description: voice.description } : {}),
+  };
+}
+
+function toLanguageEntries(capabilities: CapabilitiesLike): readonly LanguageCatalogEntry[] {
+  return (capabilities.languages ?? []).map((language) => ({
+    tag: language.tag,
+    name: language.name,
+    ...(language.nativeName !== undefined ? { nativeName: language.nativeName } : {}),
+  }));
+}
+
+interface PreviewRequest {
+  readonly text: string;
+  readonly voice?: string | null;
+  readonly language?: string | null;
+  readonly speed?: number;
+}
+
+function normalizePreviewRequest(input: unknown): PreviewRequest | undefined {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return undefined;
+  const record = input as Record<string, unknown>;
+  const text = typeof record['text'] === 'string' ? record['text'].trim() : '';
+  if (text === '') return undefined;
+  const voice = typeof record['voice'] === 'string' ? record['voice'] : null;
+  const language = typeof record['language'] === 'string' ? record['language'] : null;
+  const speed = typeof record['speed'] === 'number' ? record['speed'] : undefined;
+  return {
+    text: text.slice(0, 400),
+    voice,
+    language,
+    ...(speed !== undefined ? { speed } : {}),
+  };
+}
+
+function describeVoiceError(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message !== '') return message;
+  }
+  return 'The preview could not be played.';
 }
 
 function backendStateFromKind(kind: string): BackendState {

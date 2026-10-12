@@ -1,7 +1,14 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, globalShortcut, screen } from 'electron';
+import {
+  BrowserWindow,
+  globalShortcut,
+  Menu as ElectronMenu,
+  nativeImage,
+  screen,
+  Tray as ElectronTray,
+} from 'electron';
 
 import { blockExternalNavigation, RENDERER_WEB_PREFERENCES } from './shell/security.js';
 import type { Rect } from './shell/geometry.js';
@@ -12,6 +19,8 @@ import type {
   PhysicalKey,
   Platform,
   ShortcutRegistration,
+  TrayHost,
+  TrayMenuItem,
   WindowFactory,
   WindowHandle,
   WindowKind,
@@ -59,15 +68,18 @@ class ElectronWindowHandle implements WindowHandle {
   private readonly window: BrowserWindow;
   private readonly onError: ((source: string, error: unknown) => void) | undefined;
   private loaded = false;
+  private launchHidden: boolean;
 
   constructor(
     kind: WindowKind,
     window: BrowserWindow,
     onError?: (source: string, error: unknown) => void,
+    launchHidden = false,
   ) {
     this.kind = kind;
     this.window = window;
     this.onError = onError;
+    this.launchHidden = launchHidden;
   }
 
   get visible(): boolean {
@@ -80,6 +92,12 @@ class ElectronWindowHandle implements WindowHandle {
         .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
         .catch((error: unknown) => this.onError?.(`renderer:${this.kind}`, error));
       this.loaded = true;
+      // Load for real so the Control Center is ready, but leave it hidden: a
+      // login launch runs in the background until the user asks for a window.
+      if (this.launchHidden) {
+        this.launchHidden = false;
+        return;
+      }
     }
     this.window.showInactive();
   }
@@ -150,7 +168,7 @@ class ElectronWindowFactory implements WindowFactory {
       width: Math.round(bounds?.width ?? spec.width),
       height: Math.round(bounds?.height ?? spec.height),
       ...(bounds !== undefined ? { x: Math.round(bounds.x), y: Math.round(bounds.y) } : {}),
-      show: !options.startHidden,
+      show: !options.startHidden && options.launchHidden !== true,
       frame: options.frame ?? true,
       transparent: options.transparent ?? false,
       alwaysOnTop: options.alwaysOnTop ?? false,
@@ -202,7 +220,55 @@ class ElectronWindowFactory implements WindowFactory {
     window.webContents.on('render-process-gone', (_event, details) => {
       this.onError?.(`render-process:${kind}`, details.reason);
     });
-    return new ElectronWindowHandle(kind, window, this.onError);
+    return new ElectronWindowHandle(kind, window, this.onError, options.launchHidden === true);
+  }
+}
+
+/**
+ * The system tray. Creation can fail on a desktop with no status-notifier host;
+ * that is reported as "not active" rather than thrown, so the app still runs in
+ * the background.
+ */
+class DesktopTray implements TrayHost {
+  private tray: ElectronTray | undefined;
+
+  create(options: {
+    readonly tooltip: string;
+    readonly iconDataUrl: string;
+    readonly items: readonly TrayMenuItem[];
+  }): void {
+    if (this.tray !== undefined) {
+      this.setMenu(options.items);
+      return;
+    }
+    try {
+      const image = nativeImage.createFromDataURL(options.iconDataUrl);
+      const tray = new ElectronTray(image.isEmpty() ? nativeImage.createEmpty() : image);
+      tray.setToolTip(options.tooltip);
+      tray.setContextMenu(this.buildMenu(options.items));
+      this.tray = tray;
+    } catch {
+      this.tray = undefined;
+    }
+  }
+
+  setMenu(items: readonly TrayMenuItem[]): void {
+    this.tray?.setContextMenu(this.buildMenu(items));
+  }
+
+  destroy(): void {
+    this.tray?.destroy();
+    this.tray = undefined;
+  }
+
+  isActive(): boolean {
+    return this.tray !== undefined;
+  }
+
+  private buildMenu(items: readonly TrayMenuItem[]): ElectronMenu {
+    return ElectronMenu.buildFromTemplate(
+      items.map((item) => ({ label: item.label, click: item.onClick })),
+    );
   }
 }
 
@@ -228,5 +294,6 @@ export function createElectronPlatform(options: ElectronPlatformOptions = {}): P
     keys,
     shortcuts: new ElectronShortcuts(),
     screen: new ElectronScreenProvider(),
+    tray: new DesktopTray(),
   };
 }

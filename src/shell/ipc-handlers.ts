@@ -5,6 +5,7 @@ import type { ShellSettings } from './settings.js';
 import {
   IPC_CHANNELS,
   type IpcRegistrar,
+  type PreviewVoiceResult,
   type SettingsUpdateResult,
   type ShellStatus,
   type SignInResult,
@@ -16,6 +17,7 @@ export interface IpcHost {
   stopPlayback(): ChatActionResult | Promise<ChatActionResult> | void;
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): SettingsUpdateResult | Promise<SettingsUpdateResult>;
+  previewVoice(input: unknown): PreviewVoiceResult | Promise<PreviewVoiceResult>;
   signIn(input: unknown): SignInResult | Promise<SignInResult>;
   signOut(): SignInResult | Promise<SignInResult>;
   orbState(): OrbState | Promise<OrbState>;
@@ -54,6 +56,11 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.settingsUpdate,
     (_event: unknown, ...args: readonly unknown[]): SettingsUpdateResult | Promise<SettingsUpdateResult> =>
       host.updateSettings(args[0]),
+  );
+  ipc.handle(
+    IPC_CHANNELS.previewVoice,
+    (_event: unknown, ...args: readonly unknown[]): PreviewVoiceResult | Promise<PreviewVoiceResult> =>
+      host.previewVoice(args[0]),
   );
   ipc.handle(
     IPC_CHANNELS.accountSignIn,

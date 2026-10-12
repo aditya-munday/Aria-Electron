@@ -32,6 +32,12 @@ export interface WindowHandle {
 
 export interface WindowOptions {
   readonly startHidden: boolean;
+  /**
+   * When true, the first `show()` only paints the window without revealing it,
+   * so an app launched at login can preload the Control Center and still stay in
+   * the background until the user asks for it.
+   */
+  readonly launchHidden?: boolean;
   readonly frame?: boolean;
   readonly transparent?: boolean;
   readonly alwaysOnTop?: boolean;
@@ -79,6 +85,31 @@ export interface Platform {
   readonly keys: KeyListener;
   readonly shortcuts: ShortcutRegistration;
   readonly screen: ScreenProvider;
+  /**
+   * The system tray, when the desktop provides one. Omitted means no tray; the
+   * app still runs in the background, it just has no tray affordance.
+   */
+  readonly tray?: TrayHost;
+}
+
+export interface TrayMenuItem {
+  readonly id: string;
+  readonly label: string;
+  readonly onClick: () => void;
+}
+
+export interface TrayHost {
+  /** Create the tray icon with its menu. Idempotent per process. */
+  create(options: {
+    readonly tooltip: string;
+    readonly iconDataUrl: string;
+    readonly items: readonly TrayMenuItem[];
+  }): void;
+  /** Replace the menu items, e.g. after the Orb visibility changes. */
+  setMenu(items: readonly TrayMenuItem[]): void;
+  destroy(): void;
+  /** Whether a tray was created (the desktop may not support one). */
+  isActive(): boolean;
 }
 
 export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';

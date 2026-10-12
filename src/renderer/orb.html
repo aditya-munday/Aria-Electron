@@ -166,6 +166,58 @@
           0 14px 40px -12px rgba(200, 40, 40, 0.9);
       }
 
+      .orb[data-cue='halt'] .core {
+        background: radial-gradient(
+          circle at 34% 28%,
+          #fdf6ff 0%,
+          #e3c6ff 16%,
+          #a879ff 44%,
+          #6a3fd0 72%,
+          #2a1663 100%
+        );
+        animation: breathe 2.4s ease-in-out infinite;
+      }
+
+      .orb[data-cue='shield'] .core {
+        background: radial-gradient(
+          circle at 34% 28%,
+          #eafaff 0%,
+          #a5e8ff 16%,
+          #35b6e8 44%,
+          #1668a8 72%,
+          #0a2a4a 100%
+        );
+        animation: pulse 2.1s ease-out infinite;
+      }
+
+      .orb[data-cue='question'] .core {
+        background: radial-gradient(
+          circle at 34% 28%,
+          #fffbea 0%,
+          #ffe9a8 16%,
+          #ffc94d 44%,
+          #b8842a 72%,
+          #4a3510 100%
+        );
+        animation: breathe 2.2s ease-in-out infinite;
+      }
+
+      .orb[data-cue='gear'] .core {
+        animation: spin 3.6s linear infinite;
+      }
+
+      .orb[data-cue='restore'] .core {
+        background: radial-gradient(
+          circle at 34% 28%,
+          #f2f6ff 0%,
+          #c6d4ee 16%,
+          #8a9bc0 44%,
+          #4c5a78 72%,
+          #1e2432 100%
+        );
+        animation: breathe 3s ease-in-out infinite;
+      }
+
       .orb[data-cue='slash'] .core {
         background: radial-gradient(
           circle at 34% 28%,
@@ -212,6 +264,18 @@
         }
         50% {
           transform: scale(1.05);
+        }
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg) scale(1);
+        }
+        50% {
+          transform: rotate(180deg) scale(1.04);
+        }
+        100% {
+          transform: rotate(360deg) scale(1);
         }
       }
 
