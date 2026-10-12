@@ -40,6 +40,7 @@ function harness(options: HarnessOptions = {}) {
   let settings: ShellSettings = { ...DEFAULT_SETTINGS };
   const applied: { wakeWordEnabled?: boolean; pushToTalkMode?: string }[] = [];
   const saved: ShellSettings[] = [];
+  const orbVisibility: boolean[] = [];
 
   const runtime: ControlCenterRuntime = {
     identity: async () =>
@@ -63,6 +64,9 @@ function harness(options: HarnessOptions = {}) {
       saved.push(next);
     },
     incidents: () => options.incidents ?? [],
+    setOrbVisible: (visible) => {
+      orbVisibility.push(visible);
+    },
     voiceDiagnostics: () =>
       options.voicePresent === false
         ? undefined
@@ -89,10 +93,18 @@ function harness(options: HarnessOptions = {}) {
     config: CONFIG,
     activation: ACTIVATION,
     microphonePermission: () => options.permission ?? 'granted',
+    voiceEngine: () =>
+      options.voicePresent === false ? { kind: 'unavailable', reason: 'No engine.' } : { kind: 'native' },
     now: () => '2026-01-01T00:00:00.000Z',
   });
 
-  return { service, applied, saved, setSettings: (s: ShellSettings) => (settings = s) };
+  return {
+    service,
+    applied,
+    saved,
+    orbVisibility,
+    setSettings: (s: ShellSettings) => (settings = s),
+  };
 }
 
 describe('ControlCenterService.buildState', () => {

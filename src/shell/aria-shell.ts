@@ -86,6 +86,9 @@ export class AriaShell {
     this.unsubscribeKeys = this.platform.keys.onKey((event) => {
       this.enqueue(() => this.onKey(event));
     });
+    if (this.settings.load().showOrb) {
+      this.open('orb');
+    }
   }
 
   /** Whether the OS accepted each accelerator grab. Reported, never assumed. */
@@ -167,6 +170,24 @@ export class AriaShell {
 
   isOpen(kind: WindowKind): boolean {
     return this.windows.get(kind)?.visible ?? false;
+  }
+
+  /**
+   * Show or hide the Orb presence. The Orb is the app's voice surface, so it is
+   * reachable from the Control Center rather than only appearing after a voice
+   * activation the user may never have been able to trigger.
+   */
+  setOrbVisible(visible: boolean): void {
+    if (visible) {
+      this.open('orb');
+      return;
+    }
+    this.hide('orb');
+  }
+
+  /** Whether the orb backdrop is currently shown (test/diagnostics aid). */
+  orbBackdropOpen(): boolean {
+    return this.backdropOpen;
   }
 
   openWindows(): readonly WindowKind[] {

@@ -99,6 +99,14 @@ function main(): void {
         : { wakeWordReason: 'The wake-word engine is unavailable on this build.' }),
     },
     microphonePermission,
+    voiceEngine: () =>
+      voice !== undefined
+        ? { kind: 'native' }
+        : {
+            kind: 'unavailable',
+            reason:
+              'This build ships without a bound microphone and speaker; voice capture is inert.',
+          },
   });
 
   const orb = new OrbService({

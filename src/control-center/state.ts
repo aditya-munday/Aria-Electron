@@ -1,6 +1,6 @@
 import type { AriaConfig } from '../config.js';
 import type { TaskPhase } from '../supervisor/supervisor.js';
-import type { ShellSettings } from '../shell/settings.js';
+import type { AccentTheme, ShellSettings } from '../shell/settings.js';
 import type { PushToTalkMode } from '../shell/window.js';
 
 export type BackendState = 'ok' | 'outage' | 'unconfigured' | 'unauthenticated' | 'unknown';
@@ -89,12 +89,20 @@ export interface ReportedIncident {
   readonly message: string;
 }
 
+export interface AppearanceView {
+  readonly accent: AccentTheme;
+  readonly showOrb: boolean;
+  readonly startOnLogin: boolean;
+}
+
 export interface DiagnosticView {
   readonly backendState: BackendState;
   readonly backendReason?: string;
   readonly voiceReady: boolean;
   readonly voiceReason?: string;
   readonly voiceDetail?: string;
+  readonly voiceEngine: 'native' | 'unavailable';
+  readonly voiceEngineReason?: string;
   readonly listening: boolean;
   readonly checkedAt: string;
   readonly incidents: readonly ReportedIncident[];
@@ -118,6 +126,7 @@ export interface ControlCenterState {
   readonly ariaConfig: AriaConfigView;
   readonly privacy: PrivacyView;
   readonly integrations: IntegrationView;
+  readonly appearance: AppearanceView;
   readonly diagnostics: DiagnosticView;
   readonly tasks: readonly TaskHistoryItem[];
 }
@@ -174,6 +183,7 @@ export interface ControlCenterSources {
     | { readonly ok: false; readonly error: { readonly kind: string; readonly message: string } };
   readonly voice: VoiceDiagnosticsView;
   readonly microphonePermission: PermissionState;
+  readonly voiceEngine: { readonly kind: 'native' | 'unavailable'; readonly reason?: string };
   readonly integrations: IntegrationView;
   readonly tasks: readonly TaskHistoryItem[];
   readonly activation: ActivationInputs;
@@ -187,6 +197,9 @@ export interface ShellSettingsPatch {
   readonly pushToTalkMode?: PushToTalkMode;
   readonly chatShortcutEnabled?: boolean;
   readonly captureMuted?: boolean;
+  readonly showOrb?: boolean;
+  readonly startOnLogin?: boolean;
+  readonly accent?: AccentTheme;
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
@@ -201,6 +214,9 @@ export const EDITABLE_SETTINGS_KEYS: readonly SettingsKey[] = [
   'wakeWordEnabled',
   'chatShortcutEnabled',
   'captureMuted',
+  'showOrb',
+  'startOnLogin',
+  'accent',
   'voice',
   'language',
   'speakResponses',

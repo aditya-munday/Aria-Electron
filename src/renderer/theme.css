@@ -51,6 +51,27 @@
   --accent: var(--aurora-1);
   --accent-soft: rgba(124, 92, 255, 0.16);
   --accent-line: rgba(124, 92, 255, 0.42);
+}
+
+:root[data-accent='mint'] {
+  --accent: var(--mint);
+  --accent-soft: rgba(61, 220, 151, 0.16);
+  --accent-line: rgba(61, 220, 151, 0.42);
+}
+
+:root[data-accent='amber'] {
+  --accent: var(--amber);
+  --accent-soft: rgba(255, 180, 84, 0.16);
+  --accent-line: rgba(255, 180, 84, 0.42);
+}
+
+:root[data-accent='rose'] {
+  --accent: var(--rose);
+  --accent-soft: rgba(255, 107, 107, 0.16);
+  --accent-line: rgba(255, 107, 107, 0.42);
+}
+
+:root {
 
   --radius-xs: 8px;
   --radius-sm: 12px;
