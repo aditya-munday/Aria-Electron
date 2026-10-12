@@ -149,6 +149,40 @@ describe('global push-to-talk accelerator', () => {
     await shell.whenIdle();
     expect(interactionRuntime.captureStarts()).toBe(0);
   });
+
+  it('finalizes on the next tap in toggle mode instead of sending a dead release', async () => {
+    const { shell, platform, interactionRuntime, voice } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'toggle',
+    });
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    expect(voice.presses).toBe(1);
+    expect(voice.releases).toBe(0);
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(2);
+    expect(voice.presses).toBe(2);
+    expect(voice.releases).toBe(0);
+  });
+
+  it('pairs a press with a release on the next tap in hold mode', async () => {
+    const { shell, platform, interactionRuntime, voice } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    expect(voice.releases).toBe(0);
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    expect(voice.releases).toBe(1);
+  });
 });
 
 describe('window hiding', () => {

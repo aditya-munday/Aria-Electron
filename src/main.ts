@@ -70,6 +70,11 @@ function main(): void {
     runtime: interactionRuntime,
   });
 
+  // Seed the voice runtime with the persisted settings before any activation
+  // can fire; otherwise a saved push-to-talk mode or wake-word preference is
+  // ignored until the user happens to touch that control again.
+  applySettingsToRuntime(settings.load());
+
   const shell = new AriaShell({
     platform: createElectronPlatform({
       onRendererError: (source, error) => errors.report(source, error),
