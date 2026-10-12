@@ -23,9 +23,18 @@ wire contract and integrates the Beyonders backend, its product surface
   `noUncheckedIndexedAccess`, `verbatimModuleSyntax`).
 - `npm run ci` = `npm run typecheck && npm run test` (vitest).
 - `npm run build` = `tsc -p tsconfig.build.json` plus the renderer copy/bundle.
-- `npm run pack:deb` = build, then `electron-builder --linux deb --x64` into
-  `release/` (`aria-electron_<version>_amd64.deb`). The package installs to
-  `/opt/Aria`, provides `/usr/bin/aria` and a `aria.desktop` launcher.
+- `npm run pack:deb` = build, then `electron-builder --linux deb --x64 --publish never`
+  into `release/` (`aria-electron_<version>_amd64.deb`). The package installs to
+  `/opt/Aria`, provides `/usr/bin/aria-desktop` and an `aria-desktop.desktop`
+  launcher. `--publish never` matters: without it electron-builder treats a tag
+  build as an implicit publish and aborts when no `GH_TOKEN` is set.
+- `npm run smoke:deb` = `pack:deb`, then `scripts/smoke-deb.mjs`, which installs
+  the `.deb` and boots the app under `xvfb-run`. Install the package with `apt`
+  (not a bare `dpkg -i`) so declared dependencies (`libnotify4`, `libxss1`, …)
+  resolve; pass `--no-install` when it is already installed.
+- `.github/workflows/release.yml` runs on `aria-v*` tags: a `gate` job runs
+  `npm run ci`, then `package` builds the `.deb`, smoke-tests the install, and
+  attaches the `.deb` plus its `.sha256` to the GitHub release.
 - Optional-property style: never assign `undefined` to an optional field; build
   the object with a spread guard instead
   (`...(x !== undefined ? { x } : {})`).
