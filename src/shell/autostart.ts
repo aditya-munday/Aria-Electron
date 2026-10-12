@@ -19,9 +19,7 @@ export interface AutostartManager {
 }
 
 export interface AutostartDeps {
-  /** The XDG autostart directory, e.g. `~/.config/autostart`. */
   readonly directory: string;
-  /** The absolute path of the executable to launch at sign-in. */
   readonly execPath: string;
   readonly fs?: AutostartFileSystem;
 }
@@ -58,11 +56,6 @@ function nodeFileSystem(): AutostartFileSystem {
   };
 }
 
-/**
- * Applies the "start when you sign in" preference as an XDG autostart entry.
- * The result is reported, never assumed: a read-only config directory returns a
- * failure the UI can show, rather than silently claiming the setting took.
- */
 export function createAutostartManager(deps: AutostartDeps): AutostartManager {
   const fs = deps.fs ?? nodeFileSystem();
   const path = join(deps.directory, AUTOSTART_FILE);
