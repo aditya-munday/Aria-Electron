@@ -17,6 +17,7 @@ import { DEFAULT_VAD, type VadConfig } from './vad.js';
 import { DEFAULT_WAKE_WORD, type WakeWordConfig } from './wake-word.js';
 import { DEFAULT_MIN_UTTERANCE_MS } from './segmenter.js';
 import { SPEECH_SAMPLE_RATE } from './audio-format.js';
+import type { OutputControls } from '../contract/aria-contract.js';
 import { VoiceError } from './errors.js';
 
 export interface VoiceRuntimeConfig {
@@ -43,6 +44,14 @@ export interface VoiceRuntimeConfig {
   readonly language?: string;
   /** Synthesis speed multiplier (0.5–2.0); the Backend clamps out-of-range. */
   readonly speed?: number;
+  /**
+   * Present only for a deployment whose `/v1/capabilities` advertises
+   * `output_controls`; absent means Aria never sends them.
+   */
+  readonly outputControls?: OutputControls;
+  readonly pitch?: number;
+  readonly volume?: number;
+  readonly style?: string;
   /**
    * Voices the Backend advertised at startup, when known. A deployment that
    * advertises no voices is `[]`; an un-enriched config leaves this undefined.
@@ -93,6 +102,41 @@ export function validateVoiceConfig(config: VoiceRuntimeConfig): void {
   if (config.speed !== undefined) {
     if (!Number.isFinite(config.speed) || config.speed < 0.5 || config.speed > 2) {
       throw new VoiceError('invalid_configuration', 'Synthesis speed must be between 0.5 and 2.');
+    }
+  }
+  const accepts = (control: 'pitch' | 'volume' | 'styles'): boolean =>
+    config.outputControls?.[control] === true;
+  if (config.pitch !== undefined) {
+    if (!Number.isFinite(config.pitch) || config.pitch < 0.5 || config.pitch > 1.5) {
+      throw new VoiceError('invalid_configuration', 'Synthesis pitch must be between 0.5 and 1.5.');
+    }
+    if (!accepts('pitch')) {
+      throw new VoiceError(
+        'invalid_configuration',
+        'The Backend does not advertise a pitch control.',
+      );
+    }
+  }
+  if (config.volume !== undefined) {
+    if (!Number.isFinite(config.volume) || config.volume < 0 || config.volume > 2) {
+      throw new VoiceError('invalid_configuration', 'Synthesis volume must be between 0 and 2.');
+    }
+    if (!accepts('volume')) {
+      throw new VoiceError(
+        'invalid_configuration',
+        'The Backend does not advertise a volume control.',
+      );
+    }
+  }
+  if (config.style !== undefined) {
+    if (config.style.trim() === '') {
+      throw new VoiceError('invalid_configuration', 'A synthesis style must not be empty.');
+    }
+    if (!accepts('styles')) {
+      throw new VoiceError(
+        'invalid_configuration',
+        'The Backend does not advertise synthesis styles.',
+      );
     }
   }
   if (config.voice !== undefined) {

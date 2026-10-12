@@ -62,9 +62,14 @@ function voiceView(sources: ControlCenterSources): VoiceView {
   if (capabilities.ok) {
     const languages = capabilities.languages ?? [];
     const sttLanguages = capabilities.sttLanguages ?? [];
+    const controls =
+      capabilities.outputControls !== undefined
+        ? { outputControls: capabilities.outputControls }
+        : {};
     if (capabilities.voices.length > 0) {
       return {
         ...base,
+        ...controls,
         catalogState: 'available',
         voices: capabilities.voices.map(toVoiceOption),
         languages,
@@ -73,6 +78,7 @@ function voiceView(sources: ControlCenterSources): VoiceView {
     }
     return {
       ...base,
+      ...controls,
       catalogState: 'empty',
       voices: [],
       languages,

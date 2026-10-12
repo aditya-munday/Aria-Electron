@@ -133,6 +133,54 @@ describe('BackendSpeechProxy capabilities', () => {
     const caps = await proxy(transport).capabilities();
     expect(caps.voices[0]?.id).toBe('v1');
     expect(caps.streamingStt).toBe(true);
+    expect(caps.outputControls).toBeUndefined();
+  });
+
+  it('reads the advertised output controls when the Backend offers them', async () => {
+    const transport = new InMemoryTransport().on({
+      method: 'GET',
+      path: ARIA_ENDPOINTS.capabilities,
+      status: 200,
+      body: {
+        contract_version: 1,
+        backend_version: 'test/1',
+        stt_languages: ['en'],
+        tts_languages: ['en'],
+        voices: [{ id: 'v1', name: 'Voice One', language: 'en' }],
+        streaming_stt: true,
+        streaming_chat: true,
+        streaming_tts: false,
+        output_controls: { pitch: true, volume: false, styles: true },
+      },
+    });
+    const caps = await proxy(transport).capabilities();
+    expect(caps.outputControls).toEqual({ pitch: true, volume: false, styles: true });
+  });
+});
+
+describe('BackendSpeechProxy output controls', () => {
+  it('sends pitch/volume/style only when the caller supplies them', async () => {
+    const transport = new InMemoryTransport().on({
+      method: 'POST',
+      path: ARIA_ENDPOINTS.tts,
+      status: 200,
+      body: {
+        contract_version: 1,
+        audio: { sample_rate: 16_000, channels: 1, samples_le_base64: 'AA==' },
+      },
+    });
+    await proxy(transport).synthesize({
+      text: 'hi',
+      pitch: 1.1,
+      volume: 0.8,
+      style: 'warm',
+    });
+    expect(transport.recorded()[0]?.body).toMatchObject({
+      text: 'hi',
+      pitch: 1.1,
+      volume: 0.8,
+      style: 'warm',
+    });
   });
 });
 

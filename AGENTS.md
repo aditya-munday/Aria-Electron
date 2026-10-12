@@ -14,8 +14,8 @@ Repository memory for agents working in this repo. Keep it current.
 ## What this is
 
 Aria-Electron is the native desktop shell for Aria. It speaks the Aria `/v1`
-wire contract and integrates the Beyonders backend, its product surface
-(`/api/v1`), and the AI-Engineer task executor.
+wire contract and integrates the backend, its product surface (`/api/v1`), and
+the AI-Engineer task executor.
 
 ## Build and test
 
@@ -41,7 +41,7 @@ wire contract and integrates the Beyonders backend, its product surface
 
 ## Backend and configuration (`src/config.ts`, `src/runtime.ts`)
 
-The backend is **Beyonders** (`https://api.beyonders.dev` by default). Config is
+The backend base URL is `https://api.adityamunday.codes` by default. Config is
 read from the environment: `ARIA_BACKEND_URL` overrides the base URL and
 `ARIA_SESSION_TOKEN` seeds the in-memory session token at startup (never written
 to disk). `normalizeBaseUrl` rejects a non-http(s) URL or one with embedded
@@ -93,6 +93,18 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   event, or a synthesis stream that fails, is a failed turn — never a fabricated
   transcript or a claimed playback. Stream failures are mapped onto the same
   `VoiceError` taxonomy as the batch calls (`voiceErrorFromStream`).
+- `orchestrator.ts` (`ChatOrchestrator`) also owns chat streaming:
+  `respondStream` consumes `/v1/chat/stream`, forwards each `delta` to the
+  session (`response.delta` events) and returns the authoritative text. The
+  session uses it only when the Backend advertises `streaming_chat` **and** the
+  orchestrator implements it (`VoiceRuntime.setStreamingSupport`); otherwise the
+  turn falls back to the batch `respond`. A route hint on the final event is
+  surfaced, never treated as authorization.
+- Synthesis output controls (`pitch`, `volume`, `style`) are an optional,
+  additive Backend capability (`output_controls`). `VoiceRuntime.setOutputControls`
+  records what the Backend advertises and drops any control it does not offer, so
+  a session never sends one that is unsupported. They ride on the same
+  contract → client → speech proxy → runtime → session path as voice/language/speed.
 - `device.ts` defines the `Microphone`/`Speaker`/capture seams; `audio-tool.ts`
   probes the host (once, at startup) for a command-line recorder and player
   (`parec`/`arecord`/`pw-record`, `pacat`/`aplay`/`pw-play`) and exposes the

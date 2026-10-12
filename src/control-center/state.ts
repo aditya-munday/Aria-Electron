@@ -31,6 +31,16 @@ export interface VoiceView {
   readonly voices: readonly VoiceOption[];
   readonly languages: readonly LanguageOption[];
   readonly sttLanguages: readonly string[];
+  /**
+   * The synthesis output controls the Backend accepts. Absent when it advertises
+   * none, so pitch/volume/style render as unavailable rather than as controls
+   * that silently do nothing.
+   */
+  readonly outputControls?: {
+    readonly pitch: boolean;
+    readonly volume: boolean;
+    readonly styles: boolean;
+  };
   readonly reason?: string;
 }
 
@@ -220,6 +230,11 @@ export interface ControlCenterSources {
         readonly voices: readonly VoiceCatalogEntry[];
         readonly languages?: readonly LanguageCatalogEntry[];
         readonly sttLanguages?: readonly string[];
+        readonly outputControls?: {
+          readonly pitch: boolean;
+          readonly volume: boolean;
+          readonly styles: boolean;
+        };
       }
     | { readonly ok: false; readonly error: { readonly kind: string; readonly message: string } };
   readonly voice: VoiceDiagnosticsView;

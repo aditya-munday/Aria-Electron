@@ -39,7 +39,7 @@ function emptyState(): ControlCenterState {
       chatShortcut: { enabled: true, accelerator: 'Super+Alt+A', registered: true },
     },
     ariaConfig: {
-      backendBaseUrl: 'https://api.beyonders.dev',
+      backendBaseUrl: 'https://api.adityamunday.codes',
       requestTimeoutMs: 30000,
       model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)', fixed: true },
       options: [],

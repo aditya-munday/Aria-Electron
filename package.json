@@ -1,6 +1,6 @@
 {
   "name": "aria-desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Aria — the local-first voice assistant desktop client (Electron).",
   "type": "module",
@@ -31,12 +31,12 @@
     "vitest": "^2.1.8"
   },
   "author": {
-    "name": "Beyonders",
-    "email": "dev@beyonders.dev"
+    "name": "Aditya Munday",
+    "email": "dev@adityamunday.codes"
   },
-  "homepage": "https://beyonders.dev",
+  "homepage": "https://adityamunday.codes",
   "build": {
-    "appId": "dev.beyonders.aria",
+    "appId": "dev.adityamunday.aria",
     "productName": "Aria",
     "artifactName": "aria-electron_${version}_${arch}.deb",
     "directories": {
@@ -57,7 +57,7 @@
         }
       ],
       "category": "Utility",
-      "maintainer": "Beyonders <dev@beyonders.dev>",
+      "maintainer": "Aditya Munday <dev@adityamunday.codes>",
       "synopsis": "Aria - the local-first voice assistant desktop client",
       "description": "Aria is the Linux-native desktop client of the Aria /v1 wire contract. Control Center, Orb presence, chat surface and honest stop/mute/interrupt/recovery controls.",
       "executableName": "aria-desktop",

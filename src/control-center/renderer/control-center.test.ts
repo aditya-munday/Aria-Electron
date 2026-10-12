@@ -49,7 +49,7 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
       chatShortcut: { enabled: true, accelerator: 'Super+Alt+A', registered: true },
     },
     ariaConfig: {
-      backendBaseUrl: 'https://api.beyonders.dev',
+      backendBaseUrl: 'https://api.adityamunday.codes',
       requestTimeoutMs: 30000,
       model: {
         provider: 'groq',
@@ -210,7 +210,7 @@ describe('control center renderer', () => {
 
   it('shows the backend URL nowhere in the interface', () => {
     render(state());
-    expect(document.body.textContent).not.toContain('api.beyonders.dev');
+    expect(document.body.textContent).not.toContain('api.adityamunday.codes');
   });
 
   it('renders a sign-in form with email and token fields when signed out', () => {

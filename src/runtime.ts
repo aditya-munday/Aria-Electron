@@ -128,7 +128,9 @@ export class AriaRuntime {
       voice.setStreamingSupport({
         stt: capabilities.value.streaming_stt,
         tts: capabilities.value.streaming_tts,
+        chat: capabilities.value.streaming_chat,
       });
+      voice.setOutputControls(capabilities.value.output_controls);
     } catch {
       // Capabilities is advisory; push-to-talk and wake word still work.
     }

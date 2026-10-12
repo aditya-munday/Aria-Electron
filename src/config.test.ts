@@ -5,7 +5,7 @@ import { loadConfig, loadSessionToken, normalizeBaseUrl } from './config.js';
 describe('loadConfig', () => {
   it('defaults to the Beyonders backend when the environment is empty', () => {
     const config = loadConfig({} as NodeJS.ProcessEnv);
-    expect(config.backendBaseUrl).toBe('https://api.beyonders.dev');
+    expect(config.backendBaseUrl).toBe('https://api.adityamunday.codes');
     expect(config.requestTimeoutMs).toBe(30_000);
     expect(config.model.provider).toBe('groq');
     expect(config.model.id).toBe('groq/llama-3.3-70b-versatile');
@@ -13,10 +13,10 @@ describe('loadConfig', () => {
 
   it('reads the backend URL and timeout from the environment', () => {
     const config = loadConfig({
-      ARIA_BACKEND_URL: 'https://api.beyonders.example/',
+      ARIA_BACKEND_URL: 'https://api.example.test/',
       ARIA_REQUEST_TIMEOUT_MS: '5000',
     } as NodeJS.ProcessEnv);
-    expect(config.backendBaseUrl).toBe('https://api.beyonders.example');
+    expect(config.backendBaseUrl).toBe('https://api.example.test');
     expect(config.requestTimeoutMs).toBe(5000);
   });
 

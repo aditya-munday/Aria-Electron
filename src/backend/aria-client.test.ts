@@ -38,6 +38,32 @@ describe('AriaClient unary routes', () => {
     expect(result.value.backend_version).toBe('2026.10.0');
   });
 
+  it('surfaces the output controls the Backend advertises', async () => {
+    const t = new InMemoryTransport().on({
+      method: 'GET',
+      path: '/v1/capabilities',
+      status: 200,
+      body: { ...CAPABILITIES, output_controls: { pitch: true, volume: false, styles: true } },
+    });
+    const result = await client(t).capabilities();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.output_controls).toEqual({ pitch: true, volume: false, styles: true });
+  });
+
+  it('leaves output controls absent when the Backend does not advertise them', async () => {
+    const t = new InMemoryTransport().on({
+      method: 'GET',
+      path: '/v1/capabilities',
+      status: 200,
+      body: CAPABILITIES,
+    });
+    const result = await client(t).capabilities();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.output_controls).toBeUndefined();
+  });
+
   it('rejects a mismatched contract_version as malformed, never a downgrade', async () => {
     const t = new InMemoryTransport().on({
       method: 'GET',
@@ -176,5 +202,20 @@ describe('AriaClient stt/tts streams', () => {
     });
     const events = await collect(client(t).ttsStream({ text: 'hi' }));
     expect(events.map((e) => e.sequence)).toEqual([0, 1]);
+  });
+
+  it('forwards output controls on the synthesis stream', async () => {
+    const t = new InMemoryTransport().onStream({
+      method: 'POST',
+      path: '/v1/tts/stream',
+      status: 200,
+      lines: [
+        '{"contract_version":1,"sequence":0,"is_final":true,"audio":{"sample_rate":16000,"channels":1,"samples_le_base64":"AA=="}}',
+      ],
+    });
+    await collect(
+      client(t).ttsStream({ text: 'hi', pitch: 1.2, volume: 0.8, style: 'warm' }),
+    );
+    expect(t.recorded()[0]?.body).toMatchObject({ pitch: 1.2, volume: 0.8, style: 'warm' });
   });
 });
