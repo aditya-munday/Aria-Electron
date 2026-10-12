@@ -86,6 +86,8 @@ export class VoiceRuntime {
   private lastError: VoiceError | undefined;
   private devices: readonly AudioDevice[] = [];
   private unsubscribeDeviceChange: (() => void) | undefined;
+  private streamingStt = false;
+  private streamingTts = false;
 
   constructor(deps: VoiceRuntimeDeps) {
     validateVoiceConfig(deps.config);
@@ -133,6 +135,16 @@ export class VoiceRuntime {
         `The voice "${configured}" is not offered by the Backend.`,
       );
     }
+  }
+
+  /**
+   * Record the streaming modalities the Backend advertised, so a session streams
+   * transcription and synthesis only when the Backend can serve them. A false
+   * value (or a proxy without the streaming path) falls back to the batch call.
+   */
+  setStreamingSupport(streaming: { readonly stt: boolean; readonly tts: boolean }): void {
+    this.streamingStt = streaming.stt && this.speech.transcribeStream !== undefined;
+    this.streamingTts = streaming.tts && this.speech.synthesizeStream !== undefined;
   }
 
   diagnostics(): VoiceRuntimeDiagnostics {
@@ -402,6 +414,8 @@ export class VoiceRuntime {
       events: this.events,
       now: this.now,
       ...(this.deviceId !== undefined ? { deviceId: this.deviceId } : {}),
+      streamingStt: this.streamingStt,
+      streamingTts: this.streamingTts,
     });
     this.current = session;
     this.events.emit({ type: 'session.started', sessionId: id, at: this.now(), source });

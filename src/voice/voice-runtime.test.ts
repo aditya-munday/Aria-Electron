@@ -363,6 +363,42 @@ describe('VoiceRuntime voice discovery', () => {
   });
 });
 
+describe('VoiceRuntime streaming support', () => {
+  async function runPushToTalk(built: Built): Promise<void> {
+    await built.runtime.pushToTalkPress();
+    await waitFor(() => built.microphone.lastHandle()?.isStarted === true, 'capture start');
+    for (let i = 0; i < 20; i += 1) built.microphone.lastHandle()?.emit(FRAME);
+    built.clock.advance(300);
+    await built.runtime.pushToTalkRelease();
+  }
+
+  it('streams transcription and synthesis when the Backend advertises both', async () => {
+    const speech = new SpeechDouble({
+      sttText: 'hello',
+      sttStreamPartials: ['hel'],
+      ttsStreamChunks: 2,
+    });
+    const built = build({ speech });
+    built.runtime.setStreamingSupport({ stt: true, tts: true });
+    await runPushToTalk(built);
+    await waitFor(() => built.speech.ttsStreamCalls.length === 1, 'stream synthesis');
+    expect(built.speech.sttCalls).toHaveLength(0);
+    expect(built.speech.sttStreamCalls).toHaveLength(1);
+    expect(built.speech.ttsCalls).toHaveLength(0);
+  });
+
+  it('uses the batch speech path when streaming is not advertised', async () => {
+    const speech = new SpeechDouble({ sttText: 'hello' });
+    const built = build({ speech });
+    built.runtime.setStreamingSupport({ stt: false, tts: false });
+    await runPushToTalk(built);
+    await waitFor(() => built.speech.ttsCalls.length === 1, 'batch tts');
+    expect(built.speech.sttCalls).toHaveLength(1);
+    expect(built.speech.sttStreamCalls).toHaveLength(0);
+    expect(built.speech.ttsStreamCalls).toHaveLength(0);
+  });
+});
+
 describe('VoiceRuntime backend outage', () => {
   it('does not disable local activation when the backend is unavailable', async () => {
     const speech = new SpeechDouble({ sttError: new VoiceError('backend_unavailable', 'down') });

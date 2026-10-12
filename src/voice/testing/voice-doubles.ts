@@ -9,7 +9,14 @@
  */
 
 import type { AudioPayload, RouteHint } from '../../contract/aria-contract.js';
-import type { SpeechProxy, SttResult, TtsOptions } from '../speech.js';
+import type {
+  SpeechProxy,
+  SttResult,
+  SttStreamChunk,
+  SttStreamInput,
+  TtsOptions,
+  TtsStreamInput,
+} from '../speech.js';
 import type {
   WakeWordDetection,
   WakeWordDetector,
@@ -27,11 +34,21 @@ export interface SpeechDoubleOptions {
   readonly ttsSamples?: number;
   /** Delay STT resolution by this many microtask ticks. */
   readonly sttDelayTicks?: number;
+  /** Partial transcripts emitted (in order) before the final transcript. */
+  readonly sttStreamPartials?: readonly string[];
+  /** Whether the streaming transcription emits a final event (default true). */
+  readonly sttStreamFinal?: boolean;
+  readonly sttStreamError?: Error;
+  /** The number of audio chunks a streaming synthesis yields. */
+  readonly ttsStreamChunks?: number;
+  readonly ttsStreamError?: Error;
 }
 
 export class SpeechDouble implements SpeechProxy {
   readonly sttCalls: { audio: AudioPayload; language?: string | null }[] = [];
   readonly ttsCalls: ({ text: string } & TtsOptions)[] = [];
+  readonly sttStreamCalls: SttStreamInput[] = [];
+  readonly ttsStreamCalls: TtsStreamInput[] = [];
   private readonly options: SpeechDoubleOptions;
 
   constructor(options: SpeechDoubleOptions = {}) {
@@ -54,16 +71,31 @@ export class SpeechDouble implements SpeechProxy {
     return { text: this.options.sttText ?? '' };
   }
 
+  async *transcribeStream(input: SttStreamInput): AsyncIterable<SttStreamChunk> {
+    this.sttStreamCalls.push(input);
+    if (this.options.sttStreamError !== undefined) throw this.options.sttStreamError;
+    for (const text of this.options.sttStreamPartials ?? []) {
+      yield { text, final: false };
+    }
+    if (this.options.sttStreamFinal ?? true) {
+      yield { text: this.options.sttText ?? '', final: true };
+    }
+  }
+
   async synthesize(input: { readonly text: string } & TtsOptions): Promise<AudioPayload> {
     this.ttsCalls.push(input);
     if (this.options.ttsError !== undefined) throw this.options.ttsError;
     const samples = this.options.ttsSamples ?? 320;
-    const pcm = toInt16(tone(samples, 0.3));
-    return {
-      sample_rate: 16_000,
-      channels: 1,
-      samples_le_base64: bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
-    };
+    return pcmPayload(toInt16(tone(samples, 0.3)));
+  }
+
+  async *synthesizeStream(input: TtsStreamInput): AsyncIterable<AudioPayload> {
+    this.ttsStreamCalls.push(input);
+    if (this.options.ttsStreamError !== undefined) throw this.options.ttsStreamError;
+    const chunks = this.options.ttsStreamChunks ?? 2;
+    for (let i = 0; i < chunks; i += 1) {
+      yield pcmPayload(toInt16(tone(160, 0.3)));
+    }
   }
 
   async capabilities(): Promise<{
@@ -81,6 +113,14 @@ export class SpeechDouble implements SpeechProxy {
       streamingTts: false,
     };
   }
+}
+
+function pcmPayload(pcm: Int16Array): AudioPayload {
+  return {
+    sample_rate: 16_000,
+    channels: 1,
+    samples_le_base64: bytesToBase64(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)),
+  };
 }
 
 export interface FakeWakeWordOptions {

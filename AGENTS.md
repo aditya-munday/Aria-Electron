@@ -84,6 +84,15 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   and voice reconciliation (`discoverVoices`).
 - `speech.ts` (`BackendSpeechProxy`) and `orchestrator.ts` (`ChatOrchestrator`)
   are the only pieces that touch the backend, through `AriaClient`.
+  `SpeechProxy` also exposes optional `transcribeStream`/`synthesizeStream`; when
+  the Backend advertises `streaming_stt`/`streaming_tts` (wired in through
+  `VoiceRuntime.setStreamingSupport`), `VoiceSession` consumes the stream:
+  partial `transcript` events are emitted as they arrive (the authoritative
+  final transcript still comes from the caller), and synthesis chunks are played
+  incrementally through `Speaker.playStream`. A stream that ends without a final
+  event, or a synthesis stream that fails, is a failed turn — never a fabricated
+  transcript or a claimed playback. Stream failures are mapped onto the same
+  `VoiceError` taxonomy as the batch calls (`voiceErrorFromStream`).
 - `device.ts` defines the `Microphone`/`Speaker`/capture seams; `audio-tool.ts`
   probes the host (once, at startup) for a command-line recorder and player
   (`parec`/`arecord`/`pw-record`, `pacat`/`aplay`/`pw-play`) and exposes the
@@ -265,7 +274,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 523 tests / 57 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 537 tests / 57 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

@@ -41,4 +41,28 @@ describe('ManualSpeaker', () => {
     const speaker = new ManualSpeaker();
     await expect(speaker.stop()).resolves.toBeUndefined();
   });
+
+  it('plays a stream of chunks and records each one', async () => {
+    const speaker = new ManualSpeaker();
+    async function* chunks(): AsyncGenerator<Int16Array, void, void> {
+      yield new Int16Array([1]);
+      yield new Int16Array([2, 3]);
+    }
+    await expect(
+      speaker.playStream(chunks(), { sampleRate: 16000, channels: 1 }),
+    ).resolves.toBeUndefined();
+    expect(speaker.playedBuffers()).toHaveLength(2);
+  });
+
+  it('interrupts a streaming playback promptly', async () => {
+    const speaker = new ManualSpeaker();
+    async function* endless(): AsyncGenerator<Int16Array, void, void> {
+      yield new Int16Array([1]);
+      await new Promise<void>(() => undefined);
+    }
+    const playing = speaker.playStream(endless(), { sampleRate: 16000, channels: 1 });
+    await Promise.resolve();
+    await speaker.stop();
+    await expect(playing).rejects.toMatchObject({ kind: 'cancelled' });
+  });
 });

@@ -223,6 +223,74 @@ export class PcmPlayback {
     });
   }
 
+  /**
+   * Play PCM chunks as they arrive through one long-lived player process, so the
+   * response begins before synthesis ends. `stop()` kills the player promptly;
+   * a player that dies early rejects with `playback_failed` rather than
+   * resolving as if the audio were heard.
+   */
+  async playStream(
+    chunks: AsyncIterable<Int16Array>,
+    format: AudioFormat,
+  ): Promise<void> {
+    if (this.process !== undefined || this.current !== undefined) await this.stop();
+    this.stopped = false;
+    const spawnProcess = this.options.spawn ?? defaultAudioSpawn;
+    let process: AudioChildProcess;
+    try {
+      process = spawnProcess(this.options.command, [...this.options.argsFor(format)], {
+        stdio: ['pipe', 'ignore', this.options.stdErr ?? 'ignore'],
+      });
+    } catch (error) {
+      throw new VoiceError('playback_failed', describeError(error));
+    }
+    this.process = process;
+    const stdin = process.stdin;
+    if (stdin === null) {
+      this.process = undefined;
+      throw new VoiceError('playback_failed', 'The player produced no input stream.');
+    }
+    await new Promise<void>((resolve, reject) => {
+      this.current = { resolve, reject };
+      process.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      process.on('close', (code) => {
+        if (this.stopped) return;
+        this.process = undefined;
+        const current = this.current;
+        this.current = undefined;
+        if (current === undefined) return;
+        if (code === 0 || code === null) current.resolve();
+        else current.reject(new VoiceError('playback_failed', `The player exited with code ${code}.`));
+      });
+      stdin.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      void (async () => {
+        try {
+          for await (const chunk of chunks) {
+            if (this.stopped) return;
+            try {
+              stdin.write(toPcmBytes(chunk));
+            } catch (error) {
+              this.fail(new VoiceError('playback_failed', describeError(error)));
+              return;
+            }
+          }
+          if (this.stopped) return;
+          try {
+            stdin.end();
+          } catch {
+            // The player already exited; the close handler reports it.
+          }
+        } catch (error) {
+          this.fail(
+            error instanceof VoiceError
+              ? error
+              : new VoiceError('playback_failed', describeError(error)),
+          );
+        }
+      })();
+    });
+  }
+
   async stop(): Promise<void> {
     const process = this.process;
     this.process = undefined;

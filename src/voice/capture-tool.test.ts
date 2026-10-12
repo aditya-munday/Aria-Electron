@@ -158,4 +158,45 @@ describe('PcmPlayback', () => {
     expect(child.killed).toBe(true);
     await expect(done).rejects.toMatchObject({ kind: 'cancelled' });
   });
+
+  async function flush(ticks = 6): Promise<void> {
+    for (let i = 0; i < ticks; i += 1) await Promise.resolve();
+  }
+
+  it('streams chunks through one player and resolves when the stream ends', async () => {
+    const child = new FakeChild();
+    const playback = new PcmPlayback({
+      command: 'pacat',
+      argsFor: () => [],
+      spawn: spawnReturning(child),
+    });
+    async function* chunks(): AsyncGenerator<Int16Array, void, void> {
+      yield new Int16Array([1, 2]);
+      yield new Int16Array([3]);
+    }
+    const done = playback.playStream(chunks(), format);
+    await flush();
+    expect(child.stdinData).toHaveLength(2);
+    expect(child.ended).toBe(true);
+    child.close(0);
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it('interrupts a streaming playback immediately', async () => {
+    const child = new FakeChild();
+    const playback = new PcmPlayback({
+      command: 'pacat',
+      argsFor: () => [],
+      spawn: spawnReturning(child),
+    });
+    async function* endless(): AsyncGenerator<Int16Array, void, void> {
+      yield new Int16Array([1]);
+      await new Promise<void>(() => undefined);
+    }
+    const done = playback.playStream(endless(), format);
+    await flush();
+    await playback.stop();
+    expect(child.killed).toBe(true);
+    await expect(done).rejects.toMatchObject({ kind: 'cancelled' });
+  });
 });

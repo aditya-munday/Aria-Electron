@@ -33,9 +33,12 @@ function harness(options: {
   orchestrator?: RecordingOrchestrator;
   config?: VoiceRuntimeConfig;
   microphone?: FakeMicrophone;
+  speaker?: ManualSpeaker;
+  streamingStt?: boolean;
+  streamingTts?: boolean;
 }): Harness {
   const microphone = options.microphone ?? new FakeMicrophone();
-  const speaker = new ManualSpeaker();
+  const speaker = options.speaker ?? new ManualSpeaker();
   const speech = options.speech ?? new SpeechDouble({ sttText: 'hello world' });
   const orchestrator = options.orchestrator ?? new RecordingOrchestrator();
   const bus = new VoiceEventBus();
@@ -50,6 +53,8 @@ function harness(options: {
     orchestrator,
     events: bus,
     now: () => 0,
+    ...(options.streamingStt !== undefined ? { streamingStt: options.streamingStt } : {}),
+    ...(options.streamingTts !== undefined ? { streamingTts: options.streamingTts } : {}),
   });
   return { session, microphone, speaker, speech, orchestrator, events };
 }
@@ -324,5 +329,100 @@ describe('VoiceSession cancellation and stale results', () => {
     const response = h.events.find((e) => e.type === 'response');
     expect(response?.type === 'response' && response.route).toBeFalsy();
     expect(h.session.route).toBeUndefined();
+  });
+});
+
+describe('VoiceSession streaming', () => {
+  it('streams the transcription, emitting partials and using the final transcript', async () => {
+    const h = harness({
+      speech: new SpeechDouble({
+        sttText: 'hello world',
+        sttStreamPartials: ['hello', 'hello world'],
+      }),
+      streamingStt: true,
+    });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(h.speech.sttCalls).toHaveLength(0);
+    expect(h.speech.sttStreamCalls).toHaveLength(1);
+    const transcripts = h.events.filter((e) => e.type === 'transcript');
+    expect(transcripts.map((e) => (e.type === 'transcript' ? e.final : undefined))).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    expect(transcripts.at(-1)).toMatchObject({ text: 'hello world', final: true });
+    expect(h.orchestrator.calls).toEqual([{ text: 'hello world', sessionId: 's1' }]);
+  });
+
+  it('falls back to batch transcription when the Backend does not stream STT', async () => {
+    const h = harness({ speech: new SpeechDouble({ sttText: 'hello world' }) });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(h.speech.sttCalls).toHaveLength(1);
+    expect(h.speech.sttStreamCalls).toHaveLength(0);
+  });
+
+  it('fails observably when the transcription stream ends without a final event', async () => {
+    const h = harness({
+      speech: new SpeechDouble({ sttStreamPartials: ['hel'], sttStreamFinal: false }),
+      streamingStt: true,
+    });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await run;
+    expect(h.orchestrator.calls).toHaveLength(0);
+    expect(h.events.find((e) => e.type === 'session.failed')).toMatchObject({
+      kind: 'speech_failed',
+    });
+  });
+
+  it('streams synthesis and plays each chunk as it arrives', async () => {
+    const h = harness({
+      speech: new SpeechDouble({ sttText: 'hello', ttsStreamChunks: 3 }),
+      streamingTts: true,
+    });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await run;
+    expect(h.speech.ttsCalls).toHaveLength(0);
+    expect(h.speech.ttsStreamCalls).toHaveLength(1);
+    expect(h.speaker.playedBuffers()).toHaveLength(3);
+    expect(types(h.events)).toContain('playback.finished');
+    expect(h.session.response).toBe('response:hello');
+  });
+
+  it('does not erase the text response when the synthesis stream fails', async () => {
+    const h = harness({
+      speech: new SpeechDouble({
+        sttText: 'hello',
+        ttsStreamError: new VoiceError('speech_failed', 'stream down'),
+      }),
+      streamingTts: true,
+    });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await run;
+    expect(h.session.response).toBe('response:hello');
+    expect(
+      h.events.find((e) => e.type === 'session.failed' && e.kind === 'speech_failed'),
+    ).toBeDefined();
+    expect(types(h.events)).not.toContain('playback.finished');
   });
 });

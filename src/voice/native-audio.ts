@@ -111,6 +111,18 @@ export class NativeSpeaker implements Speaker {
     await this.playback.play(pcm, format);
   }
 
+  async playStream(
+    chunks: AsyncIterable<Int16Array>,
+    format: AudioFormat,
+  ): Promise<void> {
+    if (this.playback === undefined) {
+      // No player: drain the stream so the producer does not stall, then return.
+      for await (const _chunk of chunks) void _chunk;
+      return;
+    }
+    await this.playback.playStream(chunks, format);
+  }
+
   async stop(): Promise<void> {
     await this.playback?.stop();
   }
