@@ -370,9 +370,13 @@ export class VoiceSession {
     if (!this.finalizeRequested) {
       await new Promise<void>((resolve) => {
         this.utteranceResolve = resolve;
+        // A release can arrive after capture opened but before the first frame
+        // is delivered; without this the wait would never be resolved.
+        if (this.finalizeRequested) resolve();
       });
     }
     this.finalizeRequested = false;
+    this.utteranceResolve = undefined;
     if (this.isCancelled()) return { kind: 'empty' };
     return assembler.finish();
   }

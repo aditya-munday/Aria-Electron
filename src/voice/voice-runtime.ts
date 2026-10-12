@@ -173,7 +173,31 @@ export class VoiceRuntime {
       this.lastError = asVoiceError(error);
       return;
     }
+    if (!(await this.canStreamCapture())) {
+      // The wake-word listener needs a long-lived stream. A buffer-only backend
+      // still serves push-to-talk, so this is reported, not fatal.
+      this.lastError = new VoiceError(
+        'device_unavailable',
+        'No streaming capture device is available; wake-word listening is off, push-to-talk still works.',
+      );
+      return;
+    }
     await this.wakeListener.start();
+  }
+
+  /**
+   * Whether the microphone can hold a long-lived capture stream. A backend that
+   * only supports per-utterance capture reports no capture-capable devices, so
+   * the wake-word listener stands down rather than failing on every start.
+   */
+  private async canStreamCapture(): Promise<boolean> {
+    const capable = this.microphone.captureCapableDevices;
+    if (capable === undefined) return true;
+    try {
+      return (await capable.call(this.microphone)).length > 0;
+    } catch {
+      return false;
+    }
   }
 
   async stop(): Promise<void> {

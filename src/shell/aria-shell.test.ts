@@ -26,6 +26,7 @@ function key(kind: KeyEvent['kind'], repeat = false): KeyEvent {
 function build(
   initial: ShellSettings = DEFAULT_SETTINGS,
   backdrop?: import('../orb/backdrop.js').OrbBackdropPlan,
+  launchHidden = false,
 ) {
   const platform = new FakePlatform();
   const runtime = new FakeShellRuntime();
@@ -41,7 +42,7 @@ function build(
     }),
     runtime: interactionRuntime,
   });
-  const shell = new AriaShell({ platform, runtime, interaction, settings, backdrop });
+  const shell = new AriaShell({ platform, runtime, interaction, settings, backdrop, launchHidden });
   return { platform, runtime, voice, interactionRuntime, settings, shell };
 }
 
@@ -448,5 +449,63 @@ describe('settings persistence', () => {
     const saved = settings.load();
     expect(Object.keys(saved)).not.toContain('token');
     expect(saved.openWindows.every((w) => w !== undefined)).toBe(true);
+  });
+});
+
+describe('background launch', () => {
+  it('preloads the Control Center but leaves it hidden when launched at login', () => {
+    const { shell, platform } = build(DEFAULT_SETTINGS, undefined, true);
+    shell.start();
+    const controlCenter = platform.windows.handle('control_center');
+    expect(controlCenter?.visible).toBe(false);
+    expect(controlCenter?.shown).toBe(0);
+    expect(controlCenter?.focused).toBe(0);
+    // The runtime and the activation surfaces are still live in the background.
+    expect(controlCenter).toBeDefined();
+    expect(shell.isOpen('control_center')).toBe(false);
+    expect(shell.isOpen('orb')).toBe(true);
+  });
+
+  it('shows the Control Center on a normal launch', () => {
+    const { shell, platform } = build();
+    shell.start();
+    expect(platform.windows.handle('control_center')?.visible).toBe(true);
+  });
+});
+
+describe('tray', () => {
+  it('creates a tray with the three presence actions', () => {
+    const { shell, platform } = build();
+    shell.start();
+    expect(platform.tray.created).toBe(1);
+    expect(platform.tray.item('control-center')).toBeDefined();
+    expect(platform.tray.item('chat')).toBeDefined();
+    expect(platform.tray.item('orb')).toBeDefined();
+    expect(shell.trayActive()).toBe(true);
+  });
+
+  it('opens and hides the Orb from the tray', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.tray.item('orb')?.onClick();
+    await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(false);
+    platform.tray.item('orb')?.onClick();
+    await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(true);
+  });
+
+  it('reports no tray when the desktop does not provide one', () => {
+    const { shell, platform } = build();
+    platform.tray.active = false;
+    shell.start();
+    expect(shell.trayActive()).toBe(false);
+  });
+
+  it('destroys the tray on stop', () => {
+    const { shell, platform } = build();
+    shell.start();
+    shell.stop();
+    expect(platform.tray.destroyed).toBe(1);
   });
 });

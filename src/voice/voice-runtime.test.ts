@@ -120,6 +120,21 @@ describe('VoiceRuntime push-to-talk', () => {
 });
 
 describe('VoiceRuntime wake word', () => {
+  it('stands down the streaming listener when the microphone cannot stream', async () => {
+    const microphone = new FakeMicrophone({ captureCapable: false });
+    const built = build({
+      config: config({ wakeWord: { ...DEFAULT_VOICE_CONFIG.wakeWord, enabled: true } }),
+      microphone,
+      detector: new FakeWakeWordDetector({ id: 'local' }),
+    });
+    await built.runtime.start();
+    expect(built.runtime.diagnostics().listening).toBe(false);
+    expect(built.runtime.diagnostics().lastError?.kind).toBe('device_unavailable');
+    // Push-to-talk still works on the same buffer-only microphone.
+    await built.runtime.pushToTalkPress();
+    await waitFor(() => built.microphone.openCount === 1, 'capture open');
+  });
+
   it('activates a session from a local detection and emits an activation event', async () => {
     const detector = new FakeWakeWordDetector({
       id: 'local-detector',

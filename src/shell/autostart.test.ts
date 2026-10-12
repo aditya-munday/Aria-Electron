@@ -33,6 +33,18 @@ describe('autostart entry', () => {
     expect(entry).toContain('Exec=/opt/Aria/aria-desktop');
     expect(entry).toContain('X-GNOME-Autostart-enabled=true');
   });
+
+  it('launches into the background so login never steals focus', () => {
+    expect(autostartEntry('/opt/Aria/aria-desktop')).toContain(
+      'Exec=/opt/Aria/aria-desktop --hidden',
+    );
+  });
+
+  it('honours a custom background-launch argument', () => {
+    expect(autostartEntry('/opt/Aria/aria-desktop', '--tray-only')).toContain(
+      'Exec=/opt/Aria/aria-desktop --tray-only',
+    );
+  });
 });
 
 describe('autostart manager', () => {
@@ -43,6 +55,17 @@ describe('autostart manager', () => {
     );
     expect(result).toEqual({ ok: true, enabled: true, path });
     expect(fs.files.get(path)).toContain('Exec=/opt/Aria/aria-desktop');
+  });
+
+  it('threads the background-launch argument through to the written entry', () => {
+    const fs = fakeFs();
+    createAutostartManager({
+      directory,
+      execPath: '/opt/Aria/aria-desktop',
+      hiddenLaunchArg: '--tray-only',
+      fs,
+    }).apply(true);
+    expect(fs.files.get(path)).toContain('Exec=/opt/Aria/aria-desktop --tray-only');
   });
 
   it('removes the entry when disabling', () => {

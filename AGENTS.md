@@ -84,6 +84,24 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   and voice reconciliation (`discoverVoices`).
 - `speech.ts` (`BackendSpeechProxy`) and `orchestrator.ts` (`ChatOrchestrator`)
   are the only pieces that touch the backend, through `AriaClient`.
+- `device.ts` defines the `Microphone`/`Speaker`/capture seams; `audio-tool.ts`
+  probes the host (once, at startup) for a command-line recorder and player
+  (`parec`/`arecord`/`pw-record`, `pacat`/`aplay`/`pw-play`) and exposes the
+  raw-PCM argv for each. `capture-tool.ts` (`StreamingCapture`, `PcmPlayback`)
+  drives those processes: it slices the recorder stream into fixed frames and
+  converts s16le to Float64. `native-audio.ts` (`createNativeAudio`) composes a
+  `Microphone`/`Speaker` over that backend; with no recorder the microphone
+  denies permission and offers no devices, so push-to-talk is honestly inert
+  rather than silently broken.
+- `voice-runtime.ts` `start()` awaits `refreshDevices()` and only starts the
+  wake listener when a capture-capable device exists; a buffer-only microphone
+  (the fake, or a host with no recorder) stands the listener down with a
+  `device_unavailable` diagnostic while push-to-talk keeps working. This is why
+  the wake listener is gated on real capture capability, not merely on the
+  detector being enabled.
+- `session.ts` finalizes the utterance on push-to-talk release even when no
+  speech was detected (the VAD is off by one at the boundary), and a release
+  that lands before the first frame completes the turn instead of hanging.
 - `testing/` holds deterministic doubles (`FakeMicrophone`, `ManualSpeaker`,
   `SpeechDouble`, `RecordingOrchestrator`, `manualClock`); tests use these, not
   mocks of the module under test.
@@ -154,7 +172,19 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   make key/shortcut tests deterministic.
 - `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
   `Platform`) — the seam that keeps the shell testable without Electron.
-  `Platform = { windows, keys, shortcuts }`.
+  `Platform = { windows, keys, shortcuts, tray }`. `WindowOptions.launchHidden`
+  marks the window the shell preloads but leaves off screen on a login launch
+  (`--hidden`); `Platform.tray` (`TrayHost`) is optional so a desktop without a
+  status area is reported, not faked.
+- Always-available presence: `AriaShell` creates a tray (`tray-icon.ts` holds an
+  embedded 32×32 PNG) with Open Control Center / Open Chat / Show-Hide Orb
+  actions, refreshed as visibility changes; `main.ts` passes `launchHidden` from
+  `process.argv.includes('--hidden')`. `shell/autostart.ts`
+  (`createAutostartManager`, `autostartEntry`) writes an XDG autostart desktop
+  entry whose `Exec` carries the same hidden-launch argument and an
+  `X-GNOME-Autostart-Delay`, so a login launch comes up in the background and
+  never steals focus. The autostart entry and settings persistence are both
+  skipped while signed out.
 - `interaction-runtime.ts` (`VoiceInteractionRuntime`) — adapts a
   `VoiceRuntimeLike` to the controller's `InteractionRuntime` seam and counts
   captures started, so tests can assert "a capture start is the only thing that
@@ -235,9 +265,10 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 494 tests / 54 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 523 tests / 57 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
-`FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
+`FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
+`FakeVoiceRuntime`.
 
 ## Chat and task submission (`src/chat/`)
 

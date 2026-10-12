@@ -3,6 +3,8 @@ import type {
   KeyListener,
   Platform,
   ShortcutRegistration,
+  TrayHost,
+  TrayMenuItem,
   WindowFactory,
   WindowHandle,
   WindowKind,
@@ -28,11 +30,12 @@ export class FakeWindowHandle implements WindowHandle {
   focused = 0;
   hidden = 0;
   closed = 0;
+  private launchHiddenConsumed = false;
 
   constructor(kind: WindowKind, options: WindowOptions) {
     this.kind = kind;
     this.options = options;
-    this.visible = !options.startHidden;
+    this.visible = !options.startHidden && options.launchHidden !== true;
     this.bounds = options.bounds ?? { x: 0, y: 0, width: 0, height: 0 };
     this.ignoreMouse = options.clickThrough === true;
     this.ignoreMouseForward = options.clickThrough === true;
@@ -40,6 +43,10 @@ export class FakeWindowHandle implements WindowHandle {
   }
 
   show(): void {
+    if (this.options.launchHidden === true && !this.launchHiddenConsumed) {
+      this.launchHiddenConsumed = true;
+      return;
+    }
     this.visible = true;
     this.shown += 1;
   }
@@ -146,11 +153,44 @@ export class FakeShortcutRegistration implements ShortcutRegistration {
   }
 }
 
+export class FakeTray implements TrayHost {
+  created = 0;
+  destroyed = 0;
+  active = true;
+  tooltip = '';
+  iconDataUrl = '';
+  menu: readonly TrayMenuItem[] = [];
+
+  create(options: {
+    readonly tooltip: string;
+    readonly iconDataUrl: string;
+    readonly items: readonly TrayMenuItem[];
+  }): void {
+    this.created += 1;
+    this.tooltip = options.tooltip;
+    this.iconDataUrl = options.iconDataUrl;
+    this.menu = options.items;
+  }
+  setMenu(items: readonly TrayMenuItem[]): void {
+    this.menu = items;
+  }
+  destroy(): void {
+    this.destroyed += 1;
+  }
+  isActive(): boolean {
+    return this.active;
+  }
+  item(id: string): TrayMenuItem | undefined {
+    return this.menu.find((entry) => entry.id === id);
+  }
+}
+
 export class FakePlatform implements Platform {
   readonly windows = new FakeWindowFactory();
   readonly keys = new FakeKeyListener();
   readonly shortcuts = new FakeShortcutRegistration();
   readonly screen = new FakeScreenProvider();
+  readonly tray = new FakeTray();
 }
 
 export class FakeShellRuntime implements ShellRuntime {

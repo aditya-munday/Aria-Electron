@@ -16,6 +16,8 @@ import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
 import { createAutostartManager } from './shell/autostart.js';
 import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
+import { createNativeAudio } from './voice/native-audio.js';
+import { loadVoiceConfig } from './voice/voice-config.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import type { PreviewVoiceResult } from './shell/ipc.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
@@ -35,6 +37,8 @@ function main(): void {
   const userData = app.getPath('userData');
   const settings = createFileSettingsStore(userData);
   const config = loadConfig();
+  // A login launch passes `--hidden`: preload the Control Center but keep it off screen.
+  const launchHidden = process.argv.includes('--hidden');
   const errors = new ErrorReporter({
     sink: (entry) => {
       process.stderr.write(`[aria] ${entry.source}: ${entry.message}\n`);
@@ -42,18 +46,38 @@ function main(): void {
   });
   process.on('uncaughtException', (error) => errors.report('uncaughtException', error));
   process.on('unhandledRejection', (reason) => errors.report('unhandledRejection', reason));
-  const runtime = new AriaRuntime({ statePath: `${userData}/supervision.json` });
+
+  const voiceConfig = loadVoiceConfig();
+  const audio = createNativeAudio({
+    frameMs: voiceConfig.vad.frameMs,
+    sampleRate: voiceConfig.sampleRate,
+  });
+  const runtime = new AriaRuntime({
+    statePath: `${userData}/supervision.json`,
+    microphone: audio.microphone,
+    speaker: audio.speaker,
+    voiceConfig,
+  });
   if (runtime.isSignedIn()) {
     process.stdout.write('[aria] Session token loaded from ARIA_SESSION_TOKEN.\n');
   } else {
     process.stdout.write('[aria] No ARIA_SESSION_TOKEN set; starting signed out.\n');
   }
+  process.stdout.write(
+    audio.backend.capture
+      ? `[aria] Audio capture via ${audio.backend.captureCommand}.\n`
+      : '[aria] No command-line audio capture tool found; push-to-talk is inert on this host.\n',
+  );
 
   const voice = runtime.voice;
   const interactionRuntime: InteractionRuntime =
     voice !== undefined ? createVoiceInteractionRuntime(voice) : inertVoiceRuntime();
 
+  // Signed out, the app has no account to persist settings or autostart for.
+  const signedIn = (): boolean => runtime.isSignedIn();
+
   const applySettingsToRuntime = (next: ShellSettings): void => {
+    if (!signedIn()) return;
     void runtime.voice?.setWakeWordEnabled(next.wakeWordEnabled).catch((error: unknown) => {
       errors.report('settings:wakeWord', error);
     });
@@ -70,15 +94,17 @@ function main(): void {
       process.env.XDG_CONFIG_HOME ?? join(app.getPath('home'), '.config'),
       'autostart',
     ),
-    execPath: process.execPath,
+    execPath: app.getPath('exe'),
+    hiddenLaunchArg: '--hidden',
   });
   const applyAutostart = (next: ShellSettings): void => {
+    if (!signedIn()) return;
     const result = autostart.apply(next.startOnLogin);
     if (!result.ok) errors.report('settings:autostart', result.reason);
   };
 
   const microphonePermission = (): PermissionState =>
-    voice !== undefined ? 'granted' : 'denied';
+    audio.backend.capture ? 'granted' : 'denied';
 
   const environmentSource = (): InteractionEnvironment => ({
     wakeWordEnabled: settings.load().wakeWordEnabled,
@@ -102,6 +128,7 @@ function main(): void {
     runtime,
     interaction,
     settings,
+    launchHidden,
     backdrop: planOrbBackdrop(process.platform, screen.getPrimaryDisplay().bounds),
   });
   settings.subscribe?.((next) => {
@@ -126,12 +153,13 @@ function main(): void {
     },
     microphonePermission,
     voiceEngine: () =>
-      voice !== undefined
+      voice !== undefined && audio.backend.capture
         ? { kind: 'native' }
         : {
             kind: 'unavailable',
-            reason:
-              'This build ships without a bound microphone and speaker; voice capture is inert.',
+            reason: audio.backend.capture
+              ? 'The voice runtime is not bound on this build.'
+              : 'No command-line audio capture tool (parec, arecord or pw-record) is installed; voice capture is inert.',
           },
   });
 
