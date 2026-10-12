@@ -346,7 +346,7 @@ function appearancePanel(
       'Start Aria when you sign in',
       appearance.startOnLogin,
       true,
-      'Stored here; the packaged app applies it through the desktop autostart entry.',
+      'Aria writes an XDG autostart entry so it launches when you sign in.',
       (next) => {
         void bridge.updateSettings({ startOnLogin: next }).then(refresh);
       },
