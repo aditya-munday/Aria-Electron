@@ -1,5 +1,7 @@
 import { app, ipcMain, screen } from 'electron';
 
+import { join } from 'node:path';
+
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
 import { InteractionController } from './interaction/interaction-controller.js';
@@ -12,6 +14,7 @@ import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
 import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
+import { createAutostartManager } from './shell/autostart.js';
 import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
@@ -56,6 +59,18 @@ function main(): void {
     runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
   };
 
+  const autostart = createAutostartManager({
+    directory: join(
+      process.env.XDG_CONFIG_HOME ?? join(app.getPath('home'), '.config'),
+      'autostart',
+    ),
+    execPath: process.execPath,
+  });
+  const applyAutostart = (next: ShellSettings): void => {
+    const result = autostart.apply(next.startOnLogin);
+    if (!result.ok) errors.report('settings:autostart', result.reason);
+  };
+
   const microphonePermission = (): PermissionState =>
     voice !== undefined ? 'granted' : 'denied';
 
@@ -74,6 +89,7 @@ function main(): void {
   // can fire; otherwise a saved push-to-talk mode or wake-word preference is
   // ignored until the user happens to touch that control again.
   applySettingsToRuntime(settings.load());
+  applyAutostart(settings.load());
 
   const shell = new AriaShell({
     platform: createElectronPlatform({
@@ -86,6 +102,7 @@ function main(): void {
   });
   settings.subscribe?.((next) => {
     applySettingsToRuntime(next);
+    applyAutostart(next);
   });
 
   const controlCenter = new ControlCenterService({
