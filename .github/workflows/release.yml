@@ -37,6 +37,11 @@ jobs:
           file=$(ls release/*.deb | head -n1)
           echo "file=$file" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$file")" >> "$GITHUB_OUTPUT"
+      - name: Smoke test the installed package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          node scripts/smoke-deb.mjs "${{ steps.pkg.outputs.file }}"
       - name: Checksum
         run: sha256sum "${{ steps.pkg.outputs.file }}" > "${{ steps.pkg.outputs.file }}.sha256"
       - name: Attach to release
