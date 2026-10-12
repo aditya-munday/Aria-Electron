@@ -63,11 +63,15 @@ main process writes them to stderr). It never fabricates success.
 
 `SettingsStore.subscribe` (implemented by both the in-memory and file stores)
 lets the main process push a settings change to the voice runtime
-(`setWakeWordEnabled`, `setPushToTalkMode`, `setSpeechOutput`) the moment it is
-saved, rather than only applying it on the next Control Center refresh. The
-renderer reads current settings through the `aria:shell:settings` IPC channel.
-`setSpeechOutput` changes the voice/language/speed used by subsequent sessions
-only; a session already in flight keeps the output it started with.
+(`setWakeWordEnabled`, `setPushToTalkMode`, `setSpeakResponses`,
+`setSpeechOutput`) the moment it is saved, rather than only applying it on the
+next Control Center refresh. `applySettingsToRuntime` in `src/main.ts` is the
+single applier, called at startup, on every settings change, and on sign-in, so
+a persisted `speakResponses` is honoured on the first voice turn rather than
+only after an unrelated toggle. The renderer reads current settings through the
+`aria:shell:settings` IPC channel. `setSpeechOutput` changes the
+voice/language/speed used by subsequent sessions only; a session already in
+flight keeps the output it started with.
 
 ## Voice pipeline (`src/voice/`)
 
@@ -93,6 +97,12 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   event, or a synthesis stream that fails, is a failed turn — never a fabricated
   transcript or a claimed playback. Stream failures are mapped onto the same
   `VoiceError` taxonomy as the batch calls (`voiceErrorFromStream`).
+  `session.ts` `classifyStageError` keeps a real `VoiceError` and only coerces an
+  unknown throw with the stage fallback (`speech_failed` for STT/TTS,
+  `backend_unavailable` for orchestration); a cancellation is always reported as
+  `cancelled`. `backend/ndjson.ts` `readNdjson` cancels its reader in `finally`,
+  so a consumer that stops at the terminal event does not leave the HTTP body
+  unconsumed and the connection pinned.
 - `orchestrator.ts` (`ChatOrchestrator`) also owns chat streaming:
   `respondStream` consumes `/v1/chat/stream`, forwards each `delta` to the
   session (`response.delta` events) and returns the authoritative text. The
@@ -305,7 +315,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 589 tests / 60 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 598 tests / 61 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

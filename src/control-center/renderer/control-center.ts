@@ -542,7 +542,7 @@ function generalPanel(
   );
 
   const theme = card(doc, 'Accent');
-  theme.append(hint(doc, 'Tint the Control Center and the Orb to match your desktop.'));
+  theme.append(hint(doc, 'Tint the Control Center interface to match your desktop.'));
   theme.append(
     select(
       doc,
@@ -1335,11 +1335,23 @@ function renderSidebar(
     tab.id = `tab-${id}`;
     tab.setAttribute('aria-controls', `panel-${id}`);
     tab.setAttribute('aria-selected', String(id === active));
+    tab.tabIndex = id === active ? 0 : -1;
     tab.append(icon(doc, meta.icon));
     const label = h(doc, 'span');
     text(label, meta.label);
     tab.append(label);
     tab.addEventListener('click', () => onSelect(id));
+    tab.addEventListener('keydown', (event) => {
+      const index = TABS.indexOf(id);
+      let next: TabId | undefined;
+      if (event.key === 'ArrowDown') next = TABS[(index + 1) % TABS.length];
+      else if (event.key === 'ArrowUp') next = TABS[(index - 1 + TABS.length) % TABS.length];
+      else if (event.key === 'Home') next = TABS[0];
+      else if (event.key === 'End') next = TABS[TABS.length - 1];
+      if (next === undefined) return;
+      event.preventDefault();
+      onSelect(next);
+    });
     tabs.append(tab);
   }
   nav.append(tabs);
@@ -1373,6 +1385,8 @@ export function renderControlCenter(
 ): void {
   const root = doc.getElementById('control-center');
   if (root === null) return;
+  const active = doc.activeElement;
+  const focusId = active instanceof HTMLElement ? active.id : '';
   root.setAttribute('aria-busy', 'false');
   applyAccent(doc, state);
 
@@ -1423,6 +1437,22 @@ export function renderControlCenter(
     panelsToRender[id].setAttribute('data-active', String(id === activeTab));
   }
   panels.replaceChildren(...TABS.map((id) => panelsToRender[id]));
+
+  // A keyboard tab change re-renders the whole tree; keep focus on the newly
+  // active tab rather than the stale one, and restore any other focused control.
+  if (focusId.startsWith('tab-')) restoreFocus(doc, `tab-${activeTab}`);
+  else if (focusId !== '') restoreFocus(doc, focusId);
+}
+
+/**
+ * Re-focus the element that had focus before a re-render replaced the tree, so
+ * an arrow-key tab selection keeps the keyboard on a tab rather than dropping
+ * focus to the document.
+ */
+function restoreFocus(doc: Document, id: string): void {
+  const next = doc.getElementById(id);
+  if (next === null || !(next instanceof HTMLElement)) return;
+  next.focus();
 }
 
 export function bootstrapControlCenter(doc: Document, bridge: ControlCenterBridge): void {

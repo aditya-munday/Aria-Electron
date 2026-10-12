@@ -420,4 +420,21 @@ describe('chat renderer', () => {
     });
     expect(document.querySelector('.turn-user .text')?.textContent).toBe('ship it');
   });
+
+  it('keeps the caret in the composer across a repaint', () => {
+    document.body.innerHTML = '<main id="chat"></main>';
+    const rec = recorder();
+    const root = document.getElementById('chat') as HTMLElement;
+    renderChat(document, emptyState(), rec.bridge);
+    const input = document.querySelector('[data-testid="composer-input"]') as HTMLInputElement;
+    input.focus();
+    input.value = 'draft text';
+    input.setSelectionRange(4, 4);
+
+    renderChat(document, emptyState(), rec.bridge);
+
+    const repainted = document.querySelector('[data-testid="composer-input"]') as HTMLInputElement;
+    expect(document.activeElement).toBe(repainted);
+    expect(root.scrollTop).toBe(0);
+  });
 });

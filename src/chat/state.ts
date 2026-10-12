@@ -1,5 +1,4 @@
 import type { TaskPhase } from '../supervisor/supervisor.js';
-import type { OperationDescriptor } from '../supervisor/approval-scope.js';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 

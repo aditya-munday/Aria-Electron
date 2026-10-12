@@ -44,4 +44,20 @@ describe('readNdjson', () => {
     });
     expect(await collect(body)).toEqual(['x', '\u{1F600}']);
   });
+
+  it('cancels the underlying stream when the consumer stops early', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('a\nb\nc\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    for await (const line of readNdjson(body)) {
+      if (line === 'a') break;
+    }
+    expect(cancelled).toBe(true);
+  });
 });

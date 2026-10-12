@@ -9,7 +9,7 @@ import type { InteractionRuntime } from './interaction/interaction-controller.js
 import { AriaRuntime } from './runtime.js';
 import { AriaShell } from './shell/aria-shell.js';
 import { planOrbBackdrop } from './orb/backdrop.js';
-import { createVoiceInteractionRuntime, type VoiceRuntimeLike } from './shell/interaction-runtime.js';
+import { createVoiceInteractionRuntime } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
 import { ErrorReporter } from './shell/error-reporting.js';
@@ -31,8 +31,6 @@ import type { OrbState } from './orb/state.js';
 import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, EmergencyStopView } from './chat/state.js';
 import type { ShellSettings } from './shell/settings.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
-
-const WAKE_WORD_PHRASE = 'hey aria';
 
 let shellRef: AriaShell | undefined;
 
@@ -94,11 +92,15 @@ function main(): void {
   const signedIn = (): boolean => runtime.isSignedIn();
 
   const applySettingsToRuntime = (next: ShellSettings): void => {
+    // Local activation (push-to-talk mode, wake-word listening) works without an
+    // account: gating it on sign-in would leave a signed-out user unable to
+    // speak to the app at all. Only account-scoped preferences wait for sign-in.
+    runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
     if (!signedIn()) return;
     void runtime.voice?.setWakeWordEnabled(next.wakeWordEnabled).catch((error: unknown) => {
       errors.report('settings:wakeWord', error);
     });
-    runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
+    runtime.voice?.setSpeakResponses(next.speakResponses);
     runtime.voice?.setSpeechOutput({
       voice: next.voice ?? null,
       language: next.language ?? null,
@@ -127,7 +129,9 @@ function main(): void {
     wakeWordEnabled: settings.load().wakeWordEnabled,
     microphonePermission: microphonePermission(),
     captureMuted: settings.load().captureMuted,
-    voiceSessionActive: false,
+    // A second activation while a session is live must be refused, so the router
+    // needs the runtime's real state, not a constant.
+    voiceSessionActive: voice?.diagnostics().sessionId !== undefined,
   });
   const interaction = new InteractionController({
     environment: environmentSource,
@@ -148,6 +152,7 @@ function main(): void {
     launchHidden,
     backdrop: planOrbBackdrop(process.platform, screen.getPrimaryDisplay().bounds),
     pttAllowed: () => microphonePermission() === 'granted',
+    onQuit: () => app.quit(),
   });
   settings.subscribe?.((next) => {
     applySettingsToRuntime(next);
@@ -160,7 +165,7 @@ function main(): void {
     config,
     activation: {
       request: 'Hold ?',
-      wakeWordPhrase: WAKE_WORD_PHRASE,
+      wakeWordPhrase: voiceConfig.wakeWord.phrase,
       chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
       pushToTalkAccelerator: PUSH_TO_TALK_ACCELERATOR,
       chatShortcutRegistered: shell.shortcutStatus().chat,
@@ -311,6 +316,4 @@ function inertVoiceRuntime(): InteractionRuntime {
     interrupt: async () => undefined,
   };
 }
-
-void app.whenReady().then(main);
 

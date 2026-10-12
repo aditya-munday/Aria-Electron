@@ -29,6 +29,8 @@ export async function* readNdjson(
     // A final line without a trailing newline is still an event.
     if (buffer.trim() !== '') yield buffer;
   } finally {
+    // Cancel first: an early stop (terminal event) must not leave the body unconsumed.
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

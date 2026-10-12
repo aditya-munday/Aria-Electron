@@ -31,11 +31,14 @@ import type { VoiceRuntimeConfig } from './voice-config.js';
 import { validateVoiceConfig } from './voice-config.js';
 import {
   createNativeWakeWordDetector,
+  EngineWakeWordDetector,
   WakeWordController,
   type WakeWordDetector,
   type WakeWordStatus,
 } from './wake-word.js';
 import { WakeWordListener } from './wake-listener.js';
+import { createWakePhraseEngine } from './wake-phrase-engine.js';
+import { FarEndReference } from './echo-cancellation.js';
 
 export interface VoiceRuntimeDiagnostics {
   readonly pushToTalkEnabled: boolean;
@@ -80,6 +83,7 @@ export class VoiceRuntime {
   private readonly pushToTalk: PushToTalkController;
   private readonly wakeWord: WakeWordController;
   private readonly wakeListener: WakeWordListener;
+  private readonly farEnd: FarEndReference | undefined;
 
   private current: VoiceSession | undefined;
   private sessionCounter = 0;
@@ -101,6 +105,16 @@ export class VoiceRuntime {
     this.deviceId = deps.deviceId;
     this.pushToTalk = createPushToTalk({ config: deps.config.pushToTalk, now: this.now });
 
+    // One far-end reference shared by every echo-cancelling consumer: the PCM
+    // the speaker plays is tapped here, so the wake listener and each session
+    // cancel the same playback echo.
+    if (this.config.echoCancellation.enabled && this.speaker.setReferenceTap !== undefined) {
+      this.farEnd = new FarEndReference(this.config.sampleRate);
+      this.speaker.setReferenceTap((chunk) => this.farEnd?.push(chunk));
+    } else {
+      this.farEnd = undefined;
+    }
+
     const detector = this.resolveDetector(deps);
     this.wakeWord = new WakeWordController({ detector, config: deps.config.wakeWord });
     this.wakeListener = new WakeWordListener({
@@ -110,6 +124,7 @@ export class VoiceRuntime {
       frameMs: this.config.vad.frameMs,
       now: this.now,
       onActivation: (activation) => this.onWakeActivation(activation),
+      ...(this.farEnd !== undefined ? { farEnd: this.farEnd } : {}),
       onError: (error) => {
         this.lastError = error;
       },
@@ -266,11 +281,25 @@ export class VoiceRuntime {
       this.lastError = asVoiceError(error);
       return;
     }
-    if (this.current === undefined) await this.wakeListener.start();
+    if (this.current === undefined) {
+      await this.wakeListener.start();
+      if (!this.wakeListener.isListening()) {
+        // Start failed (no device / permission): surface it instead of a
+        // silently "enabled" detector that never hears anything.
+        this.lastError =
+          this.wakeListener.failure() ??
+          new VoiceError('device_unavailable', 'Wake-word listening could not start.');
+      }
+    }
   }
 
   setPushToTalkMode(mode: PushToTalkMode): void {
     this.pushToTalk.setMode(mode);
+  }
+
+  /** An in-flight session keeps its output; the next activation picks up the new value. */
+  setSpeakResponses(enabled: boolean): void {
+    this.config = { ...this.config, speakResponses: enabled };
   }
 
   /** An explicit user action, not an agent turn: it never opens or interrupts a session. */
@@ -445,6 +474,8 @@ export class VoiceRuntime {
     }
     // Wake-word listening must not hold the microphone during a session.
     await this.wakeListener.stop();
+    // Clear the far-end queue so a session starts frame-aligned with fresh audio.
+    this.farEnd?.clear();
 
     this.sessionCounter += 1;
     const id = `voice-${this.sessionCounter}`;
@@ -461,6 +492,7 @@ export class VoiceRuntime {
       streamingStt: this.streamingStt,
       streamingTts: this.streamingTts,
       streamingChat: this.streamingChat,
+      ...(this.farEnd !== undefined ? { farEnd: this.farEnd } : {}),
     });
     this.current = session;
     this.events.emit({ type: 'session.started', sessionId: id, at: this.now(), source });
@@ -473,7 +505,13 @@ export class VoiceRuntime {
   private finishSession(session: VoiceSession): void {
     // Only clear if this session is still the current one; a newer session has
     // already taken ownership and must not be dropped by a late finisher.
-    if (this.current === session) this.current = undefined;
+    if (this.current === session) {
+      this.current = undefined;
+      // A session that self-finalized (VAD silence or the max-duration cap) ends
+      // without a release; clear the controller so the next press starts a new
+      // capture instead of being read as a duplicate press and dropped.
+      this.pushToTalk.abort();
+    }
     void this.resumeListening();
   }
 
@@ -507,13 +545,22 @@ export class VoiceRuntime {
       };
     }
     if (deps.wakeWordDetector !== undefined) return deps.wakeWordDetector;
-    // No injected detector: build the real native integration. It fails
-    // observably when the engine/model is absent, and never fabricates one.
-    return createNativeWakeWordDetector({
-      engineModule: process.env['ARIA_WAKE_ENGINE']?.trim() || '@picovoice/porcupine-node',
-      phrase: deps.config.wakeWord.phrase,
-      modelPath: process.env['ARIA_WAKE_MODEL']?.trim() || '',
-      sampleRate: deps.config.sampleRate,
-    });
+    // No injected detector: prefer a configured native engine, but fall back to
+    // the built-in offline phrase spotter so detection works on a stock install
+    // rather than failing with a "model not installed" blocker.
+    const engineModule = process.env['ARIA_WAKE_ENGINE']?.trim();
+    if (engineModule !== undefined && engineModule !== '') {
+      return createNativeWakeWordDetector({
+        engineModule,
+        phrase: deps.config.wakeWord.phrase,
+        modelPath: process.env['ARIA_WAKE_MODEL']?.trim() || '',
+        sampleRate: deps.config.sampleRate,
+      });
+    }
+    return new EngineWakeWordDetector(
+      createWakePhraseEngine(deps.config.wakeWord.phrase, deps.config.sampleRate, {
+        frameMs: deps.config.vad.frameMs,
+      }),
+    );
   }
 }

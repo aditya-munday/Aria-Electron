@@ -64,7 +64,6 @@ function toDb(amplitude: number): number {
  */
 export class NoiseReducer {
   private readonly config: NoiseReductionConfig;
-  private readonly sampleRate: number;
   private hpPrevInput = 0;
   private hpPrevOutput = 0;
   private readonly hpAlpha: number;
@@ -79,7 +78,6 @@ export class NoiseReducer {
 
   constructor(config: NoiseReductionConfig, sampleRate: number) {
     this.config = config;
-    this.sampleRate = sampleRate;
     // First-order high-pass coefficient.
     const rc = 1 / (2 * Math.PI * Math.max(1, config.highPassHz));
     const dt = 1 / sampleRate;

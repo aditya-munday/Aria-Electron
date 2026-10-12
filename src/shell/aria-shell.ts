@@ -10,6 +10,7 @@ import {
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
+  type PushToTalkMode,
   type TrayMenuItem,
   type WindowHandle,
   type WindowKind,
@@ -47,6 +48,11 @@ export interface ShellDeps {
    * hidden. Used when the app starts at login, so it does not steal the screen.
    */
   readonly launchHidden?: boolean;
+  /**
+   * Called when the user asks to quit from the tray. The shell does not own
+   * `app`, so it reports the request and lets the composition root quit.
+   */
+  readonly onQuit?: () => void;
 }
 
 export class AriaShell {
@@ -62,6 +68,7 @@ export class AriaShell {
 
   private pttHeld = false;
   private pttToggled = false;
+  private pttAcceleratorMode: PushToTalkMode | undefined;
   private chatShortcutRegistered = false;
   private pushToTalkRegistered = false;
   private chatShortcutRequested: boolean | undefined;
@@ -69,6 +76,7 @@ export class AriaShell {
   private started = false;
   private trayCreated = false;
   private readonly pttAllowed: (() => boolean) | undefined;
+  private readonly onQuit: (() => void) | undefined;
   private pending: Promise<void> = Promise.resolve();
   private unsubscribeKeys: (() => void) | undefined;
 
@@ -81,6 +89,7 @@ export class AriaShell {
     this.backdrop = deps.backdrop;
     this.launchHidden = deps.launchHidden === true;
     this.pttAllowed = deps.pttAllowed;
+    this.onQuit = deps.onQuit;
   }
 
   start(): void {
@@ -119,8 +128,23 @@ export class AriaShell {
     }
     if (options.pushToTalk !== undefined) {
       this.pushToTalkRequested = options.pushToTalk;
+      if (!options.pushToTalk) {
+        // Disabling push-to-talk must not strand a held capture: release it so
+        // the microphone does not run with no way to stop it.
+        void this.enqueue(() => this.releaseStrandedPtt());
+      }
     }
     this.syncShortcuts();
+  }
+
+  /** Release a push-to-talk capture that no further key event can finalize. */
+  private async releaseStrandedPtt(): Promise<void> {
+    const acceleratorHold = this.pttToggled && this.settings.load().pushToTalkMode === 'hold';
+    if (this.pttHeld || acceleratorHold) {
+      this.pttHeld = false;
+      await this.interaction.handle({ kind: 'push_to_talk_release' });
+    }
+    this.pttToggled = false;
   }
 
   /**
@@ -179,7 +203,7 @@ export class AriaShell {
 
   private trayItems(): readonly TrayMenuItem[] {
     const orbVisible = this.isOpen('orb');
-    return [
+    const items: TrayMenuItem[] = [
       { id: 'control-center', label: 'Open Control Center', onClick: () => this.open('control_center') },
       { id: 'chat', label: 'Open Chat', onClick: () => this.open('chat') },
       {
@@ -188,6 +212,10 @@ export class AriaShell {
         onClick: () => this.setOrbVisible(!orbVisible),
       },
     ];
+    if (this.onQuit !== undefined) {
+      items.push({ id: 'quit', label: 'Quit Aria', onClick: () => this.onQuit?.() });
+    }
+    return items;
   }
 
   whenIdle(): Promise<void> {
@@ -244,7 +272,14 @@ export class AriaShell {
    */
   private async activatePushToTalk(): Promise<void> {
     if (!this.pushToTalkEnabled()) return;
-    if (this.settings.load().pushToTalkMode === 'toggle') {
+    const mode = this.settings.load().pushToTalkMode;
+    if (mode !== this.pttAcceleratorMode) {
+      // A mode change mid-gesture would otherwise pair a toggle press with a
+      // hold release (or vice versa); reset the local pairing state first.
+      this.pttAcceleratorMode = mode;
+      this.pttToggled = false;
+    }
+    if (mode === 'toggle') {
       this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
       return;
     }

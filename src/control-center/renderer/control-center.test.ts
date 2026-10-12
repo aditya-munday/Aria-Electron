@@ -208,6 +208,18 @@ describe('control center renderer', () => {
     expect(document.getElementById('panel-voice')?.getAttribute('data-active')).toBe('true');
   });
 
+  it('keeps tab focus and roving tabindex coherent for keyboard navigation', () => {
+    render(state(), 'profile');
+    expect((document.getElementById('tab-profile') as HTMLElement).tabIndex).toBe(0);
+    expect((document.getElementById('tab-voice') as HTMLElement).tabIndex).toBe(-1);
+
+    const end = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+    document.getElementById('tab-profile')?.dispatchEvent(end);
+    // The re-render moves roving focus to the last tab and selects it.
+    expect(document.getElementById('tab-general')?.getAttribute('aria-selected')).toBe('true');
+    expect((document.getElementById('tab-general') as HTMLElement).tabIndex).toBe(0);
+  });
+
   it('shows the backend URL nowhere in the interface', () => {
     render(state());
     expect(document.body.textContent).not.toContain('api.adityamunday.codes');

@@ -12,6 +12,10 @@ import {
   DEFAULT_NOISE_REDUCTION,
   type NoiseReductionConfig,
 } from './noise-reduction.js';
+import {
+  DEFAULT_ECHO_CANCELLATION,
+  type EchoCancellationConfig,
+} from './echo-cancellation.js';
 import { DEFAULT_PUSH_TO_TALK, type PushToTalkConfig } from './push-to-talk.js';
 import { DEFAULT_VAD, type VadConfig } from './vad.js';
 import { DEFAULT_WAKE_WORD, type WakeWordConfig } from './wake-word.js';
@@ -26,6 +30,7 @@ export interface VoiceRuntimeConfig {
   readonly wakeWord: WakeWordConfig;
   readonly vad: VadConfig;
   readonly noiseReduction: NoiseReductionConfig;
+  readonly echoCancellation: EchoCancellationConfig;
   readonly minUtteranceMs: number;
   /** The longest utterance held in memory before it is force-finalized. */
   readonly maxUtteranceMs: number;
@@ -67,6 +72,7 @@ export const DEFAULT_VOICE_CONFIG: VoiceRuntimeConfig = {
   wakeWord: DEFAULT_WAKE_WORD,
   vad: DEFAULT_VAD,
   noiseReduction: DEFAULT_NOISE_REDUCTION,
+  echoCancellation: DEFAULT_ECHO_CANCELLATION,
   minUtteranceMs: DEFAULT_MIN_UTTERANCE_MS,
   maxUtteranceMs: 60_000,
   sampleRate: SPEECH_SAMPLE_RATE,
@@ -169,12 +175,6 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     if (raw === undefined || raw === '') return fallback;
     return raw === '1' || raw === 'true' || raw === 'yes';
   };
-  const num = (name: string, fallback: number): number => {
-    const raw = env[name]?.trim();
-    if (raw === undefined || raw === '') return fallback;
-    const parsed = Number.parseFloat(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
   const str = (name: string): string | undefined => {
     const raw = env[name]?.trim();
     return raw === undefined || raw === '' ? undefined : raw;
@@ -203,6 +203,10 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     noiseReduction: {
       ...DEFAULT_NOISE_REDUCTION,
       enabled: bool('ARIA_NOISE_REDUCTION', DEFAULT_NOISE_REDUCTION.enabled),
+    },
+    echoCancellation: {
+      ...DEFAULT_ECHO_CANCELLATION,
+      enabled: bool('ARIA_ECHO_CANCELLATION', DEFAULT_ECHO_CANCELLATION.enabled),
     },
     vad: {
       ...DEFAULT_VAD,

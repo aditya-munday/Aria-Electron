@@ -283,6 +283,34 @@ describe('VoiceSession orchestration failure', () => {
     expect(h.events.find((e) => e.type === 'session.failed')).toBeUndefined();
     expect(h.session.currentState).toBe('cancelled');
   });
+
+  it('classifies a non-VoiceError orchestration failure with the backend fallback', async () => {
+    const h = harness({
+      orchestrator: new RecordingOrchestrator({ error: new Error('socket hang up') }),
+    });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await run;
+    expect(h.events.find((e) => e.type === 'session.failed')).toMatchObject({
+      kind: 'backend_unavailable',
+    });
+    expect(h.session.currentState).toBe('idle');
+  });
+
+  it('classifies a non-VoiceError transcription failure with the speech fallback', async () => {
+    const h = harness({ speech: new SpeechDouble({ sttError: new Error('stt blew up') }) });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await run;
+    expect(h.events.find((e) => e.type === 'session.failed')).toMatchObject({
+      kind: 'speech_failed',
+    });
+    expect(h.session.currentState).toBe('failed');
+  });
 });
 
 describe('VoiceSession cancellation and stale results', () => {

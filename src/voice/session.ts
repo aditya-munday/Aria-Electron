@@ -22,10 +22,11 @@
 
 import type { AudioPayload, RouteHint } from '../contract/aria-contract.js';
 import { SPEECH_SAMPLE_RATE, assertAudioFormat } from './audio-format.js';
-import { VoiceError, asVoiceError } from './errors.js';
+import { VoiceError, asVoiceError, isVoiceError, type VoiceErrorKind } from './errors.js';
 import type { VoiceEventBus, VoiceSessionState } from './events.js';
 import type { CaptureHandle, Microphone } from './device.js';
 import { NoiseReducer, createNoiseReducer } from './noise-reduction.js';
+import { EchoCanceller, createEchoCanceller, FarEndReference } from './echo-cancellation.js';
 import { UtteranceAssembler, bytesToBase64, type UtteranceOutcome } from './segmenter.js';
 import type { SpeechProxy } from './speech.js';
 import type { Speaker } from './playback.js';
@@ -64,6 +65,8 @@ export interface VoiceSessionDeps {
   readonly streamingTts?: boolean;
   /** Whether the Backend advertised streaming chat. */
   readonly streamingChat?: boolean;
+  /** The far-end reference of Aria's own playback, for echo cancellation. */
+  readonly farEnd?: FarEndReference;
 }
 
 /** How the session decides when the utterance ends. */
@@ -82,11 +85,13 @@ export class VoiceSession {
   private readonly streamingStt: boolean;
   private readonly streamingTts: boolean;
   private readonly streamingChat: boolean;
+  private readonly farEnd: FarEndReference | undefined;
 
   private readonly controller = new AbortController();
   private state: VoiceSessionState = 'idle';
   private handle: CaptureHandle | undefined;
   private noise: NoiseReducer | undefined;
+  private echo: EchoCanceller | undefined;
   private vad: VoiceActivityDetector | undefined;
   private assembler: UtteranceAssembler | undefined;
   private boundary: UtteranceBoundary = 'vad';
@@ -108,6 +113,7 @@ export class VoiceSession {
     this.streamingStt = deps.streamingStt ?? false;
     this.streamingTts = deps.streamingTts ?? false;
     this.streamingChat = deps.streamingChat ?? false;
+    this.farEnd = deps.farEnd;
   }
 
   get signal(): AbortSignal {
@@ -311,6 +317,7 @@ export class VoiceSession {
     }
     this.handle = handle;
     this.noise = createNoiseReducer(this.config.noiseReduction, this.config.sampleRate);
+    this.echo = createEchoCanceller(this.config.echoCancellation, this.config.sampleRate);
     this.vad = createVad(this.config.vad);
     this.assembler = new UtteranceAssembler({
       sampleRate: this.config.sampleRate,
@@ -347,7 +354,13 @@ export class VoiceSession {
     const vad = this.vad;
     if (assembler === undefined || noise === undefined || vad === undefined) return;
 
-    const denoised = noise.process(raw);
+    // Cancel Aria's own playback echo before noise reduction; the far-end
+    // reference is the PCM the speaker is playing, fed through `setFarEnd`.
+    if (this.echo !== undefined && this.farEnd !== undefined) {
+      this.echo.setFarEnd(this.farEnd.drain(raw.length));
+    }
+    const clean = this.echo !== undefined ? this.echo.process(raw) : raw;
+    const denoised = noise.process(clean);
     if (this.boundary === 'push_to_talk') {
       // Push-to-talk supplies the boundaries: every frame belongs to the
       // utterance. VAD still runs (for onset reporting) but does not end it.
@@ -687,12 +700,10 @@ export class VoiceSession {
     }
   }
 
-  private classifyStageError(error: unknown, fallback: string): VoiceError {
+  private classifyStageError(error: unknown, fallback: VoiceErrorKind): VoiceError {
     if (this.isCancelled()) return new VoiceError('cancelled', 'The voice turn was cancelled.');
-    const voiceError = asVoiceError(error, 'speech_failed');
-    return voiceError.kind === 'internal'
-      ? new VoiceError('speech_failed', voiceError.message, error)
-      : voiceError;
+    if (isVoiceError(error)) return error;
+    return asVoiceError(error, fallback);
   }
 
   private setState(state: VoiceSessionState): void {

@@ -29,13 +29,11 @@ export interface NativeAudioOptions {
 export class NativeMicrophone implements Microphone {
   private readonly backend: AudioToolBackend;
   private readonly frameMs: number;
-  private readonly sampleRate: number;
   private readonly spawn: AudioSpawn | undefined;
 
   constructor(options: NativeAudioOptions) {
     this.backend = options.backend;
     this.frameMs = options.frameMs;
-    this.sampleRate = options.sampleRate;
     this.spawn = options.spawn;
   }
 
@@ -84,13 +82,10 @@ export class NativeMicrophone implements Microphone {
 
 /** The command-line-tool speaker; a no-op when the host has no player. */
 export class NativeSpeaker implements Speaker {
-  private readonly backend: AudioToolBackend;
-  private readonly spawn: AudioSpawn | undefined;
   private readonly playback: PcmPlayback | undefined;
+  private referenceTap: ((chunk: Int16Array) => void) | undefined;
 
   constructor(options: NativeAudioOptions) {
-    this.backend = options.backend;
-    this.spawn = options.spawn;
     const command = options.backend.playbackCommand;
     this.playback =
       command !== undefined
@@ -103,11 +98,16 @@ export class NativeSpeaker implements Speaker {
         : undefined;
   }
 
+  setReferenceTap(tap: ((chunk: Int16Array) => void) | undefined): void {
+    this.referenceTap = tap;
+  }
+
   async play(pcm: Int16Array, format: AudioFormat): Promise<void> {
     if (this.playback === undefined) {
       // No player: the response is still produced, only its audio is absent.
       return;
     }
+    this.referenceTap?.(pcm);
     await this.playback.play(pcm, format);
   }
 
@@ -120,7 +120,17 @@ export class NativeSpeaker implements Speaker {
       for await (const _chunk of chunks) void _chunk;
       return;
     }
-    await this.playback.playStream(chunks, format);
+    const tap = this.referenceTap;
+    const tapped =
+      tap === undefined
+        ? chunks
+        : (async function* (): AsyncIterable<Int16Array> {
+            for await (const chunk of chunks) {
+              tap(chunk);
+              yield chunk;
+            }
+          })();
+    await this.playback.playStream(tapped, format);
   }
 
   async stop(): Promise<void> {

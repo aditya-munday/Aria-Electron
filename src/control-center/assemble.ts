@@ -1,4 +1,3 @@
-import { recoveryForError, type AriaErrorKind } from '../backend/product-errors.js';
 import { userFacingMessageForKind } from '../backend/user-facing.js';
 import type {
   AccountView,
@@ -6,13 +5,11 @@ import type {
   AppearanceView,
   AriaConfigView,
   BackendState,
-  CatalogState,
   ControlCenterSources,
   ControlCenterState,
   DiagnosticView,
   IntegrationView,
   PrivacyView,
-  SignInState,
   VoiceCatalogEntry,
   VoiceOption,
   VoiceView,
@@ -278,23 +275,4 @@ export function assembleControlCenterState(sources: ControlCenterSources): Contr
     diagnostics: diagnosticsView(sources),
     tasks: sources.tasks,
   };
-}
-
-export function recoveryLabel(kind: string): string {
-  return recoveryForError(kind as AriaErrorKind);
-}
-
-export function catalogStateFromVoices(voices: readonly { readonly id: string }[]): CatalogState {
-  return voices.length > 0 ? 'available' : 'empty';
-}
-
-export function signInLabel(state: SignInState): string {
-  switch (state) {
-    case 'signed_in':
-      return 'Signed in';
-    case 'signed_out':
-      return 'Not signed in';
-    case 'unknown':
-      return 'Sign-in state unknown';
-  }
 }

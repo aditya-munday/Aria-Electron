@@ -96,6 +96,9 @@ export function createControlCenterRuntime(
             setPushToTalkMode: (mode: 'hold' | 'toggle'): void => {
               runtime.voice?.setPushToTalkMode(mode);
             },
+            setSpeakResponses: (enabled: boolean): void => {
+              runtime.voice?.setSpeakResponses(enabled);
+            },
             setSpeechOutput: (output): void => {
               runtime.voice?.setSpeechOutput(output);
             },

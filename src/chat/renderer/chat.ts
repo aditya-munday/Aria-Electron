@@ -397,6 +397,7 @@ function composer(doc: Document, bridge: ChatBridge, refresh: () => void): El {
   const wrap = h(doc, 'form', 'composer');
   const input = h(doc, 'input', 'composer-input');
   input.type = 'text';
+  input.id = 'composer-input';
   input.placeholder = 'Type a message';
   input.setAttribute('data-testid', 'composer-input');
   input.setAttribute('aria-label', 'Message');
@@ -418,6 +419,12 @@ function composer(doc: Document, bridge: ChatBridge, refresh: () => void): El {
 export function renderChat(doc: Document, state: ChatState, bridge: ChatBridge): void {
   const root = doc.getElementById('chat');
   if (root === null) return;
+  const active = doc.activeElement;
+  const focusId = active instanceof HTMLElement ? active.id : '';
+  const selectionStart = active instanceof HTMLInputElement ? active.selectionStart : null;
+  const scrollTop = root.scrollTop;
+  const atBottom = root.scrollHeight - root.clientHeight - root.scrollTop <= 4;
+
   const refresh = (): void => {
     void bridge.chatState().then((next) => renderChat(doc, next, bridge));
   };
@@ -427,6 +434,19 @@ export function renderChat(doc: Document, state: ChatState, bridge: ChatBridge):
   }
   root.append(emergencySection(doc, state, bridge, refresh));
   root.append(composer(doc, bridge, refresh));
+
+  // Re-rendering the whole surface would otherwise snap the log back to the top
+  // and drop the caret out of the composer on every refresh.
+  root.scrollTop = atBottom ? root.scrollHeight : scrollTop;
+  if (focusId !== '') {
+    const restored = doc.getElementById(focusId);
+    if (restored instanceof HTMLElement) {
+      restored.focus();
+      if (restored instanceof HTMLInputElement && selectionStart !== null) {
+        restored.setSelectionRange(selectionStart, selectionStart);
+      }
+    }
+  }
 }
 
 export function bootstrapChat(doc: Document, bridge: ChatBridge): void {

@@ -10,7 +10,7 @@ body {
   font-family: var(--font-body);
   color: var(--text);
   background:
-    radial-gradient(50% 40% at 82% -8%, rgba(124, 92, 255, 0.28), transparent 70%),
+    radial-gradient(50% 40% at 82% -8%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 70%),
     radial-gradient(40% 34% at 8% 4%, rgba(52, 211, 238, 0.2), transparent 70%),
     var(--ink-000);
   -webkit-font-smoothing: antialiased;
@@ -243,7 +243,7 @@ progress::-webkit-progress-bar {
 }
 
 progress::-webkit-progress-value {
-  background: linear-gradient(90deg, var(--aurora-1), var(--aurora-3));
+  background: linear-gradient(90deg, var(--accent), var(--accent-line-solid));
 }
 
 .composer {

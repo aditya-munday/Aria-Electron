@@ -20,7 +20,7 @@ body::before {
   inset: -30% -10% auto -10%;
   height: 60vh;
   background:
-    radial-gradient(50% 70% at 20% 0%, rgba(124, 92, 255, 0.22), transparent 72%),
+    radial-gradient(50% 70% at 20% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 72%),
     radial-gradient(42% 62% at 82% 4%, rgba(52, 211, 238, 0.12), transparent 74%);
   filter: blur(64px) saturate(115%);
   opacity: 0.7;
@@ -135,7 +135,7 @@ body::after {
 
 .tab[aria-selected='true'] {
   color: var(--text-hi);
-  background: linear-gradient(90deg, var(--accent-soft), rgba(124, 92, 255, 0.03));
+  background: linear-gradient(90deg, var(--accent-soft), color-mix(in srgb, var(--accent) 3%, transparent));
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
@@ -148,8 +148,8 @@ body::after {
   height: 22px;
   transform: translateY(-50%);
   border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--aurora-3), var(--aurora-1));
-  box-shadow: 0 0 18px 1px rgba(124, 92, 255, 0.9);
+  background: linear-gradient(180deg, var(--accent), var(--accent-line-solid));
+  box-shadow: 0 0 18px 1px var(--accent-glow);
 }
 
 .tab[aria-selected='true'] .glyph {
@@ -453,8 +453,8 @@ input[type='checkbox'].switch-input {
 
 .control input:checked ~ .switch,
 .switch[data-on='true'] {
-  background: linear-gradient(90deg, var(--aurora-1), var(--aurora-2));
-  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 18px -4px rgba(124, 92, 255, 0.9);
+  background: linear-gradient(90deg, var(--accent), var(--accent-line-solid));
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 18px -4px var(--accent-glow);
 }
 
 .control input:checked ~ .switch::after {
@@ -826,7 +826,7 @@ kbd {
   flex: none;
   border-radius: 50%;
   background: radial-gradient(circle at 34% 28%, #cbb8ff 0%, #7c5cff 46%, #2b2364 100%);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 14px 34px -14px rgba(124, 92, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 14px 34px -14px var(--accent-glow);
 }
 
 .voice-hero-name {
@@ -927,7 +927,7 @@ kbd {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-hi);
-  background: linear-gradient(150deg, rgba(124, 92, 255, 0.34), rgba(52, 211, 238, 0.18));
+  background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 34%, transparent), color-mix(in srgb, var(--accent) 18%, transparent));
   border: 1px solid var(--line);
 }
 

@@ -41,6 +41,7 @@ interface CapabilitiesLike {
 interface VoiceControlLike {
   setWakeWordEnabled(enabled: boolean): Promise<void>;
   setPushToTalkMode(mode: 'hold' | 'toggle'): void;
+  setSpeakResponses?(enabled: boolean): void;
   setSpeechOutput?(output: {
     readonly voice?: string | null;
     readonly language?: string | null;
@@ -211,6 +212,9 @@ export class ControlCenterService {
     }
     if (patch.pushToTalkMode !== undefined) {
       voice.setPushToTalkMode(patch.pushToTalkMode);
+    }
+    if (patch.speakResponses !== undefined) {
+      voice.setSpeakResponses?.(patch.speakResponses);
     }
     if (
       patch.voice !== undefined ||

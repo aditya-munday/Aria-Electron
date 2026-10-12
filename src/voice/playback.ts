@@ -31,6 +31,11 @@ export interface Speaker {
     chunks: AsyncIterable<Int16Array>,
     format: { sampleRate: number; channels: number },
   ): Promise<void>;
+  /**
+   * Register a tap that observes each PCM chunk as it is handed to the device.
+   * The echo canceller uses it as its far-end reference; `undefined` clears it.
+   */
+  setReferenceTap?(tap: ((chunk: Int16Array) => void) | undefined): void;
 }
 
 /** A deterministic speaker for tests: it plays only when `advance()` is called. */

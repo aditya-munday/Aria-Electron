@@ -6,8 +6,6 @@ import { clamp, type Point, type Rect, type Size } from './geometry.js';
  * the very edge by a small, fixed margin.
  */
 export const ORB_RIGHT_MARGIN = 48;
-export const ORB_VERTICAL_SIXTHS = 3;
-export const ORB_VERTICAL_DENOMINATOR = 6;
 
 export function placeOrb(workArea: Rect, size: Size): Rect {
   const x = workArea.x + workArea.width - size.width - ORB_RIGHT_MARGIN;

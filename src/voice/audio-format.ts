@@ -28,7 +28,6 @@ export const MAX_CHANNELS = 8;
 
 /** The longest single utterance Aria will hold in memory: two minutes at 16 kHz. */
 export const MAX_UTTERANCE_MS = 120_000;
-export const MAX_UTTERANCE_SAMPLES = (SPEECH_SAMPLE_RATE * MAX_UTTERANCE_MS) / 1000;
 
 /**
  * The largest PCM payload Aria will submit. A little-endian i16 mono payload of
@@ -61,11 +60,6 @@ export function assertAudioFormat(format: AudioFormat, context = 'audio format')
 /** The number of samples in a frame of `frameMs` at `sampleRate`. */
 export function frameSamples(frameMs: number, sampleRate: number): number {
   return Math.max(1, Math.round((frameMs * sampleRate) / 1000));
-}
-
-/** The raw little-endian i16 byte count for a sample count and channel count. */
-export function pcmBytesFor(sampleCount: number, channels: number): number {
-  return sampleCount * channels * 2;
 }
 
 /**

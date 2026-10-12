@@ -207,15 +207,26 @@ class ElectronWindowFactory implements WindowFactory {
       setWindowOpenHandler: (handler) =>
         window.webContents.setWindowOpenHandler((details) => handler(details.url)),
     });
+    const downKeys = new Set<PhysicalKey>();
     window.webContents.on('before-input-event', (_event, input) => {
       const key = PHYSICAL_BY_CODE[input.code];
       if (key === undefined) return;
       if (input.type !== 'keyDown' && input.type !== 'keyUp') return;
+      if (input.type === 'keyDown') downKeys.add(key);
+      else downKeys.delete(key);
       this.keys.emit({
         key,
         kind: input.type === 'keyDown' ? 'key_down' : 'key_up',
         repeat: input.isAutoRepeat,
       });
+    });
+    // A focused key released while the window lost focus never arrives as a
+    // keyUp; without this a held push-to-talk would capture with no release.
+    window.on('blur', () => {
+      for (const key of downKeys) {
+        this.keys.emit({ key, kind: 'key_up', repeat: false });
+      }
+      downKeys.clear();
     });
     window.webContents.on('render-process-gone', (_event, details) => {
       this.onError?.(`render-process:${kind}`, details.reason);

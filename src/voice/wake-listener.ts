@@ -12,9 +12,15 @@
  * `failed` state rather than leaving a dead capture running.
  */
 
-import { assertAudioFormat, frameSamples } from './audio-format.js';
+import { assertAudioFormat } from './audio-format.js';
 import type { CaptureHandle, Microphone } from './device.js';
 import { asVoiceError, VoiceError } from './errors.js';
+import {
+  createEchoCanceller,
+  DEFAULT_ECHO_CANCELLATION,
+  FarEndReference,
+  type EchoCanceller,
+} from './echo-cancellation.js';
 import type { WakeWordActivation, WakeWordController } from './wake-word.js';
 
 export type WakeListenerState = 'stopped' | 'starting' | 'listening' | 'failed';
@@ -28,14 +34,20 @@ export interface WakeWordListenerDeps {
   readonly onActivation: (activation: WakeWordActivation) => void;
   readonly onError?: (error: VoiceError) => void;
   readonly deviceId?: string;
+  /**
+   * The far-end reference of Aria's own playback, when echo cancellation is on.
+   * It is pushed into the detector alongside each frame so Aria's spoken reply
+   * does not re-trigger the wake word.
+   */
+  readonly farEnd?: FarEndReference;
 }
 
 export class WakeWordListener {
   private readonly deps: WakeWordListenerDeps;
   private handle: CaptureHandle | undefined;
+  private canceller: EchoCanceller | undefined;
   private state: WakeListenerState = 'stopped';
   private lastError: VoiceError | undefined;
-  private frameSamples = 0;
 
   constructor(deps: WakeWordListenerDeps) {
     this.deps = deps;
@@ -63,7 +75,6 @@ export class WakeWordListener {
         throw new VoiceError('permission_denied', 'Microphone access is not granted.');
       }
       assertAudioFormat({ sampleRate: this.deps.sampleRate, channels: 1 }, 'wake-word format');
-      this.frameSamples = frameSamples(this.deps.frameMs, this.deps.sampleRate);
       const handle = await this.deps.microphone.open({
         ...(this.deps.deviceId !== undefined ? { deviceId: this.deps.deviceId } : {}),
         format: { sampleRate: this.deps.sampleRate, channels: 1 },
@@ -99,7 +110,14 @@ export class WakeWordListener {
 
   private onFrame(frame: Float64Array): void {
     if (this.state !== 'listening') return;
-    const activation = this.deps.controller.push(frame, this.deps.now());
+    let signal = frame;
+    const farEnd = this.deps.farEnd;
+    if (farEnd !== undefined) {
+      this.canceller ??= createEchoCanceller(DEFAULT_ECHO_CANCELLATION, this.deps.sampleRate);
+      this.canceller.setFarEnd(farEnd.drain(frame.length));
+      signal = this.canceller.process(frame);
+    }
+    const activation = this.deps.controller.push(signal, this.deps.now());
     if (activation === undefined) return;
     // A detection: stop listening so the session owns the microphone.
     this.state = 'stopped';

@@ -28,6 +28,8 @@ function build(
   backdrop?: import('../orb/backdrop.js').OrbBackdropPlan,
   launchHidden = false,
   pttAllowed?: () => boolean,
+  onQuit?: () => void,
+  environment?: () => import('../interaction/interaction-router.js').InteractionEnvironment,
 ) {
   const platform = new FakePlatform();
   const runtime = new FakeShellRuntime();
@@ -35,12 +37,14 @@ function build(
   const interactionRuntime = new VoiceInteractionRuntime(voice);
   const settings = new InMemorySettingsStore(initial);
   const interaction = new InteractionController({
-    environment: () => ({
-      wakeWordEnabled: settings.load().wakeWordEnabled,
-      microphonePermission: 'granted',
-      captureMuted: settings.load().captureMuted,
-      voiceSessionActive: false,
-    }),
+    environment:
+      environment ??
+      (() => ({
+        wakeWordEnabled: settings.load().wakeWordEnabled,
+        microphonePermission: 'granted',
+        captureMuted: settings.load().captureMuted,
+        voiceSessionActive: false,
+      })),
     runtime: interactionRuntime,
   });
   const shell = new AriaShell({
@@ -51,6 +55,7 @@ function build(
     backdrop,
     launchHidden,
     pttAllowed,
+    onQuit,
   });
   return { platform, runtime, voice, interactionRuntime, settings, shell };
 }
@@ -284,6 +289,68 @@ describe('global push-to-talk accelerator', () => {
     await shell.whenIdle();
     expect(voice.presses).toBe(1);
     expect(voice.releases).toBe(1);
+  });
+
+  it('does not strand a held capture when push-to-talk is disabled mid-hold', async () => {
+    const { shell, platform, voice, settings } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    settings.save({ ...settings.load(), pushToTalkEnabled: false });
+    shell.setShortcuts({ pushToTalk: false });
+    await shell.whenIdle();
+    // The stranded hold is released, and the accelerator is no longer grabbed.
+    expect(voice.releases).toBe(1);
+    expect(shell.shortcutStatus().pushToTalk).toBe(false);
+  });
+
+  it('resets the pairing state when the mode changes mid-gesture', async () => {
+    const { shell, platform, voice, settings } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    // Switching to toggle mid-hold, then tapping, must start a fresh capture
+    // rather than pair a release from the old hold state.
+    settings.save({ ...settings.load(), pushToTalkMode: 'toggle' });
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(2);
+    expect(voice.releases).toBe(0);
+  });
+
+  it('refuses a second activation while a voice session is active', async () => {
+    let active = false;
+    const { shell, platform, voice } = build(
+      { ...DEFAULT_SETTINGS, pushToTalkMode: 'hold' },
+      undefined,
+      false,
+      undefined,
+      undefined,
+      () => ({
+        wakeWordEnabled: true,
+        microphonePermission: 'granted',
+        captureMuted: false,
+        voiceSessionActive: active,
+      }),
+    );
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    active = true;
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    // The router refuses; nothing new reaches the runtime.
+    expect(voice.presses).toBe(1);
+    expect(voice.releases).toBe(0);
   });
 });
 
@@ -614,6 +681,20 @@ describe('tray', () => {
     platform.tray.active = false;
     shell.start();
     expect(shell.trayActive()).toBe(false);
+  });
+
+  it('offers a Quit action only when the shell is given a way to quit', () => {
+    const absent = build();
+    absent.shell.start();
+    expect(absent.platform.tray.item('quit')).toBeUndefined();
+
+    let quit = 0;
+    const { shell, platform } = build(DEFAULT_SETTINGS, undefined, false, undefined, () => {
+      quit += 1;
+    });
+    shell.start();
+    platform.tray.item('quit')?.onClick();
+    expect(quit).toBe(1);
   });
 
   it('destroys the tray on stop', () => {

@@ -12,6 +12,10 @@ describe('shell settings', () => {
     expect(DEFAULT_SETTINGS.openWindows).toEqual(['control_center']);
   });
 
+  it('leaves the Orb transient by default so it only pins when asked', () => {
+    expect(DEFAULT_SETTINGS.showOrb).toBe(false);
+  });
+
   it('falls back to defaults for a non-object payload', () => {
     expect(normalizeSettings(null)).toEqual({ ...DEFAULT_SETTINGS });
     expect(normalizeSettings('nope')).toEqual({ ...DEFAULT_SETTINGS });

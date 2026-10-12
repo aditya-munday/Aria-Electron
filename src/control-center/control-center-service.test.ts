@@ -55,7 +55,11 @@ interface HarnessOptions {
 
 function harness(options: HarnessOptions = {}) {
   let settings: ShellSettings = { ...DEFAULT_SETTINGS };
-  const applied: { wakeWordEnabled?: boolean; pushToTalkMode?: string }[] = [];
+  const applied: {
+    wakeWordEnabled?: boolean;
+    pushToTalkMode?: string;
+    speakResponses?: boolean;
+  }[] = [];
   const speechOutputs: { voice?: string | null; language?: string | null; speed?: number }[] = [];
   const previews: { text: string; voice?: string | null; language?: string | null; speed?: number }[] = [];
   const saved: ShellSettings[] = [];
@@ -110,6 +114,9 @@ function harness(options: HarnessOptions = {}) {
             },
             setPushToTalkMode: (mode) => {
               applied.push({ pushToTalkMode: mode });
+            },
+            setSpeakResponses: (enabled) => {
+              applied.push({ speakResponses: enabled });
             },
             setSpeechOutput: (output) => {
               speechOutputs.push(output);
@@ -357,6 +364,13 @@ describe('ControlCenterService.applySettings', () => {
     service.applySettings({ voice: null });
     await Promise.resolve();
     expect(speechOutputs).toContainEqual({ voice: null });
+  });
+
+  it('pushes a speak-responses change to the voice runtime', async () => {
+    const { service, applied } = harness();
+    service.applySettings({ speakResponses: false });
+    await Promise.resolve();
+    expect(applied).toContainEqual({ speakResponses: false });
   });
 });
 
