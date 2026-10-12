@@ -285,6 +285,13 @@ class ElectronShortcuts implements ShortcutRegistration {
   isRegistered(accelerator: string): boolean {
     return globalShortcut.isRegistered(accelerator);
   }
+  unregister(accelerator: string): void {
+    try {
+      globalShortcut.unregister(accelerator);
+    } catch {
+      // Releasing an unknown accelerator is a no-op, never a crash.
+    }
+  }
 }
 
 export function createElectronPlatform(options: ElectronPlatformOptions = {}): Platform {

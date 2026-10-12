@@ -77,6 +77,8 @@ export interface KeyListener {
 export interface ShortcutRegistration {
   /** Register an accelerator; returns whether the OS accepted the grab. */
   register(accelerator: string, handler: () => void): boolean;
+  /** Release an accelerator previously registered. Idempotent. */
+  unregister(accelerator: string): void;
   isRegistered(accelerator: string): boolean;
 }
 

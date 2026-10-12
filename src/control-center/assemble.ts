@@ -1,4 +1,5 @@
 import { recoveryForError, type AriaErrorKind } from '../backend/product-errors.js';
+import { userFacingMessageForKind } from '../backend/user-facing.js';
 import type {
   AccountView,
   ActivationView,
@@ -36,7 +37,7 @@ function accountView(sources: ControlCenterSources): AccountView {
     if (account.unauthenticated || AUTH_KINDS.has(account.error.kind)) {
       return { state: 'signed_out' };
     }
-    return { state: 'unknown', reason: account.error.message };
+    return { state: 'unknown', reason: userFacingMessageForKind(account.error.kind) };
   }
   const identity = account.identity;
   return {
@@ -83,7 +84,7 @@ function voiceView(sources: ControlCenterSources): VoiceView {
       voices: [],
       languages,
       sttLanguages,
-      reason: 'The Backend advertises no voices.',
+      reason: 'No voices are available right now.',
     };
   }
 
@@ -93,7 +94,7 @@ function voiceView(sources: ControlCenterSources): VoiceView {
     voices: [],
     languages: [],
     sttLanguages: [],
-    reason: capabilities.error.message,
+    reason: userFacingMessageForKind(capabilities.error.kind),
   };
 }
 
@@ -155,13 +156,13 @@ function ariaConfigView(sources: ControlCenterSources): AriaConfigView {
       {
         id: 'voice',
         label: 'Synthesis voice',
-        value: settings.voice ?? 'Backend default',
+        value: settings.voice ?? 'System default',
         editable: true,
       },
       {
         id: 'language',
         label: 'Language',
-        value: settings.language ?? 'Backend default',
+        value: settings.language ?? 'System default',
         editable: true,
       },
       {
@@ -236,7 +237,7 @@ function diagnosticsView(sources: ControlCenterSources): DiagnosticView {
     ? undefined
     : account.ok
       ? undefined
-      : capabilities.error.message;
+      : userFacingMessageForKind(capabilities.error.kind);
 
   const voice = sources.voice;
   const voiceReady =

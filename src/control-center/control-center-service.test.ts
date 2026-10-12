@@ -167,7 +167,7 @@ describe('ControlCenterService.buildState', () => {
       identityError: { kind: 'server_error', message: 'Backend exploded.' },
     });
     const state = await service.buildState();
-    expect(state.account).toMatchObject({ state: 'unknown', reason: 'Backend exploded.' });
+    expect(state.account).toMatchObject({ state: 'unknown', reason: 'Something went wrong. Try again.' });
   });
 
   it('marks the Backend as an outage when capabilities are unreachable', async () => {
@@ -268,7 +268,15 @@ describe('ControlCenterService.buildState', () => {
     });
     const state = await service.buildState();
     expect(state.voice.catalogState).toBe('unknown');
-    expect(state.voice.reason).toBe('Connection refused.');
+    expect(state.voice.reason).toBe('Aria is temporarily unavailable.');
+  });
+
+  it('never surfaces an unrecognized failure kind verbatim', async () => {
+    const { service } = harness({
+      capabilitiesError: { kind: 'server_error', message: 'Connection refused.' },
+    });
+    const state = await service.buildState();
+    expect(state.voice.reason).toBe('Something went wrong. Try again.');
   });
 
   it('reports voice input as not ready when the microphone is denied', async () => {

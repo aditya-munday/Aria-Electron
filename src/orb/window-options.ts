@@ -9,8 +9,8 @@ import type { WindowOptions } from '../shell/window.js';
  * room to fall off; the hit test still uses `ORB_DIAMETER`, so only the visible
  * circle takes pointer input and the glow stays click-through.
  */
-export const ORB_DIAMETER = 128;
-export const ORB_WINDOW_PADDING = 40;
+export const ORB_DIAMETER = 168;
+export const ORB_WINDOW_PADDING = 56;
 export const ORB_WINDOW_SIZE = ORB_DIAMETER + ORB_WINDOW_PADDING * 2;
 
 export const ORB_WINDOW_OPTIONS: WindowOptions = {

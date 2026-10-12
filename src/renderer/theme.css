@@ -106,7 +106,7 @@
 
   --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px -18px rgba(0, 0, 0, 0.9);
   --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.95);
-  --glow-accent: 0 0 0 1px var(--accent-line), 0 18px 50px -22px rgba(124, 92, 255, 0.75);
+  --glow-accent: 0 0 0 1px var(--accent-line), 0 18px 50px -22px var(--accent-line);
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);

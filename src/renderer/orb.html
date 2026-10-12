@@ -27,77 +27,83 @@
         background: transparent;
       }
 
-      /* One soft sphere. Every layer is a circle with a radial falloff; there
-         is no panel, frame or rectangular background anywhere. */
+      /* One glass sphere. The window is a transparent square; only this circle
+         is ever painted, so nothing around it reads as a panel. */
       .orb {
         position: relative;
         display: grid;
         place-items: center;
-        width: 128px;
-        height: 128px;
+        width: 208px;
+        height: 208px;
+        --cue-hue: 262;
+        --cue: hsl(var(--cue-hue) 88% 66%);
+        --cue-soft: hsl(var(--cue-hue) 85% 60% / 0.34);
       }
 
-      .halo,
       .glow,
-      .core,
-      .ring {
-        position: absolute;
-        border-radius: 50%;
+      .sphere,
+      .specular {
         pointer-events: none;
       }
 
-      .halo {
-        width: 208px;
-        height: 208px;
-        background: radial-gradient(
-          circle,
-          rgba(124, 92, 255, 0.34) 0%,
-          rgba(77, 124, 255, 0.18) 34%,
-          rgba(52, 211, 238, 0.06) 56%,
-          rgba(52, 211, 238, 0) 72%
-        );
-        filter: blur(18px);
+      .glow {
+        position: absolute;
+        width: 176px;
+        height: 176px;
+        border-radius: 50%;
+        background: radial-gradient(circle, var(--cue-soft) 0%, rgba(0, 0, 0, 0) 66%);
+        filter: blur(26px);
         animation: halo-breathe 5.5s ease-in-out infinite;
       }
 
-      .glow {
-        width: 152px;
-        height: 152px;
-        background: radial-gradient(
-          circle,
-          rgba(180, 156, 255, 0.5) 0%,
-          rgba(124, 92, 255, 0.26) 40%,
-          rgba(124, 92, 255, 0) 70%
-        );
-        filter: blur(10px);
-      }
-
-      .ring {
-        width: 128px;
-        height: 128px;
-        box-shadow: inset 0 0 0 1px rgba(214, 226, 255, 0.14);
-      }
-
-      /* The sphere: a highlight offset toward the light, a saturated mid, a
-         deep shadow — a radial gradient with no hard edge, so nothing reads as
-         a square inside a circle. */
-      .core {
-        width: 128px;
-        height: 128px;
+      .sphere {
+        position: relative;
+        width: 168px;
+        height: 168px;
+        border-radius: 50%;
+        overflow: hidden;
         background:
-          radial-gradient(
-            circle at 34% 28%,
-            #f4f1ff 0%,
-            #c9b8ff 12%,
-            #8b6cff 34%,
-            #5a3fd6 60%,
-            #2b2170 84%,
-            #191344 100%
-          );
+          radial-gradient(circle at 68% 82%, rgba(130, 160, 255, 0.24) 0%, rgba(130, 160, 255, 0) 34%),
+          radial-gradient(circle at 50% 50%, rgba(30, 35, 55, 0.9) 0%, rgba(12, 15, 26, 0.96) 62%, rgba(5, 6, 13, 1) 100%);
         box-shadow:
-          inset 0 -10px 26px rgba(6, 4, 26, 0.55),
-          inset 0 8px 20px rgba(255, 255, 255, 0.28),
-          0 14px 40px -12px rgba(60, 34, 160, 0.9);
+          inset 0 -20px 38px rgba(2, 3, 8, 0.9),
+          inset 0 16px 28px rgba(255, 255, 255, 0.1),
+          inset 0 0 0 1px rgba(190, 205, 255, 0.16),
+          inset 0 0 34px -6px var(--cue-soft),
+          0 30px 64px -26px rgba(0, 0, 0, 0.95);
+      }
+
+      .glass {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+      }
+
+      /* Without a canvas context the ribbon is painted with a static CSS
+         gradient band, so the sphere is never a flat disc. */
+      .sphere.glass-fallback {
+        background:
+          linear-gradient(
+            155deg,
+            rgba(0, 0, 0, 0) 30%,
+            hsl(var(--cue-hue) 92% 62% / 0.42) 44%,
+            hsl(calc(var(--cue-hue) + 60) 92% 66% / 0.4) 50%,
+            hsl(calc(var(--cue-hue) + 140) 92% 62% / 0.4) 56%,
+            rgba(0, 0, 0, 0) 70%
+          ),
+          radial-gradient(circle at 50% 50%, rgba(30, 35, 55, 0.9) 0%, rgba(12, 15, 26, 0.96) 62%, rgba(5, 6, 13, 1) 100%);
+      }
+
+      .specular {
+        position: absolute;
+        left: 14%;
+        top: 8%;
+        width: 46%;
+        height: 46%;
+        border-radius: 50%;
+        background: radial-gradient(circle at 40% 38%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 68%);
+        mix-blend-mode: screen;
       }
 
       .label,
@@ -107,12 +113,12 @@
         transform: translateX(-50%);
         margin: 0;
         text-align: center;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
         white-space: nowrap;
       }
 
       .label {
-        top: calc(50% + 78px);
+        top: calc(50% + 96px);
         font-family: var(--font-body);
         font-size: 11px;
         font-weight: 600;
@@ -122,138 +128,39 @@
       }
 
       .detail {
-        top: calc(50% + 96px);
-        max-width: 260px;
+        top: calc(50% + 116px);
+        max-width: 280px;
         font-size: 11px;
         color: #b9c0dd;
         white-space: normal;
       }
 
-      .orb[data-cue='pulse'] .core {
-        animation: pulse 1.5s ease-out infinite;
+      .orb[data-cue='pulse'] .sphere {
+        animation: pulse-soft 1.6s ease-out infinite;
       }
-      .orb[data-cue='waveform'] .core {
+      .orb[data-cue='waveform'] .sphere {
         animation: breathe 1.7s ease-in-out infinite;
       }
-
-      .orb[data-cue='bars'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #eafff5 0%,
-          #9df3cd 14%,
-          #3ddc97 40%,
-          #17936a 68%,
-          #0b4634 100%
-        );
-        box-shadow:
-          inset 0 -10px 26px rgba(2, 24, 16, 0.5),
-          inset 0 8px 20px rgba(255, 255, 255, 0.3),
-          0 14px 40px -12px rgba(24, 160, 110, 0.9);
+      .orb[data-cue='gear'] .sphere {
+        animation: breathe 3.6s ease-in-out infinite;
       }
 
-      .orb[data-cue='alert'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #fff0f0 0%,
-          #ffb3b3 14%,
-          #ff6b6b 42%,
-          #b62b2b 70%,
-          #4d0f0f 100%
-        );
-        box-shadow:
-          inset 0 -10px 26px rgba(40, 4, 4, 0.55),
-          inset 0 8px 20px rgba(255, 255, 255, 0.28),
-          0 14px 40px -12px rgba(200, 40, 40, 0.9);
-      }
-
-      .orb[data-cue='halt'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #fdf6ff 0%,
-          #e3c6ff 16%,
-          #a879ff 44%,
-          #6a3fd0 72%,
-          #2a1663 100%
-        );
-        animation: breathe 2.4s ease-in-out infinite;
-      }
-
-      .orb[data-cue='shield'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #eafaff 0%,
-          #a5e8ff 16%,
-          #35b6e8 44%,
-          #1668a8 72%,
-          #0a2a4a 100%
-        );
-        animation: pulse 2.1s ease-out infinite;
-      }
-
-      .orb[data-cue='question'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #fffbea 0%,
-          #ffe9a8 16%,
-          #ffc94d 44%,
-          #b8842a 72%,
-          #4a3510 100%
-        );
-        animation: breathe 2.2s ease-in-out infinite;
-      }
-
-      .orb[data-cue='gear'] .core {
-        animation: spin 3.6s linear infinite;
-      }
-
-      .orb[data-cue='restore'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #f2f6ff 0%,
-          #c6d4ee 16%,
-          #8a9bc0 44%,
-          #4c5a78 72%,
-          #1e2432 100%
-        );
-        animation: breathe 3s ease-in-out infinite;
-      }
-
-      .orb[data-cue='slash'] .core {
-        background: radial-gradient(
-          circle at 34% 28%,
-          #f3f4f8 0%,
-          #c9cedb 14%,
-          #8b93a5 44%,
-          #4d5462 72%,
-          #22262f 100%
-        );
-        box-shadow:
-          inset 0 -10px 26px rgba(8, 10, 14, 0.55),
-          inset 0 8px 20px rgba(255, 255, 255, 0.22),
-          0 14px 40px -12px rgba(20, 24, 32, 0.85);
-      }
-
-      .orb[data-cue='slash'] .ring {
-        background: linear-gradient(
-          135deg,
-          transparent 44%,
-          rgba(255, 255, 255, 0.5) 50%,
-          transparent 56%
-        );
-      }
-
-      @keyframes pulse {
+      @keyframes pulse-soft {
         0% {
           box-shadow:
-            inset 0 -10px 26px rgba(6, 4, 26, 0.55),
-            inset 0 8px 20px rgba(255, 255, 255, 0.28),
-            0 0 0 0 rgba(147, 197, 253, 0.55);
+            inset 0 -20px 38px rgba(2, 3, 8, 0.9),
+            inset 0 16px 28px rgba(255, 255, 255, 0.1),
+            inset 0 0 0 1px rgba(190, 205, 255, 0.16),
+            inset 0 0 34px -6px var(--cue-soft),
+            0 0 0 0 hsl(var(--cue-hue) 85% 62% / 0.5);
         }
         100% {
           box-shadow:
-            inset 0 -10px 26px rgba(6, 4, 26, 0.55),
-            inset 0 8px 20px rgba(255, 255, 255, 0.28),
-            0 0 0 30px rgba(147, 197, 253, 0);
+            inset 0 -20px 38px rgba(2, 3, 8, 0.9),
+            inset 0 16px 28px rgba(255, 255, 255, 0.1),
+            inset 0 0 0 1px rgba(190, 205, 255, 0.16),
+            inset 0 0 34px -6px var(--cue-soft),
+            0 0 0 26px hsl(var(--cue-hue) 85% 62% / 0);
         }
       }
 
@@ -263,26 +170,14 @@
           transform: scale(1);
         }
         50% {
-          transform: scale(1.05);
-        }
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0deg) scale(1);
-        }
-        50% {
-          transform: rotate(180deg) scale(1.04);
-        }
-        100% {
-          transform: rotate(360deg) scale(1);
+          transform: scale(1.045);
         }
       }
 
       @keyframes halo-breathe {
         0%,
         100% {
-          opacity: 0.85;
+          opacity: 0.82;
           transform: scale(1);
         }
         50% {

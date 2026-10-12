@@ -66,11 +66,16 @@ body::after {
 }
 
 .brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 28%, #cbb8ff 0%, #7c5cff 42%, #3b2f8f 100%);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 8px 26px -8px rgba(124, 92, 255, 0.9);
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+}
+
+.brand-glyph {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 6px 16px rgba(60, 40, 140, 0.55));
 }
 
 .brand-name {
@@ -317,9 +322,10 @@ body::after {
 
 .row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px 16px;
+  gap: 4px 16px;
   padding: 11px 0;
   border-bottom: 1px solid var(--line-soft);
   font-size: 14px;
@@ -332,6 +338,8 @@ body::after {
 
 .row-label {
   color: var(--text-mid);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .row-value {
@@ -339,6 +347,9 @@ body::after {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .row-value.mono {
@@ -383,8 +394,9 @@ body::after {
   position: relative;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
+  gap: 4px 16px;
   padding: 11px 0;
   border-bottom: 1px solid var(--line-soft);
   cursor: pointer;
@@ -396,12 +408,17 @@ body::after {
 
 .control .row-label {
   font-size: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .control .reason {
-  position: absolute;
-  left: 0;
-  bottom: 2px;
+  position: static;
+  flex-basis: 100%;
+}
+
+.control .keys {
+  flex: none;
 }
 
 .switch {
@@ -434,17 +451,17 @@ input[type='checkbox'].switch-input {
   pointer-events: none;
 }
 
-.control input:checked + .switch,
+.control input:checked ~ .switch,
 .switch[data-on='true'] {
   background: linear-gradient(90deg, var(--aurora-1), var(--aurora-2));
   box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 18px -4px rgba(124, 92, 255, 0.9);
 }
 
-.control input:checked + .switch::after {
+.control input:checked ~ .switch::after {
   transform: translateX(19px);
 }
 
-.control input:disabled + .switch {
+.control input:disabled ~ .switch {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -511,13 +528,13 @@ select:disabled {
 }
 
 .btn.primary {
-  background: linear-gradient(180deg, #8b6cff, #6a4bf0);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 78%, #ffffff), var(--accent));
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow: var(--glow-accent);
 }
 
 .btn.primary:hover {
-  box-shadow: 0 0 0 1px var(--accent-line), 0 22px 55px -20px rgba(124, 92, 255, 0.95);
+  box-shadow: 0 0 0 1px var(--accent-line), 0 22px 55px -20px var(--accent-line);
 }
 
 .btn.ghost {

@@ -40,7 +40,7 @@ const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }>
   },
   account: {
     label: 'Account',
-    subtitle: 'Sign in to the Beyonders backend.',
+    subtitle: 'Sign in to use Aria.',
     icon: 'M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Z',
   },
   voice: {
@@ -65,7 +65,7 @@ const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }>
   },
   integrations: {
     label: 'Integrations',
-    subtitle: 'Backend connectivity and available capabilities.',
+    subtitle: 'Connected services and what Aria can do.',
     icon: 'M7 7h10v10H7zM3 3h6v2H5v4H3V3Zm12 0h6v6h-2V5h-4V3ZM3 15h2v4h4v2H3v-6Zm16 0h2v6h-6v-2h4v-4Z',
   },
   tasks: {
@@ -75,7 +75,7 @@ const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }>
   },
   diagnostics: {
     label: 'Diagnostics',
-    subtitle: 'Audio, wake-word health and backend errors.',
+    subtitle: 'Audio, wake-word health and reported issues.',
     icon: 'M3 13h4l3 6 4-16 3 10h4v2h-5.5l-1.5-5-3.5 14-4.5-9H3v-2Z',
   },
   general: {
@@ -108,6 +108,109 @@ function icon(doc: Document, path: string): SVGSVGElement {
   p.setAttribute('d', path);
   p.setAttribute('fill', 'currentColor');
   svg.append(p);
+  return svg;
+}
+
+/**
+ * The Aria mark: a smoked glass sphere with the same prism ribbon the Orb
+ * paints, so the logo and the presence read as one identity. Drawn as SVG so it
+ * stays crisp at every size and needs no image asset.
+ */
+function brandMark(doc: Document): SVGSVGElement {
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svg = doc.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 40 40');
+  svg.setAttribute('class', 'brand-glyph');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Aria');
+
+  const defs = doc.createElementNS(SVG, 'defs');
+
+  const body = doc.createElementNS(SVG, 'radialGradient');
+  body.setAttribute('id', 'aria-glass');
+  body.setAttribute('cx', '38%');
+  body.setAttribute('cy', '32%');
+  body.setAttribute('r', '78%');
+  for (const [offset, color] of [
+    ['0%', '#2b3452'],
+    ['55%', '#141828'],
+    ['100%', '#05060d'],
+  ] as const) {
+    const stop = doc.createElementNS(SVG, 'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    body.append(stop);
+  }
+
+  const ribbon = doc.createElementNS(SVG, 'linearGradient');
+  ribbon.setAttribute('id', 'aria-ribbon');
+  ribbon.setAttribute('x1', '0%');
+  ribbon.setAttribute('y1', '0%');
+  ribbon.setAttribute('x2', '100%');
+  ribbon.setAttribute('y2', '0%');
+  for (const [offset, color] of [
+    ['0%', '#ff5d5d'],
+    ['22%', '#ffb14d'],
+    ['46%', '#7dff8f'],
+    ['70%', '#4dd2ff'],
+    ['100%', '#7c5cff'],
+  ] as const) {
+    const stop = doc.createElementNS(SVG, 'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    ribbon.append(stop);
+  }
+
+  const shine = doc.createElementNS(SVG, 'radialGradient');
+  shine.setAttribute('id', 'aria-shine');
+  shine.setAttribute('cx', '50%');
+  shine.setAttribute('cy', '50%');
+  shine.setAttribute('r', '50%');
+  for (const [offset, color, opacity] of [
+    ['0%', '#ffffff', '0.6'],
+    ['60%', '#ffffff', '0.04'],
+    ['100%', '#ffffff', '0'],
+  ] as const) {
+    const stop = doc.createElementNS(SVG, 'stop');
+    stop.setAttribute('offset', offset);
+    stop.setAttribute('stop-color', color);
+    stop.setAttribute('stop-opacity', opacity);
+    shine.append(stop);
+  }
+
+  defs.append(body, ribbon, shine);
+
+  const sphere = doc.createElementNS(SVG, 'circle');
+  sphere.setAttribute('cx', '20');
+  sphere.setAttribute('cy', '20');
+  sphere.setAttribute('r', '18');
+  sphere.setAttribute('fill', 'url(#aria-glass)');
+  sphere.setAttribute('stroke', 'rgba(190,205,255,0.22)');
+  sphere.setAttribute('stroke-width', '1');
+
+  const band = doc.createElementNS(SVG, 'path');
+  band.setAttribute('d', 'M4 15 C 13 10, 27 10, 36 15 L 36 25 C 27 30, 13 30, 4 25 Z');
+  band.setAttribute('fill', 'url(#aria-ribbon)');
+  band.setAttribute('opacity', '0.85');
+
+  const clip = doc.createElementNS(SVG, 'clipPath');
+  clip.setAttribute('id', 'aria-sphere-clip');
+  const clipCircle = doc.createElementNS(SVG, 'circle');
+  clipCircle.setAttribute('cx', '20');
+  clipCircle.setAttribute('cy', '20');
+  clipCircle.setAttribute('r', '18');
+  clip.append(clipCircle);
+  defs.append(clip);
+  band.setAttribute('clip-path', 'url(#aria-sphere-clip)');
+
+  const highlight = doc.createElementNS(SVG, 'ellipse');
+  highlight.setAttribute('cx', '13.5');
+  highlight.setAttribute('cy', '12');
+  highlight.setAttribute('rx', '7');
+  highlight.setAttribute('ry', '5');
+  highlight.setAttribute('fill', 'url(#aria-shine)');
+
+  svg.append(defs, sphere, band, highlight);
   return svg;
 }
 
@@ -158,11 +261,11 @@ function toggle(
   input.checked = checked;
   input.disabled = !enabled;
   input.addEventListener('change', () => onChange(input.checked));
-  const knob = h(doc, 'span', 'switch');
-  knob.setAttribute('aria-hidden', 'true');
   const name = h(doc, 'span', 'row-label');
   text(name, label);
-  line.append(input, knob, name);
+  const knob = h(doc, 'span', 'switch');
+  knob.setAttribute('aria-hidden', 'true');
+  line.append(input, name, knob);
   if (reason !== undefined) {
     const note = h(doc, 'p', 'muted reason');
     text(note, reason);
@@ -310,13 +413,13 @@ function integrationsPanel(doc: Document, state: ControlCenterState): El {
   integrations.append(
     row(
       doc,
-      'Aria backend',
+      'Aria',
       backendWord(state.integrations.backend.state),
       state.integrations.backend.reason,
     ),
     row(
       doc,
-      'AI Engineer',
+      'Engineering tasks',
       backendWord(state.integrations.aiEngineer.state),
       state.integrations.aiEngineer.reason,
     ),
@@ -375,7 +478,7 @@ function tasksPanel(doc: Document, state: ControlCenterState): El {
   const tasks = card(doc, 'Task history', 'span-2');
   if (state.tasks.length === 0) {
     tasks.append(
-      emptyState(doc, 'Nothing running', 'Requests you submit through the backend show up here.'),
+      emptyState(doc, 'Nothing running', 'Requests you submit show up here.'),
     );
   } else {
     const list = h(doc, 'ul', 'tasks');
@@ -412,12 +515,12 @@ function generalPanel(
   presence.append(
     hint(
       doc,
-      'The Orb is Aria’s voice surface. Keep it on screen or hide it and summon it with push to talk.',
+      'The Orb appears while Aria is listening, thinking or speaking, then steps away a few seconds after the reply. Keep it on screen to have it stay put.',
     ),
     toggle(
       doc,
       'show-orb',
-      'Show the Orb',
+      'Keep the Orb on screen',
       appearance.showOrb,
       true,
       undefined,
@@ -484,8 +587,8 @@ function profilePanel(doc: Document, state: ControlCenterState): El {
   const signedIn = state.account.state === 'signed_in';
   identity.append(
     row(doc, 'Display name', signedIn ? state.account.email ?? state.account.userId ?? '—' : 'Not signed in'),
-    row(doc, 'Backend account', signedIn ? 'Connected' : 'Not connected', state.account.reason),
-    row(doc, 'Assistant', 'Aria', 'The Beyonders local-first voice assistant.'),
+    row(doc, 'Account', signedIn ? 'Connected' : 'Not connected', state.account.reason),
+    row(doc, 'Assistant', 'Aria', 'Your local-first voice assistant.'),
   );
 
   const personalization = card(doc, 'Personalization', 'span-2');
@@ -557,7 +660,7 @@ function voicePanel(
       voiceNotice(
         doc,
         voice.catalogState === 'empty'
-          ? 'The Backend advertises no voices right now.'
+          ? 'No voices are available right now.'
           : 'The voice catalog could not be reached.',
         voice.reason ?? 'Voice selection is disabled until the catalog is available.',
       ),
@@ -576,7 +679,7 @@ function voiceSummary(doc: Document, state: ControlCenterState): El {
   orb.setAttribute('aria-hidden', 'true');
   const meta = h(doc, 'div', 'voice-hero-meta');
   const name = h(doc, 'p', 'voice-hero-name');
-  text(name, selected?.name ?? 'Backend default');
+  text(name, selected?.name ?? 'System default');
   const sub = h(doc, 'p', 'voice-hero-sub');
   text(sub, describeVoice(selected) || `${voice.language ?? 'Automatic language'} · ${rateLabel(voice.speechRate)}`);
   meta.append(name, sub);
@@ -607,8 +710,8 @@ function voiceStudio(
         doc,
         'No voices to browse',
         voice.catalogState === 'available'
-          ? 'The Backend advertised an empty catalog.'
-          : 'Connect to the Backend to load the voice catalog.',
+          ? 'No voices are available right now.'
+          : 'Connect to load the voice catalog.',
       ),
     );
     return wrap;
@@ -788,7 +891,7 @@ function voiceControls(
   wrap.append(
     hint(
       doc,
-      'Choose what Aria speaks with. Changes apply to the next spoken response; the Backend is the only source of audio.',
+      'Choose what Aria speaks with. Changes apply to the next spoken response.',
     ),
   );
 
@@ -829,7 +932,7 @@ function voiceControls(
     wrap.append(
       hint(
         doc,
-        `Unavailable: ${missing.join(', ')}. The Backend does not advertise ${
+        `Unavailable: ${missing.join(', ')}. Aria does not offer ${
           missing.length === 1 ? 'this control' : 'these controls'
         }, so Aria does not send ${missing.length === 1 ? 'it' : 'them'}.`,
       ),
@@ -933,8 +1036,8 @@ function activationPanel(
   panel.id = 'panel-activation';
 
   const activation = state.activation;
-  const keysCard = card(doc, 'Activation & keys', 'span-2');
-  keysCard.append(
+  const voiceCard = card(doc, 'Voice activation');
+  voiceCard.append(
     toggle(
       doc,
       'push-to-talk-enabled',
@@ -951,7 +1054,7 @@ function activationPanel(
   const pttLabel = h(doc, 'span', 'row-label');
   text(pttLabel, 'Hold key');
   pttKeyRow.append(pttLabel, keys(doc, activation.pushToTalk.key));
-  keysCard.append(pttKeyRow);
+  voiceCard.append(pttKeyRow);
 
   const globalRow = h(doc, 'div', 'row');
   const globalLabel = h(doc, 'span', 'row-label');
@@ -965,8 +1068,8 @@ function activationPanel(
     );
     globalRow.append(warn);
   }
-  keysCard.append(globalRow);
-  keysCard.append(
+  voiceCard.append(globalRow);
+  voiceCard.append(
     select(
       doc,
       'push-to-talk-mode',
@@ -994,31 +1097,54 @@ function activationPanel(
       },
     ),
   );
-  const chatRow = h(doc, 'label', 'control');
-  const chatInput = h(doc, 'input', 'switch-input');
-  chatInput.type = 'checkbox';
-  chatInput.id = 'chat-shortcut-enabled';
-  chatInput.checked = activation.chatShortcut.enabled;
-  chatInput.addEventListener('change', () => {
-    void bridge.updateSettings({ chatShortcutEnabled: chatInput.checked }).then(refresh);
-  });
-  const chatKnob = h(doc, 'span', 'switch');
-  chatKnob.setAttribute('aria-hidden', 'true');
-  const chatLabel = h(doc, 'span', 'row-label');
-  text(chatLabel, 'Open chat shortcut');
-  chatRow.append(chatInput, chatKnob, chatLabel, keys(doc, activation.chatShortcut.accelerator));
-  keysCard.append(chatRow);
+
+  const shortcuts = card(doc, 'Keyboard shortcuts');
+  shortcuts.append(
+    shortcutControl(
+      doc,
+      'chat-shortcut-enabled',
+      'Open chat',
+      activation.chatShortcut.enabled,
+      activation.chatShortcut.accelerator,
+      (next) => {
+        void bridge.updateSettings({ chatShortcutEnabled: next }).then(refresh);
+      },
+    ),
+  );
   if (!activation.chatShortcut.registered) {
     const warn = h(doc, 'p', 'muted reason');
     text(
       warn,
       `Another application holds ${activation.chatShortcut.accelerator}; the chat shortcut is unavailable.`,
     );
-    keysCard.append(warn);
+    shortcuts.append(warn);
   }
 
-  panel.append(keysCard);
+  panel.append(voiceCard, shortcuts);
   return panel;
+}
+
+function shortcutControl(
+  doc: Document,
+  id: string,
+  label: string,
+  checked: boolean,
+  accelerator: string,
+  onChange: (next: boolean) => void,
+): El {
+  const line = h(doc, 'label', 'control');
+  const input = h(doc, 'input', 'switch-input');
+  input.type = 'checkbox';
+  input.id = id;
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked));
+  const name = h(doc, 'span', 'row-label');
+  text(name, label);
+  const keysNode = keys(doc, accelerator);
+  const knob = h(doc, 'span', 'switch');
+  knob.setAttribute('aria-hidden', 'true');
+  line.append(input, name, keysNode, knob);
+  return line;
 }
 
 function accountPanel(
@@ -1067,7 +1193,7 @@ function accountPanel(
       hint(
         doc,
         account.reason ??
-          'The backend did not answer, so the sign-in state could not be determined.',
+          'Aria did not answer, so the sign-in state could not be determined.',
       ),
     );
     const actions = h(doc, 'div', 'auth-actions');
@@ -1142,7 +1268,7 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
   panel.id = 'panel-diagnostics';
 
   const d = state.diagnostics;
-  const backend = card(doc, 'Backend');
+  const backend = card(doc, 'Service');
   const head = backend.querySelector('.card-head');
   head?.append(badge(doc, backendWord(d.backendState), backendTone(d.backendState)));
   backend.append(
@@ -1190,7 +1316,7 @@ function renderSidebar(
 
   const brand = h(doc, 'div', 'brand');
   const mark = h(doc, 'div', 'brand-mark');
-  mark.setAttribute('aria-hidden', 'true');
+  mark.append(brandMark(doc));
   const name = h(doc, 'div', 'brand-name');
   text(name, 'Aria');
   const sub = h(doc, 'small');

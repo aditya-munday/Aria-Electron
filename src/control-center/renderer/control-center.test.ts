@@ -213,6 +213,21 @@ describe('control center renderer', () => {
     expect(document.body.textContent).not.toContain('api.adityamunday.codes');
   });
 
+  it('uses no backend vocabulary in user-facing copy', () => {
+    render(state());
+    for (const tab of ['account', 'voice', 'integrations', 'diagnostics', 'ariaConfig']) {
+      render(state(), tab);
+      expect(document.body.textContent).not.toMatch(/Backend|Beyonders/);
+    }
+  });
+
+  it('renders the brand as an inline mark, not a bare circle', () => {
+    render(state());
+    const glyph = document.querySelector('.brand-mark svg');
+    expect(glyph).not.toBeNull();
+    expect(glyph?.getAttribute('aria-label')).toBe('Aria');
+  });
+
   it('renders a sign-in form with email and token fields when signed out', () => {
     render(state(), 'account');
     expect(document.getElementById('account-email')).not.toBeNull();
@@ -370,6 +385,22 @@ describe('control center renderer', () => {
     select.value = 'toggle';
     select.dispatchEvent(new Event('change'));
     expect(patches).toContainEqual({ pushToTalkMode: 'toggle' });
+  });
+
+  it('groups the activation controls into voice and shortcut cards', () => {
+    render(state(), 'activation');
+    expect(document.getElementById('push-to-talk-enabled')).not.toBeNull();
+    expect(document.getElementById('wake-word-enabled')).not.toBeNull();
+    expect(document.getElementById('chat-shortcut-enabled')).not.toBeNull();
+    expect(document.body.textContent).toContain('Keyboard shortcuts');
+  });
+
+  it('toggles the chat shortcut from the activation tab', () => {
+    const { patches } = render(state(), 'activation');
+    const toggle = document.getElementById('chat-shortcut-enabled') as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    expect(patches).toContainEqual({ chatShortcutEnabled: false });
   });
 
   it('sends a null to clear the language when automatic is chosen', () => {

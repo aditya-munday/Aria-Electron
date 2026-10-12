@@ -185,12 +185,17 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
 - `aria-shell.ts` (`AriaShell`) — lifecycle over an injected `Platform`.
   Builds exactly one `AriaRuntime` (in `main.ts`) and owns it for the session;
   closing or hiding a window never stops the runtime or cancels work. Normal
-  launch opens only the Control Center; the Orb window starts hidden and is
-  surfaced by an activation (push-to-talk / wake word), never by launch or the
-  chat shortcut. Key events and the chat accelerator are routed through the
-  existing `InteractionController`, so the shell has no routing logic of its
-  own. `whenIdle()` resolves after queued input handlers settle — use it to
-  make key/shortcut tests deterministic.
+  launch opens only the Control Center; the Orb window is not created until an
+  activation (push-to-talk / wake word), the tray, or a settings change surfaces
+  it, so launch never depends on it. Key events and the chat accelerator are
+  routed through the existing `InteractionController`, so the shell has no
+  routing logic of its own. `whenIdle()` resolves after queued input handlers settle — use it to
+  make key/shortcut tests deterministic. `setShortcuts({ chat, pushToTalk })`
+  registers or releases each global accelerator and `shortcutStatus()` reports
+  what the OS actually accepted, never an assumed grab; `stop()` releases both.
+  Push-to-talk is gated by an injected `pttAllowed` predicate (wired in
+  `main.ts` to microphone permission), so a denied microphone leaves the
+  shortcut inert even when the setting is on.
 - `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
   `Platform`) — the seam that keeps the shell testable without Electron.
   `Platform = { windows, keys, shortcuts, tray }`. `WindowOptions.launchHidden`
@@ -204,8 +209,22 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   (`createAutostartManager`, `autostartEntry`) writes an XDG autostart desktop
   entry whose `Exec` carries the same hidden-launch argument and an
   `X-GNOME-Autostart-Delay`, so a login launch comes up in the background and
-  never steals focus. The autostart entry and settings persistence are both
-  skipped while signed out.
+  never steals focus. `main.ts` takes a single-instance lock before
+  `app.whenReady()`: a second launch (which could not grab the global shortcuts
+  the OS only grants once) hands focus to the live instance and exits, so the
+  shortcuts keep working from cold. `startOnLogin` defaults **on**, and the
+  autostart setting is (re)applied at launch and after a successful sign-in —
+  not only on a settings change — so the shortcuts are registered as soon as the
+  shell knows it is signed in. The autostart entry and settings persistence are
+  both skipped while signed out.
+- `orb/dismiss.ts` (`createOrbDismissal`) — the Orb's transient lifecycle. It
+  subscribes to the voice runtime and, once a turn goes quiet (spoken output
+  finished, response text without speech, failed, cancelled, or an empty final
+  transcript), hides the Orb after a short grace period, cancelling the timer the
+  moment a new turn starts. `main.ts` supplies `hide` (a no-op while the user has
+  pinned the Orb with `showOrb`) and raises the Orb on `session.started`, so the
+  Orb appears for a turn and steps away a couple of seconds after it ends instead
+  of lingering forever.
 - `interaction-runtime.ts` (`VoiceInteractionRuntime`) — adapts a
   `VoiceRuntimeLike` to the controller's `InteractionRuntime` seam and counts
   captures started, so tests can assert "a capture start is the only thing that
@@ -286,7 +305,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 537 tests / 57 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 589 tests / 60 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
@@ -349,3 +368,12 @@ channels) drives these through `ChatControl`. See `docs/RECOVERY.md`.
 optional `requestId`/`retryAfterSecs`, and — for response failures — the HTTP
 `status`, so a caller can distinguish a provider failure (502) from a backend
 outage (503) without re-deriving it from the kind.
+
+`backend/user-facing.ts` is the only place a backend failure becomes text a
+person reads. `userFacingMessageForKind` maps each `AriaErrorKind` to a fixed
+plain sentence; an unrecognized kind degrades to a generic connectivity line,
+never the kind string. `redactUserDetail` scrubs a free-form detail string of
+hosts, URLs, bare IPs, bearer/JWT credentials and email addresses before it is
+shown in a diagnostic or incident, so raw backend detail cannot leak through a
+log line the user can read. Callers (`control-center-service.ts`,
+`control-center-runtime.ts`) pass detail through it rather than rendering it.

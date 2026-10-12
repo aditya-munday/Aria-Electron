@@ -36,6 +36,13 @@ export interface ShellDeps {
   readonly keys?: KeyRepertoire;
   readonly backdrop?: OrbBackdropPlan;
   /**
+   * Whether a push-to-talk gesture is currently permitted. When provided, every
+   * push-to-talk path consults it before capture so a disabled push-to-talk
+   * never opens the microphone — including a global accelerator fired while
+   * another app has focus, which never passes through the settings UI.
+   */
+  readonly pttAllowed?: () => boolean;
+  /**
    * Launch straight into the background: preload the Control Center but keep it
    * hidden. Used when the app starts at login, so it does not steal the screen.
    */
@@ -57,8 +64,11 @@ export class AriaShell {
   private pttToggled = false;
   private chatShortcutRegistered = false;
   private pushToTalkRegistered = false;
+  private chatShortcutRequested: boolean | undefined;
+  private pushToTalkRequested: boolean | undefined;
   private started = false;
   private trayCreated = false;
+  private readonly pttAllowed: (() => boolean) | undefined;
   private pending: Promise<void> = Promise.resolve();
   private unsubscribeKeys: (() => void) | undefined;
 
@@ -70,42 +80,80 @@ export class AriaShell {
     this.keys = deps.keys ?? DEFAULT_KEY_REPERTOIRE;
     this.backdrop = deps.backdrop;
     this.launchHidden = deps.launchHidden === true;
+    this.pttAllowed = deps.pttAllowed;
   }
 
   start(): void {
     if (this.started) return;
     this.started = true;
+    const settings = this.settings.load();
+    this.chatShortcutRequested = settings.chatShortcutEnabled;
+    this.pushToTalkRequested = settings.pushToTalkEnabled;
     this.runtime.start();
     this.createTray();
     this.createWindow('control_center', { startHidden: false, launchHidden: this.launchHidden });
     this.open('control_center');
-    this.chatShortcutRegistered = this.platform.shortcuts.register(
-      CHAT_SHORTCUT_ACCELERATOR,
-      () => {
-        this.enqueue(() => this.handleShortcut());
-      },
-    );
-    // A true global grab for push-to-talk, so it works while another app has
-    // focus. The OS only reports the key-down, so each tap is a press and the
-    // shell decides whether to pair it with a release based on the mode.
-    this.pushToTalkRegistered = this.platform.shortcuts.register(
-      PUSH_TO_TALK_ACCELERATOR,
-      () => {
-        this.enqueue(() => this.activatePushToTalk());
-      },
-    );
+    this.syncShortcuts();
     this.platform.keys.start();
     this.unsubscribeKeys = this.platform.keys.onKey((event) => {
       this.enqueue(() => this.onKey(event));
     });
-    if (this.settings.load().showOrb) {
-      this.open('orb');
-    }
   }
 
   /** Whether the OS accepted each accelerator grab. Reported, never assumed. */
   shortcutStatus(): { readonly chat: boolean; readonly pushToTalk: boolean } {
     return { chat: this.chatShortcutRegistered, pushToTalk: this.pushToTalkRegistered };
+  }
+
+  /**
+   * Enable or disable the global chat and push-to-talk shortcuts at run time.
+   *
+   * The OS grab is what makes them work without the app focused, so a toggle in
+   * the Control Center has to add or release the grab, not merely store a flag.
+   * Enabling re-registers and reports whether the OS accepted; disabling
+   * releases so another application can take the accelerator.
+   */
+  setShortcuts(options: { readonly chat?: boolean; readonly pushToTalk?: boolean }): void {
+    if (options.chat !== undefined) {
+      this.chatShortcutRequested = options.chat;
+    }
+    if (options.pushToTalk !== undefined) {
+      this.pushToTalkRequested = options.pushToTalk;
+    }
+    this.syncShortcuts();
+  }
+
+  /**
+   * Reconcile the requested shortcuts with what the OS currently holds. The
+   * requested state is persisted settings; the held state is the last grab the
+   * OS accepted. Only a change is applied, so a repeated sync is inert.
+   */
+  private syncShortcuts(): void {
+    const shortcuts = this.platform.shortcuts;
+    if (this.chatShortcutRequested) {
+      if (!shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)) {
+        this.chatShortcutRegistered = shortcuts.register(CHAT_SHORTCUT_ACCELERATOR, () => {
+          this.enqueue(() => this.handleShortcut());
+        });
+      }
+    } else if (shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)) {
+      shortcuts.unregister(CHAT_SHORTCUT_ACCELERATOR);
+      this.chatShortcutRegistered = false;
+    }
+
+    // A true global grab for push-to-talk, so it works while another app has
+    // focus. The OS only reports the key-down, so each tap is a press and the
+    // shell decides whether to pair it with a release based on the mode.
+    if (this.pushToTalkRequested) {
+      if (!shortcuts.isRegistered(PUSH_TO_TALK_ACCELERATOR)) {
+        this.pushToTalkRegistered = shortcuts.register(PUSH_TO_TALK_ACCELERATOR, () => {
+          this.enqueue(() => this.activatePushToTalk());
+        });
+      }
+    } else if (shortcuts.isRegistered(PUSH_TO_TALK_ACCELERATOR)) {
+      shortcuts.unregister(PUSH_TO_TALK_ACCELERATOR);
+      this.pushToTalkRegistered = false;
+    }
   }
 
   /** Whether a tray icon is actually present (the desktop may not support one). */
@@ -164,6 +212,10 @@ export class AriaShell {
   stop(): void {
     this.unsubscribeKeys?.();
     this.unsubscribeKeys = undefined;
+    this.platform.shortcuts.unregister(CHAT_SHORTCUT_ACCELERATOR);
+    this.platform.shortcuts.unregister(PUSH_TO_TALK_ACCELERATOR);
+    this.chatShortcutRegistered = false;
+    this.pushToTalkRegistered = false;
     this.platform.keys.stop();
     this.platform.tray?.destroy();
     this.trayCreated = false;
@@ -191,7 +243,7 @@ export class AriaShell {
    * release on the next tap.
    */
   private async activatePushToTalk(): Promise<void> {
-    if (!this.settings.load().pushToTalkEnabled) return;
+    if (!this.pushToTalkEnabled()) return;
     if (this.settings.load().pushToTalkMode === 'toggle') {
       this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
       return;
@@ -209,6 +261,7 @@ export class AriaShell {
     if (event.key !== this.keys.pushToTalk) return;
     if (event.kind === 'key_down') {
       if (event.repeat || this.pttHeld) return;
+      if (!this.pushToTalkEnabled()) return;
       this.pttHeld = true;
       this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
       return;
@@ -216,6 +269,16 @@ export class AriaShell {
     if (!this.pttHeld) return;
     this.pttHeld = false;
     await this.interaction.handle({ kind: 'push_to_talk_release' });
+  }
+
+  /**
+   * Whether a push-to-talk gesture may capture now. Both the saved setting and
+   * an injected gate are consulted; either can refuse. A disabled control
+   * refuses locally before any device is opened.
+   */
+  private pushToTalkEnabled(): boolean {
+    if (!this.settings.load().pushToTalkEnabled) return false;
+    return this.pttAllowed === undefined || this.pttAllowed();
   }
 
   environment(): InteractionEnvironment {

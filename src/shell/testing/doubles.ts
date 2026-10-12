@@ -148,6 +148,10 @@ export class FakeShortcutRegistration implements ShortcutRegistration {
   isRegistered(accelerator: string): boolean {
     return this.registered.has(accelerator);
   }
+  unregister(accelerator: string): void {
+    this.handlers.delete(accelerator);
+    this.registered.delete(accelerator);
+  }
   fire(accelerator: string): void {
     this.handlers.get(accelerator)?.();
   }

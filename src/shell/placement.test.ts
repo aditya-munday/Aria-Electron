@@ -22,9 +22,9 @@ describe('orb placement', () => {
     expect(placed.x + placed.width + ORB_RIGHT_MARGIN).toBe(1440);
   });
 
-  it('sits at two sixths of the work-area height', () => {
+  it('is vertically centred in the work area', () => {
     const placed = placeOrb(WORK.workArea, SIZE);
-    expect(placed.y).toBe((900 * 2) / 6);
+    expect(placed.y).toBe((900 - SIZE.height) / 2);
   });
 
   it('keeps the window size exactly, never the screen size', () => {
@@ -36,7 +36,7 @@ describe('orb placement', () => {
   it('respects a work area with a non-zero origin', () => {
     const placed = placeOrb({ x: 100, y: 40, width: 800, height: 600 }, SIZE);
     expect(placed.x).toBe(100 + 800 - 120 - ORB_RIGHT_MARGIN);
-    expect(placed.y).toBe(40 + (600 * 2) / 6);
+    expect(placed.y).toBe(40 + (600 - SIZE.height) / 2);
   });
 
   it('clamps back onto a work area too small for the window', () => {

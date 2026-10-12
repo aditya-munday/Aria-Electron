@@ -1,17 +1,17 @@
 import { clamp, type Point, type Rect, type Size } from './geometry.js';
 
 /**
- * The Siri-like placement for the Orb: anchored to the right edge of a work
- * area, vertically at two sixths of its height. This is pure so it can be
- * asserted without a display.
+ * The Orb is a presence anchored to the right edge of the work area, vertically
+ * centred. It is placed so the whole painted circle stays on screen, inset from
+ * the very edge by a small, fixed margin.
  */
-export const ORB_RIGHT_MARGIN = 32;
-export const ORB_VERTICAL_SIXTHS = 2;
+export const ORB_RIGHT_MARGIN = 48;
+export const ORB_VERTICAL_SIXTHS = 3;
 export const ORB_VERTICAL_DENOMINATOR = 6;
 
 export function placeOrb(workArea: Rect, size: Size): Rect {
   const x = workArea.x + workArea.width - size.width - ORB_RIGHT_MARGIN;
-  const y = workArea.y + (workArea.height * ORB_VERTICAL_SIXTHS) / ORB_VERTICAL_DENOMINATOR;
+  const y = workArea.y + (workArea.height - size.height) / 2;
   const maxX = workArea.x + Math.max(0, workArea.width - size.width);
   const maxY = workArea.y + Math.max(0, workArea.height - size.height);
   return {

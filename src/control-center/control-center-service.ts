@@ -10,6 +10,7 @@ import { describeTaskPhase } from '../supervisor/supervisor.js';
 import type { SupervisionRecord } from '../supervisor/task-store.js';
 import type { ShellSettings, SettingsPatchInput } from '../shell/settings.js';
 import { patchSettings } from '../shell/settings.js';
+import { redactUserDetail } from '../backend/user-facing.js';
 import { isShellSettingsPatch } from './state.js';
 import type {
   ActivationInputs,
@@ -187,11 +188,14 @@ export class ControlCenterService {
         ? { wakeWordModel: diagnostics.wakeWordModel }
         : {}),
       ...(diagnostics?.wakeWordFailure !== undefined
-        ? { wakeWordFailure: diagnostics.wakeWordFailure }
+        ? { wakeWordFailure: redactUserDetail(diagnostics.wakeWordFailure) }
         : {}),
       listening: diagnostics?.listening ?? false,
       ...(diagnostics?.lastError !== undefined
-        ? { lastErrorKind: diagnostics.lastError.kind, lastErrorText: diagnostics.lastError.message }
+        ? {
+            lastErrorKind: diagnostics.lastError.kind,
+            lastErrorText: redactUserDetail(diagnostics.lastError.message),
+          }
         : {}),
     };
   }

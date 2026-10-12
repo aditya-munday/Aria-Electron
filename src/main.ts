@@ -23,6 +23,7 @@ import type { PreviewVoiceResult } from './shell/ipc.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
+import { createOrbDismissal } from './orb/dismiss.js';
 import { ChatService } from './chat/chat-service.js';
 import { createChatControl, createChatRuntime } from './chat/chat-runtime.js';
 import type { ControlCenterState, PermissionState } from './control-center/state.js';
@@ -32,6 +33,22 @@ import type { ShellSettings } from './shell/settings.js';
 import type { InteractionEnvironment } from './interaction/interaction-router.js';
 
 const WAKE_WORD_PHRASE = 'hey aria';
+
+let shellRef: AriaShell | undefined;
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  // A second launch would fail to grab the global shortcuts anyway (the OS
+  // grants each accelerator once) and would raise a duplicate tray. Hand the
+  // focus to the running instance and exit, so the shortcuts stay owned by the
+  // live process.
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    shellRef?.open('control_center');
+  });
+  void app.whenReady().then(main);
+}
 
 function main(): void {
   const userData = app.getPath('userData');
@@ -130,10 +147,12 @@ function main(): void {
     settings,
     launchHidden,
     backdrop: planOrbBackdrop(process.platform, screen.getPrimaryDisplay().bounds),
+    pttAllowed: () => microphonePermission() === 'granted',
   });
   settings.subscribe?.((next) => {
     applySettingsToRuntime(next);
     applyAutostart(next);
+    shell.setShortcuts({ chat: next.chatShortcutEnabled, pushToTalk: next.pushToTalkEnabled });
   });
 
   const controlCenter = new ControlCenterService({
@@ -220,12 +239,20 @@ function main(): void {
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
     previewVoice: (input: unknown): Promise<PreviewVoiceResult> => controlCenter.previewVoice(input),
-    signIn: (input: unknown): Promise<SignInOutcome> =>
-      verifySignIn(input, {
+    signIn: async (input: unknown): Promise<SignInOutcome> => {
+      const outcome = await verifySignIn(input, {
         sessionToken: runtime.sessionToken(),
         setSessionToken: (token) => runtime.setSessionToken(token),
         identity: () => runtime.identity(),
-      }),
+      });
+      if (outcome.ok && outcome.signedIn) {
+        // Signing in is what unlocks settings persistence and autostart, so
+        // apply them now instead of waiting for an unrelated settings change.
+        applySettingsToRuntime(settings.load());
+        applyAutostart(settings.load());
+      }
+      return outcome;
+    },
     signOut: (): SignInOutcome => {
       runtime.setSessionToken(undefined);
       return { ok: true, signedIn: true, reason: 'Signed out.' };
@@ -243,6 +270,26 @@ function main(): void {
   });
 
   shell.start();
+  shellRef = shell;
+
+  // The Orb is a transient presence: surface it while a voice turn runs, then
+  // dismiss it a few seconds after the spoken output (or a failed/cancelled
+  // turn) goes quiet, so it never lingers on screen permanently. While the user
+  // pins the Orb in settings it stays up and the dismissal stands down.
+  voice?.on((event) => {
+    if (event.type === 'session.started') shell.setOrbVisible(true);
+  });
+  const orbDismissal =
+    voice !== undefined
+      ? createOrbDismissal({
+          voice,
+          hide: () => {
+            if (!shell.currentSettings().showOrb) shell.setOrbVisible(false);
+          },
+          isVisible: () => shell.isOpen('orb'),
+        })
+      : undefined;
+  orbDismissal?.start();
 
   void runtime.startVoice().catch(() => undefined);
 
@@ -250,6 +297,7 @@ function main(): void {
   app.on('window-all-closed', () => {
   });
   app.on('will-quit', () => {
+    orbDismissal?.stop();
     shell.stop();
     void runtime.stopVoice();
   });

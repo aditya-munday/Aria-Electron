@@ -30,7 +30,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   chatShortcutEnabled: true,
   captureMuted: false,
   showOrb: true,
-  startOnLogin: false,
+  startOnLogin: true,
   accent: 'aurora',
   speakResponses: true,
   speechRate: 1,

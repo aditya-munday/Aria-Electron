@@ -27,6 +27,7 @@ function build(
   initial: ShellSettings = DEFAULT_SETTINGS,
   backdrop?: import('../orb/backdrop.js').OrbBackdropPlan,
   launchHidden = false,
+  pttAllowed?: () => boolean,
 ) {
   const platform = new FakePlatform();
   const runtime = new FakeShellRuntime();
@@ -42,27 +43,36 @@ function build(
     }),
     runtime: interactionRuntime,
   });
-  const shell = new AriaShell({ platform, runtime, interaction, settings, backdrop, launchHidden });
+  const shell = new AriaShell({
+    platform,
+    runtime,
+    interaction,
+    settings,
+    backdrop,
+    launchHidden,
+    pttAllowed,
+  });
   return { platform, runtime, voice, interactionRuntime, settings, shell };
 }
 
 describe('shell launch', () => {
-  it('opens the Control Center and the Orb presence on a normal launch', () => {
+  it('opens the Control Center on a normal launch but leaves the Orb for activation', () => {
     const { shell, platform, runtime } = build();
     shell.start();
     expect(runtime.started).toBe(1);
-    expect(shell.openWindows()).toEqual(['control_center', 'orb']);
-    expect(shell.isOpen('orb')).toBe(true);
-    expect(shell.isOpen('chat')).toBe(false);
-    expect(platform.windows.created.map((w) => w.kind)).toEqual(['control_center', 'orb']);
-  });
-
-  it('does not show the Orb when showOrb is disabled', () => {
-    const { shell, platform } = build({ ...DEFAULT_SETTINGS, showOrb: false });
-    shell.start();
     expect(shell.openWindows()).toEqual(['control_center']);
     expect(shell.isOpen('orb')).toBe(false);
+    expect(shell.isOpen('chat')).toBe(false);
     expect(platform.windows.created.map((w) => w.kind)).toEqual(['control_center']);
+  });
+
+  it('does not create the Orb window until it is summoned', () => {
+    const { shell, platform } = build();
+    shell.start();
+    expect(platform.windows.handle('orb')).toBeUndefined();
+    shell.setOrbVisible(true);
+    expect(shell.isOpen('orb')).toBe(true);
+    expect(platform.windows.handle('orb')).toBeDefined();
   });
 
   it('toggles the Orb presence on request', () => {
@@ -104,7 +114,7 @@ describe('shell launch', () => {
     shell.start();
     shell.start();
     expect(runtime.started).toBe(1);
-    expect(shell.openWindows()).toEqual(['control_center', 'orb']);
+    expect(shell.openWindows()).toEqual(['control_center']);
   });
 });
 
@@ -115,7 +125,7 @@ describe('chat shortcut', () => {
     platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
     await shell.whenIdle();
     expect(shell.isOpen('chat')).toBe(true);
-    expect(shell.isOpen('orb')).toBe(true);
+    expect(shell.isOpen('orb')).toBe(false);
   });
 
   it('starts no microphone capture', async () => {
@@ -149,6 +159,97 @@ describe('global push-to-talk accelerator', () => {
     platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
     await shell.whenIdle();
     expect(interactionRuntime.captureStarts()).toBe(0);
+  });
+
+  it('refuses capture when the permission gate denies, even if the toggle is on', async () => {
+    const { shell, platform, interactionRuntime } = build(
+      DEFAULT_SETTINGS,
+      undefined,
+      false,
+      () => false,
+    );
+    shell.start();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(0);
+  });
+
+  it('honours the permission gate for the focused push-to-talk key too', async () => {
+    let allowed = true;
+    const { shell, platform, interactionRuntime } = build(
+      DEFAULT_SETTINGS,
+      undefined,
+      false,
+      () => allowed,
+    );
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    platform.keys.emit(key('key_up'));
+    await shell.whenIdle();
+    allowed = false;
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+  });
+
+  it('registers a shortcut that was turned on after launch', async () => {
+    const { shell, platform, settings, interactionRuntime } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkEnabled: false,
+      chatShortcutEnabled: false,
+    });
+    shell.start();
+    expect(shell.shortcutStatus()).toEqual({ chat: false, pushToTalk: false });
+    settings.save({ ...DEFAULT_SETTINGS, showOrb: true });
+    shell.setShortcuts({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
+    await shell.whenIdle();
+    platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+  });
+
+  it('releases a shortcut that was turned off after launch, then takes it back', () => {
+    const { shell, platform } = build();
+    shell.start();
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    shell.setShortcuts({ chat: false, pushToTalk: false });
+    expect(shell.shortcutStatus()).toEqual({ chat: false, pushToTalk: false });
+    expect(platform.shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)).toBe(false);
+    shell.setShortcuts({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    expect(platform.shortcuts.accelerators).toEqual([
+      CHAT_SHORTCUT_ACCELERATOR,
+      PUSH_TO_TALK_ACCELERATOR,
+      CHAT_SHORTCUT_ACCELERATOR,
+      PUSH_TO_TALK_ACCELERATOR,
+    ]);
+  });
+
+  it('reports an accelerator the OS refused when it is enabled later', () => {
+    const { shell, platform } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkEnabled: false,
+    });
+    platform.shortcuts.refused.push(PUSH_TO_TALK_ACCELERATOR);
+    shell.start();
+    shell.setShortcuts({ pushToTalk: true });
+    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: false });
+  });
+
+  it('releases the global shortcuts when the shell stops', () => {
+    const { shell, platform } = build();
+    shell.start();
+    shell.stop();
+    expect(platform.shortcuts.accelerators).toEqual([
+      CHAT_SHORTCUT_ACCELERATOR,
+      PUSH_TO_TALK_ACCELERATOR,
+    ]);
+    expect(platform.shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)).toBe(false);
+    expect(platform.shortcuts.isRegistered(PUSH_TO_TALK_ACCELERATOR)).toBe(false);
   });
 
   it('finalizes on the next tap in toggle mode instead of sending a dead release', async () => {
@@ -193,7 +294,7 @@ describe('window hiding', () => {
     shell.hide('control_center');
     expect(shell.isOpen('control_center')).toBe(false);
     expect(runtime.started).toBe(1);
-    expect(shell.openWindows()).toEqual(['orb']);
+    expect(shell.openWindows()).toEqual([]);
   });
 
   it('re-opens a hidden window without restarting the runtime', () => {
@@ -293,21 +394,34 @@ describe('orb presence', () => {
     expect(orb?.shown).toBe(1);
   });
 
-  it('is shown by launch when enabled and by the capture activation alike', async () => {
+  it('is shown by the capture activation, not by launch', async () => {
     const { shell, platform } = build();
     shell.start();
     platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
     await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(false);
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
     expect(shell.isOpen('orb')).toBe(true);
   });
 
-  it('keeps the Orb present for a refused capture activation', async () => {
+  it('leaves the Orb present but unchanged by a refused capture activation', async () => {
+    const { shell, platform, interactionRuntime } = build({ ...DEFAULT_SETTINGS, captureMuted: true });
+    shell.start();
+    shell.setOrbVisible(true);
+    expect(shell.isOpen('orb')).toBe(true);
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    expect(shell.isOpen('orb')).toBe(true);
+    expect(interactionRuntime.captureStarts()).toBe(0);
+  });
+
+  it('does not raise the Orb for a refused capture activation', async () => {
     const { shell, platform } = build({ ...DEFAULT_SETTINGS, captureMuted: true });
     shell.start();
     platform.keys.emit(key('key_down'));
     await shell.whenIdle();
-    expect(shell.isOpen('orb')).toBe(true);
-    expect(platform.windows.handle('orb')?.shown).toBe(1);
+    expect(shell.isOpen('orb')).toBe(false);
   });
 
   it('focuses the chat window but never the Orb', async () => {
@@ -325,7 +439,7 @@ describe('orb presence', () => {
 
 
 describe('orb window geometry and options', () => {
-  it('places the orb at the right edge, two sixths down the work area', async () => {
+  it('places the orb at the right edge, vertically centred', async () => {
     const { shell, platform } = build();
     shell.start();
     platform.keys.emit(key('key_down'));
@@ -333,7 +447,7 @@ describe('orb window geometry and options', () => {
     const orb = platform.windows.handle('orb');
     expect(orb?.bounds).toEqual({
       x: 1440 - ORB_WINDOW_SIZE - ORB_RIGHT_MARGIN,
-      y: (900 * 2) / 6,
+      y: (900 - ORB_WINDOW_SIZE) / 2,
       width: ORB_WINDOW_SIZE,
       height: ORB_WINDOW_SIZE,
     });
@@ -463,7 +577,7 @@ describe('background launch', () => {
     // The runtime and the activation surfaces are still live in the background.
     expect(controlCenter).toBeDefined();
     expect(shell.isOpen('control_center')).toBe(false);
-    expect(shell.isOpen('orb')).toBe(true);
+    expect(shell.isOpen('orb')).toBe(false);
   });
 
   it('shows the Control Center on a normal launch', () => {
@@ -489,10 +603,10 @@ describe('tray', () => {
     shell.start();
     platform.tray.item('orb')?.onClick();
     await shell.whenIdle();
-    expect(shell.isOpen('orb')).toBe(false);
+    expect(shell.isOpen('orb')).toBe(true);
     platform.tray.item('orb')?.onClick();
     await shell.whenIdle();
-    expect(shell.isOpen('orb')).toBe(true);
+    expect(shell.isOpen('orb')).toBe(false);
   });
 
   it('reports no tray when the desktop does not provide one', () => {

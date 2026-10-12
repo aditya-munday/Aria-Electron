@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { renderOrb, wirePointerInteractivity, bootstrapOrb, type OrbBridge } from './orb.js';
 import type { OrbState } from '../state.js';
 import { ORB_WINDOW_SIZE } from '../window-options.js';
+
+// jsdom has no canvas backend; returning null stands in for it without the
+// not-implemented warning jsdom raises when getContext is called.
+beforeAll(() => {
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+});
 
 function state(overrides: Partial<OrbState['presence']> = {}): OrbState {
   return {
@@ -48,21 +54,37 @@ describe('orb renderer', () => {
     expect(root.querySelector('[data-testid="orb-label"]')?.textContent).toBe('Idle');
   });
 
-  it('draws a single circle: a core with a halo and glow, no frame elements', () => {
+  it('draws a single glass sphere with a glow, no frame elements', () => {
     const root = render(state());
-    expect(root.querySelectorAll('.core')).toHaveLength(1);
-    expect(root.querySelectorAll('.halo')).toHaveLength(1);
+    expect(root.querySelectorAll('.sphere')).toHaveLength(1);
+    expect(root.querySelectorAll('.glass')).toHaveLength(1);
     expect(root.querySelectorAll('.glow')).toHaveLength(1);
-    expect(root.querySelectorAll('.ring')).toHaveLength(1);
     expect(root.querySelector('.panel')).toBeNull();
     expect(root.querySelector('.frame')).toBeNull();
   });
 
-  it('renders the listening waveform cue as a core', () => {
+  it('paints the prism ribbon into a canvas and hides it from assistive tech', () => {
+    const root = render(state());
+    const canvas = root.querySelector('canvas.glass') as HTMLCanvasElement;
+    expect(canvas).not.toBeNull();
+    expect(canvas.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('falls back to the CSS glass when no canvas context is available', () => {
+    const root = render(state());
+    expect(root.querySelector('.sphere')?.classList.contains('glass-fallback')).toBe(true);
+  });
+
+  it('tints the glass with a cue-specific accent hue', () => {
+    const root = render(state({ presence: 'speaking', cue: 'bars', label: 'Speaking' }));
+    const orb = root.querySelector('.orb') as HTMLElement;
+    expect(orb.style.getPropertyValue('--cue-hue')).toBe('152');
+  });
+
+  it('renders the listening waveform cue', () => {
     const root = render(state({ presence: 'listening', cue: 'waveform', label: 'Listening' }));
     const orb = root.querySelector('.orb') as HTMLElement;
     expect(orb.getAttribute('data-cue')).toBe('waveform');
-    expect(root.querySelector('.core-waveform')).not.toBeNull();
   });
 
   it('renders the error cue and its detail', () => {
@@ -74,7 +96,8 @@ describe('orb renderer', () => {
         detail: 'Microphone access was denied.',
       }),
     );
-    expect(root.querySelector('.core-alert')).not.toBeNull();
+    const orb = root.querySelector('.orb') as HTMLElement;
+    expect(orb.getAttribute('data-cue')).toBe('alert');
     expect(root.querySelector('[data-testid="orb-detail"]')?.textContent).toBe('Microphone access was denied.');
   });
 
@@ -82,7 +105,6 @@ describe('orb renderer', () => {
     const root = render(state({ presence: 'muted', cue: 'slash', label: 'Muted' }));
     const orb = root.querySelector('.orb') as HTMLElement;
     expect(orb.getAttribute('data-cue')).toBe('slash');
-    expect(root.querySelector('.core-slash')).not.toBeNull();
   });
 
   it('exposes an accessible label combining the presence and detail', () => {

@@ -249,8 +249,6 @@ export {
 } from './shell/geometry.js';
 export {
   ORB_RIGHT_MARGIN,
-  ORB_VERTICAL_SIXTHS,
-  ORB_VERTICAL_DENOMINATOR,
   placeOrb,
   orbCircle,
   type ScreenInfo,
