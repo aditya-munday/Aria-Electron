@@ -75,11 +75,12 @@ export class AriaShell {
       },
     );
     // A true global grab for push-to-talk, so it works while another app has
-    // focus. It only fires on key-down, so it toggles capture on and off.
+    // focus. The OS only reports the key-down, so each tap is a press and the
+    // shell decides whether to pair it with a release based on the mode.
     this.pushToTalkRegistered = this.platform.shortcuts.register(
       PUSH_TO_TALK_ACCELERATOR,
       () => {
-        this.enqueue(() => this.togglePushToTalk());
+        this.enqueue(() => this.activatePushToTalk());
       },
     );
     this.platform.keys.start();
@@ -134,8 +135,20 @@ export class AriaShell {
     this.applyRouting(await this.interaction.handle({ kind: 'chat_shortcut' }));
   }
 
-  private async togglePushToTalk(): Promise<void> {
+  /**
+   * The global accelerator is a tap: the OS reports the key going down and
+   * never its release, so a hold gesture is impossible through it. The voice
+   * controller owns the mode semantics — a tap is a `press`, and in toggle mode
+   * the controller finalizes on the next press. Only in hold mode, where a lone
+   * press would otherwise capture forever, does the shell pair the press with a
+   * release on the next tap.
+   */
+  private async activatePushToTalk(): Promise<void> {
     if (!this.settings.load().pushToTalkEnabled) return;
+    if (this.settings.load().pushToTalkMode === 'toggle') {
+      this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
+      return;
+    }
     if (!this.pttToggled) {
       this.pttToggled = true;
       this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));

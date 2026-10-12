@@ -87,8 +87,10 @@ export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';
  * A true global push-to-talk accelerator. Unlike the focused `?` key, this is
  * grabbed from the OS, so it fires while another application has focus.
  *
- * A global accelerator only reports the key going down, so the gesture is a
- * toggle: the first press starts capture, the next press finalizes it. Hold-to-
- * talk remains available through the focused `ControlRight` key.
+ * A global accelerator only reports the key going down, never its release, so
+ * the shell treats each press as a tap and defers to the voice controller's
+ * mode: `toggle` finalizes on the next tap, while `hold` pairs each tap with a
+ * release so capture cannot run forever. True hold-to-talk remains available
+ * through the focused `?` key.
  */
 export const PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+Space';
