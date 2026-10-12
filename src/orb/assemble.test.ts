@@ -79,8 +79,72 @@ describe('orb presence resolution', () => {
 
   it('covers every presence with a cue', () => {
     expect(Object.keys(ORB_CUE).sort()).toEqual(
-      ['error', 'idle', 'listening', 'muted', 'speaking', 'thinking'].sort(),
+      [
+        'awaiting_approval',
+        'awaiting_input',
+        'error',
+        'hidden',
+        'idle',
+        'interrupted',
+        'listening',
+        'muted',
+        'recovering',
+        'speaking',
+        'task_running',
+        'thinking',
+      ].sort(),
     );
+  });
+
+  it('is interrupted when the voice session was cancelled', () => {
+    const view = resolvePresence(
+      sources({
+        diagnostics: { listening: false, sessionState: 'cancelled', wakeWordEnabled: true },
+      }),
+    );
+    expect(view.presence).toBe('interrupted');
+    expect(view.cue).toBe('halt');
+    expect(view.detail).toBeDefined();
+  });
+
+  it('reflects tracked work: approval, question, running and unknown', () => {
+    const task = (overrides: Partial<OrbSources['task']> = {}) => ({
+      phase: 'running' as const,
+      pendingQuestions: 0,
+      pendingPlans: 0,
+      pendingPermissions: 0,
+      ...overrides,
+    });
+    const diagnostics = { listening: false, sessionState: 'idle', wakeWordEnabled: true };
+
+    const approval = resolvePresence(
+      sources({ diagnostics, task: task({ phase: 'accepted', pendingPlans: 1 }) }),
+    );
+    const question = resolvePresence(
+      sources({ diagnostics, task: task({ phase: 'accepted', pendingQuestions: 1 }) }),
+    );
+    const running = resolvePresence(sources({ diagnostics, task: task() }));
+    const unknown = resolvePresence(sources({ diagnostics, task: task({ phase: 'unknown' }) }));
+
+    expect(approval.presence).toBe('awaiting_approval');
+    expect(question.presence).toBe('awaiting_input');
+    expect(running.presence).toBe('task_running');
+    expect(unknown.presence).toBe('recovering');
+  });
+
+  it('lets an active voice session outrank background task state', () => {
+    const view = resolvePresence(
+      sources({
+        diagnostics: { listening: true, sessionState: 'capturing', wakeWordEnabled: true },
+        task: {
+          phase: 'running',
+          pendingQuestions: 0,
+          pendingPlans: 0,
+          pendingPermissions: 0,
+        },
+      }),
+    );
+    expect(view.presence).toBe('listening');
   });
 
   it('stamps the presence with the supplied clock', () => {

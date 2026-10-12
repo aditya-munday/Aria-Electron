@@ -17,6 +17,7 @@ import { patchSettings } from './shell/settings.js';
 import { createAutostartManager } from './shell/autostart.js';
 import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
+import type { PreviewVoiceResult } from './shell/ipc.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
@@ -57,6 +58,11 @@ function main(): void {
       errors.report('settings:wakeWord', error);
     });
     runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
+    runtime.voice?.setSpeechOutput({
+      voice: next.voice ?? null,
+      language: next.language ?? null,
+      speed: next.speechRate,
+    });
   };
 
   const autostart = createAutostartManager({
@@ -143,6 +149,8 @@ function main(): void {
         };
       },
       settings: () => shell.currentSettings(),
+      records: () => runtime.supervisor.records(),
+      orbVisible: () => shell.isOpen('orb'),
     },
   });
 
@@ -183,6 +191,7 @@ function main(): void {
     },
     controlCenterState: (): Promise<ControlCenterState> => controlCenter.buildState(),
     updateSettings: (patch: unknown): SettingsSaveResult => controlCenter.applySettings(patch),
+    previewVoice: (input: unknown): Promise<PreviewVoiceResult> => controlCenter.previewVoice(input),
     signIn: (input: unknown): Promise<SignInOutcome> =>
       verifySignIn(input, {
         sessionToken: runtime.sessionToken(),

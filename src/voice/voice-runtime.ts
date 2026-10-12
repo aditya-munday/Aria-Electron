@@ -26,7 +26,7 @@ import { VoiceEventBus, type VoiceEventListener } from './events.js';
 import type { Speaker } from './playback.js';
 import { createPushToTalk, type PushToTalkController, type PushToTalkIntent, type PushToTalkMode } from './push-to-talk.js';
 import type { SpeechProxy } from './speech.js';
-import { VoiceSession, type Orchestrator, type UtteranceBoundary } from './session.js';
+import { VoiceSession, base64ToPcm, type Orchestrator, type UtteranceBoundary } from './session.js';
 import type { VoiceRuntimeConfig } from './voice-config.js';
 import { validateVoiceConfig } from './voice-config.js';
 import {
@@ -69,7 +69,7 @@ export interface VoiceRuntimeDeps {
 }
 
 export class VoiceRuntime {
-  private readonly config: VoiceRuntimeConfig;
+  private config: VoiceRuntimeConfig;
   private readonly microphone: Microphone;
   private readonly speaker: Speaker;
   private readonly speech: SpeechProxy;
@@ -203,6 +203,56 @@ export class VoiceRuntime {
 
   setPushToTalkMode(mode: PushToTalkMode): void {
     this.pushToTalk.setMode(mode);
+  }
+
+  /** An explicit user action, not an agent turn: it never opens or interrupts a session. */
+  async previewSpeech(input: {
+    readonly text: string;
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): Promise<void> {
+    const text = input.text.trim();
+    if (text === '') return;
+    const speed = input.speed ?? this.config.speed;
+    const audio = await this.speech.synthesize({
+      text,
+      voice: input.voice ?? this.config.voice ?? null,
+      language: input.language ?? this.config.language ?? null,
+      ...(speed !== undefined ? { speed } : {}),
+      sampleRate: this.config.sampleRate,
+    });
+    const pcm = base64ToPcm(audio.samples_le_base64);
+    if (pcm.length === 0) {
+      throw new VoiceError('speech_failed', 'The Backend returned no audio to preview.');
+    }
+    await this.speaker.play(pcm, { sampleRate: audio.sample_rate, channels: audio.channels });
+  }
+
+  /** An in-flight session keeps its output; the next activation picks up the new values. */
+  setSpeechOutput(output: {
+    readonly voice?: string | null;
+    readonly language?: string | null;
+    readonly speed?: number;
+  }): void {
+    const next: VoiceRuntimeConfig = { ...this.config };
+    const config = next as {
+      voice?: string;
+      language?: string;
+      speed?: number;
+    };
+    if (output.voice === null) delete config.voice;
+    else if (output.voice !== undefined) config.voice = output.voice;
+    if (output.language === null) delete config.language;
+    else if (output.language !== undefined) config.language = output.language;
+    if (output.speed !== undefined) config.speed = Math.min(2, Math.max(0.5, output.speed));
+    try {
+      validateVoiceConfig(next);
+    } catch (error) {
+      this.lastError = asVoiceError(error);
+      return;
+    }
+    this.config = next;
   }
 
   /** Push-to-talk: press the configured control. */

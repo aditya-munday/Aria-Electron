@@ -9,6 +9,7 @@ export const IPC_CHANNELS = {
   stopPlayback: 'aria:stop-playback',
   controlCenterState: 'aria:control-center:state',
   settingsUpdate: 'aria:control-center:settings-update',
+  previewVoice: 'aria:control-center:preview-voice',
   accountSignIn: 'aria:control-center:sign-in',
   accountSignOut: 'aria:control-center:sign-out',
   orbState: 'aria:orb:state',
@@ -35,6 +36,10 @@ export type SettingsUpdateResult =
   | { readonly ok: true; readonly settings: ShellSettings }
   | { readonly ok: false; readonly reason: string };
 
+export type PreviewVoiceResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
 export type SignInResult =
   | { readonly ok: true; readonly signedIn: true; readonly reason?: string }
   | {
@@ -51,6 +56,7 @@ export interface AriaBridge {
   sendText(text: string): Promise<void>;
   controlCenterState(): Promise<ControlCenterState>;
   updateSettings(patch: unknown): Promise<SettingsUpdateResult>;
+  previewVoice(input: unknown): Promise<PreviewVoiceResult>;
   signIn(input: unknown): Promise<SignInResult>;
   signOut(): Promise<SignInResult>;
   orbState(): Promise<OrbState>;
@@ -76,6 +82,7 @@ export const BRIDGE_METHODS = [
   'sendText',
   'controlCenterState',
   'updateSettings',
+  'previewVoice',
   'signIn',
   'signOut',
   'orbState',
@@ -127,6 +134,8 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
       ipc.invoke(IPC_CHANNELS.controlCenterState) as Promise<ControlCenterState>,
     updateSettings: (patch: unknown): Promise<SettingsUpdateResult> =>
       ipc.invoke(IPC_CHANNELS.settingsUpdate, patch) as Promise<SettingsUpdateResult>,
+    previewVoice: (input: unknown): Promise<PreviewVoiceResult> =>
+      ipc.invoke(IPC_CHANNELS.previewVoice, input) as Promise<PreviewVoiceResult>,
     signIn: (input: unknown): Promise<SignInResult> =>
       ipc.invoke(IPC_CHANNELS.accountSignIn, input) as Promise<SignInResult>,
     signOut: (): Promise<SignInResult> =>

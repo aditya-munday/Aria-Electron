@@ -273,6 +273,60 @@ describe('VoiceRuntime text turn', () => {
   });
 });
 
+describe('VoiceRuntime speech output', () => {
+  it('applies a new voice and language to the next synthesized turn', async () => {
+    const built = build({});
+    built.runtime.setSpeechOutput({ voice: 'magnus', language: 'en-GB' });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]).toMatchObject({ voice: 'magnus', language: 'en-GB' });
+  });
+
+  it('clamps an out-of-range speed instead of sending it to the Backend', async () => {
+    const built = build({});
+    built.runtime.setSpeechOutput({ speed: 9 });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.speed).toBe(2);
+  });
+
+  it('clears the voice so the Backend default is used', async () => {
+    const built = build({ config: config({ voice: 'magnus' }) });
+    built.runtime.setSpeechOutput({ voice: null });
+    const turn = built.runtime.sendText('hello');
+    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    built.speaker.advance();
+    await turn;
+    expect(built.speech.ttsCalls[0]?.voice).toBeUndefined();
+  });
+
+  it('auditions a voice without opening a session or capturing audio', async () => {
+    const built = build({});
+    const preview = built.runtime.previewSpeech({ text: 'hi', voice: 'vera', speed: 1.2 });
+    await waitFor(() => built.speech.ttsCalls.length === 1, 'synthesis');
+    built.speaker.advance();
+    await preview;
+    expect(built.speech.ttsCalls[0]).toMatchObject({ text: 'hi', voice: 'vera', speed: 1.2 });
+    expect(built.microphone.openCount).toBe(0);
+    expect(built.orchestrator.calls).toHaveLength(0);
+  });
+
+  it('does not synthesize an empty preview', async () => {
+    const built = build({});
+    await built.runtime.previewSpeech({ text: '   ' });
+    expect(built.speech.ttsCalls).toHaveLength(0);
+  });
+
+  it('rejects a preview when the Backend returns no audio', async () => {
+    const built = build({ speech: new SpeechDouble({ ttsSamples: 0 }) });
+    await expect(built.runtime.previewSpeech({ text: 'hi' })).rejects.toThrow(VoiceError);
+  });
+});
+
 describe('VoiceRuntime voice discovery', () => {
   it('flags a configured voice the Backend does not offer', async () => {
     const built = build({ config: config({ voice: 'nope' }) });

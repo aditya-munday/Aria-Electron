@@ -1,4 +1,5 @@
 import type { AriaConfig } from '../config.js';
+import type { CapabilityEntry } from '../contract/capability-catalog.js';
 import type { TaskPhase } from '../supervisor/supervisor.js';
 import type { AccentTheme, ShellSettings } from '../shell/settings.js';
 import type { PushToTalkMode } from '../shell/window.js';
@@ -26,8 +27,29 @@ export interface VoiceView {
   readonly configured?: string;
   readonly language?: string;
   readonly speakResponses: boolean;
-  readonly voices: readonly { readonly id: string; readonly name: string; readonly language: string }[];
+  readonly speechRate: number;
+  readonly voices: readonly VoiceOption[];
+  readonly languages: readonly LanguageOption[];
+  readonly sttLanguages: readonly string[];
   readonly reason?: string;
+}
+
+export interface VoiceOption {
+  readonly id: string;
+  readonly name: string;
+  readonly language: string;
+  readonly accent?: string;
+  readonly gender?: string;
+  readonly age?: string;
+  readonly styles: readonly string[];
+  readonly sampleRate?: number;
+  readonly description?: string;
+}
+
+export interface LanguageOption {
+  readonly tag: string;
+  readonly name: string;
+  readonly nativeName?: string;
 }
 
 export interface ActivationView {
@@ -81,6 +103,8 @@ export interface PrivacyView {
 export interface IntegrationView {
   readonly backend: { readonly state: BackendState; readonly reason?: string };
   readonly aiEngineer: { readonly state: BackendState; readonly reason?: string };
+  readonly catalogVersion: string;
+  readonly capabilities: readonly CapabilityEntry[];
 }
 
 export interface ReportedIncident {
@@ -135,6 +159,18 @@ export interface VoiceCatalogEntry {
   readonly id: string;
   readonly name: string;
   readonly language: string;
+  readonly accent?: string;
+  readonly gender?: string;
+  readonly age?: string;
+  readonly styles?: readonly string[];
+  readonly sampleRate?: number;
+  readonly description?: string;
+}
+
+export interface LanguageCatalogEntry {
+  readonly tag: string;
+  readonly name: string;
+  readonly nativeName?: string;
 }
 
 export interface VoiceDiagnosticsView {
@@ -179,7 +215,12 @@ export interface ControlCenterSources {
         readonly unauthenticated: boolean;
       };
   readonly capabilities:
-    | { readonly ok: true; readonly voices: readonly VoiceCatalogEntry[] }
+    | {
+        readonly ok: true;
+        readonly voices: readonly VoiceCatalogEntry[];
+        readonly languages?: readonly LanguageCatalogEntry[];
+        readonly sttLanguages?: readonly string[];
+      }
     | { readonly ok: false; readonly error: { readonly kind: string; readonly message: string } };
   readonly voice: VoiceDiagnosticsView;
   readonly microphonePermission: PermissionState;
@@ -203,6 +244,7 @@ export interface ShellSettingsPatch {
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
+  readonly speechRate?: number;
   readonly captureDeviceId?: string | null;
 }
 
@@ -220,6 +262,7 @@ export const EDITABLE_SETTINGS_KEYS: readonly SettingsKey[] = [
   'voice',
   'language',
   'speakResponses',
+  'speechRate',
   'captureDeviceId',
 ];
 

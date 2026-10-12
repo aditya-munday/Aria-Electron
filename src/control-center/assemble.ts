@@ -12,6 +12,8 @@ import type {
   IntegrationView,
   PrivacyView,
   SignInState,
+  VoiceCatalogEntry,
+  VoiceOption,
   VoiceView,
 } from './state.js';
 
@@ -53,29 +55,53 @@ function voiceView(sources: ControlCenterSources): VoiceView {
     ...(settings.voice !== undefined ? { configured: settings.voice } : {}),
     ...(settings.language !== undefined ? { language: settings.language } : {}),
     speakResponses: settings.speakResponses,
+    speechRate: settings.speechRate,
   };
 
   const capabilities = sources.capabilities;
   if (capabilities.ok) {
+    const languages = capabilities.languages ?? [];
+    const sttLanguages = capabilities.sttLanguages ?? [];
     if (capabilities.voices.length > 0) {
       return {
         ...base,
         catalogState: 'available',
-        voices: capabilities.voices.map((voice) => ({
-          id: voice.id,
-          name: voice.name,
-          language: voice.language,
-        })),
+        voices: capabilities.voices.map(toVoiceOption),
+        languages,
+        sttLanguages,
       };
     }
-    return { ...base, catalogState: 'empty', voices: [], reason: 'The Backend advertises no voices.' };
+    return {
+      ...base,
+      catalogState: 'empty',
+      voices: [],
+      languages,
+      sttLanguages,
+      reason: 'The Backend advertises no voices.',
+    };
   }
 
   return {
     ...base,
     catalogState: 'unknown',
     voices: [],
+    languages: [],
+    sttLanguages: [],
     reason: capabilities.error.message,
+  };
+}
+
+function toVoiceOption(voice: VoiceCatalogEntry): VoiceOption {
+  return {
+    id: voice.id,
+    name: voice.name,
+    language: voice.language,
+    ...(voice.accent !== undefined ? { accent: voice.accent } : {}),
+    ...(voice.gender !== undefined ? { gender: voice.gender } : {}),
+    ...(voice.age !== undefined ? { age: voice.age } : {}),
+    styles: voice.styles ?? [],
+    ...(voice.sampleRate !== undefined ? { sampleRate: voice.sampleRate } : {}),
+    ...(voice.description !== undefined ? { description: voice.description } : {}),
   };
 }
 
@@ -136,6 +162,12 @@ function ariaConfigView(sources: ControlCenterSources): AriaConfigView {
         id: 'speakResponses',
         label: 'Speak responses',
         value: settings.speakResponses ? 'On' : 'Off',
+        editable: true,
+      },
+      {
+        id: 'speechRate',
+        label: 'Speech rate',
+        value: `${settings.speechRate.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}×`,
         editable: true,
       },
       {

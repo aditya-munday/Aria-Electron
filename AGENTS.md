@@ -63,9 +63,11 @@ main process writes them to stderr). It never fabricates success.
 
 `SettingsStore.subscribe` (implemented by both the in-memory and file stores)
 lets the main process push a settings change to the voice runtime
-(`setWakeWordEnabled`, `setPushToTalkMode`) the moment it is saved, rather than
-only applying it on the next Control Center refresh. The renderer reads current
-settings through the `aria:shell:settings` IPC channel.
+(`setWakeWordEnabled`, `setPushToTalkMode`, `setSpeechOutput`) the moment it is
+saved, rather than only applying it on the next Control Center refresh. The
+renderer reads current settings through the `aria:shell:settings` IPC channel.
+`setSpeechOutput` changes the voice/language/speed used by subsequent sessions
+only; a session already in flight keeps the output it started with.
 
 ## Voice pipeline (`src/voice/`)
 
@@ -160,8 +162,8 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
 - `ipc.ts` / `ipc-handlers.ts` / `security.ts` — the renderer boundary. The
   bridge exposes exactly `status`, `sendText`, `stopPlayback` plus the
   Control Center operations `controlCenterState`, `settingsUpdate`,
-  `accountSignIn`, `accountSignOut`; no token, capability or raw-`ipcRenderer`
-  accessor crosses it. Renderer windows are context-isolated,
+  `accountSignIn`, `accountSignOut`, `previewVoice`; no token, capability or
+  raw-`ipcRenderer` accessor crosses it. Renderer windows are context-isolated,
   `nodeIntegration: false`, web-security on, and deny external navigation and
   `window.open`. The main process registers a `window-all-closed` handler on
   purpose so Electron does not quit when the last window closes.
@@ -184,10 +186,33 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   returns one typed `ControlCenterState`. Failures stay honest: signed-out
   identity, backend outage with reason, empty/unknown voice catalog, denied
   microphone. `control-center-runtime.ts` adapts `AriaRuntime` + `AriaShell`.
+  The renderer exposes the ten canonical sections from All-Knowledge §7.2 as
+  tabs: Profile, Account, Voice & Language, Activation, Aria Configuration,
+  Privacy & Permissions, Integrations, Tasks & History, Diagnostics, General.
+  The Integrations tab also renders the versioned capability catalog.
+- `contract/capability-catalog.ts` — the versioned capability catalog
+  (`CAPABILITY_CATALOG_VERSION`, `CapabilityEntry`, `resolveCapabilities`). It
+  describes what the runtime can do (identifiers, privilege, approval policy,
+  risk, side effects, verification, cancellation, retry, reversibility,
+  recovery) and marks each entry `supported` with an honest `reason` when the
+  live runtime cannot honor it. The catalog *describes*; it never grants
+  authority (All-Knowledge §9.1, §8.5). Do not fabricate a capability: gate on a
+  real signal (voice engine present, signed in) and report the limitation.
 - `control-center/renderer/control-center.ts` — the Control Center UI. Renders
   every section from the received state and enables a control only when its
-  source allows it. Bundled by `scripts/bundle-renderer.mjs` with esbuild into a
-  deferred classic script, because Chromium refuses `file://` ES-module imports.
+  source allows it. The Voice & Language tab is a studio: a summary of the
+  current output, a searchable/filterable voice grid (accent/language facets)
+  with per-voice selection and inline audition, a speed slider, STT-language
+  chips, a push-to-talk mode control and spoken-response toggle. Audition goes
+  through `previewVoice` → the voice runtime; nothing is enabled unless the
+  Backend actually advertises it. Bundled by `scripts/bundle-renderer.mjs` with
+  esbuild into a deferred classic script, because Chromium refuses `file://`
+  ES-module imports.
+- Typography: `src/renderer/theme.css` self-hosts two variable fonts — `Space
+  Grotesk` (display) and `Public Sans` (body), each split into latin /
+  latin-ext subsets with `unicode-range` — so the UI reads as a deliberate,
+  non-generic product rather than a default sans stack. There is no network
+  font fetch at runtime; the `.woff2` files ship in the renderer bundle.
 - `electron-platform.ts`, `main.ts`, `preload.ts` are the only files that
   import `electron`; everything under `src/shell/` is dependency-free.
 - `orb/` — the floating presence. `window-options.ts` holds the frameless /
@@ -198,9 +223,19 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   click-through except inside that circle via the `orbSetInteractive` channel
   and the pure `orb/hit-test.ts`. `orb/backdrop.ts` plans a full-screen material
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
-  rather than faking a blur with an opaque rectangle.
+  rather than faking a blur with an opaque rectangle. `state.ts` defines
+  `OrbPresence` — the All-Knowledge §7.3 conceptual states, reusing the repo's
+  existing lifecycle names where they already matched (`idle`/`listening`/
+  `thinking`/`speaking`/`error`/`muted`); the canonical extras are `hidden`,
+  `interrupted`, `awaiting_approval`, `awaiting_input`, `task_running`,
+  `recovering`. `OrbService.buildState` reports `hidden` when `orbVisible()` is
+  false, so no animation claims the Orb is present when it is not. `assemble.ts`
+  (`resolvePresence`, `taskPresence`) maps live signals — pending plans or
+  permissions → approval, pending questions → input, a cancelled voice session →
+  interrupted — to a state plus a non-color cue; `orb-service.ts`'s
+  `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 412 tests / 48 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 494 tests / 54 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShellRuntime`, `FakeVoiceRuntime`.
 

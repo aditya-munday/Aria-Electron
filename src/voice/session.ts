@@ -442,6 +442,7 @@ export class VoiceSession {
           text,
           ...(this.config.language !== undefined ? { language: this.config.language } : {}),
           ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
+          ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
           sampleRate: SPEECH_SAMPLE_RATE,
         }),
         this.controller.signal,
