@@ -85,9 +85,7 @@ function main(): void {
     runtime: interactionRuntime,
   });
 
-  // Seed the voice runtime with the persisted settings before any activation
-  // can fire; otherwise a saved push-to-talk mode or wake-word preference is
-  // ignored until the user happens to touch that control again.
+  // Seed before any activation can fire, or a saved mode/wake-word is ignored.
   applySettingsToRuntime(settings.load());
   applyAutostart(settings.load());
 
