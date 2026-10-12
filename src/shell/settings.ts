@@ -7,11 +7,18 @@ export interface ShellSettings {
   readonly pushToTalkMode: PushToTalkMode;
   readonly chatShortcutEnabled: boolean;
   readonly captureMuted: boolean;
+  readonly showOrb: boolean;
+  readonly startOnLogin: boolean;
+  readonly accent: AccentTheme;
   readonly voice?: string;
   readonly language?: string;
   readonly speakResponses: boolean;
   readonly captureDeviceId?: string;
 }
+
+export type AccentTheme = 'aurora' | 'mint' | 'amber' | 'rose';
+
+export const ACCENT_THEMES: readonly AccentTheme[] = ['aurora', 'mint', 'amber', 'rose'];
 
 export const DEFAULT_SETTINGS: ShellSettings = {
   openWindows: ['control_center'],
@@ -20,6 +27,9 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   pushToTalkMode: 'hold',
   chatShortcutEnabled: true,
   captureMuted: false,
+  showOrb: true,
+  startOnLogin: false,
+  accent: 'aurora',
   speakResponses: true,
 };
 
@@ -33,6 +43,10 @@ const WINDOW_KINDS: ReadonlySet<string> = new Set(['control_center', 'orb', 'cha
 
 function optionalId(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+}
+
+function isAccentTheme(value: unknown): value is AccentTheme {
+  return typeof value === 'string' && (ACCENT_THEMES as readonly string[]).includes(value);
 }
 
 export function normalizeSettings(value: unknown): ShellSettings {
@@ -66,6 +80,13 @@ export function normalizeSettings(value: unknown): ShellSettings {
       typeof record['captureMuted'] === 'boolean'
         ? record['captureMuted']
         : DEFAULT_SETTINGS.captureMuted,
+    showOrb:
+      typeof record['showOrb'] === 'boolean' ? record['showOrb'] : DEFAULT_SETTINGS.showOrb,
+    startOnLogin:
+      typeof record['startOnLogin'] === 'boolean'
+        ? record['startOnLogin']
+        : DEFAULT_SETTINGS.startOnLogin,
+    accent: isAccentTheme(record['accent']) ? record['accent'] : DEFAULT_SETTINGS.accent,
     speakResponses:
       typeof record['speakResponses'] === 'boolean'
         ? record['speakResponses']
@@ -101,6 +122,9 @@ export interface SettingsPatchInput {
   readonly pushToTalkMode?: PushToTalkMode;
   readonly chatShortcutEnabled?: boolean;
   readonly captureMuted?: boolean;
+  readonly showOrb?: boolean;
+  readonly startOnLogin?: boolean;
+  readonly accent?: AccentTheme;
   readonly voice?: string | null;
   readonly language?: string | null;
   readonly speakResponses?: boolean;
@@ -126,6 +150,9 @@ export function patchSettings(
       ? { chatShortcutEnabled: patch.chatShortcutEnabled }
       : {}),
     ...(patch.captureMuted !== undefined ? { captureMuted: patch.captureMuted } : {}),
+    ...(patch.showOrb !== undefined ? { showOrb: patch.showOrb } : {}),
+    ...(patch.startOnLogin !== undefined ? { startOnLogin: patch.startOnLogin } : {}),
+    ...(patch.accent !== undefined ? { accent: patch.accent } : {}),
     ...(patch.speakResponses !== undefined ? { speakResponses: patch.speakResponses } : {}),
   };
   if (next['voice'] === null) {

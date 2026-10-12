@@ -10,8 +10,15 @@ export interface ControlCenterBridge {
 
 type El = HTMLElement;
 
-const TABS = ['overview', 'voice', 'account', 'diagnostics'] as const;
+const TABS = ['overview', 'voice', 'account', 'appearance', 'diagnostics'] as const;
 type TabId = (typeof TABS)[number];
+
+const ACCENT_OPTIONS = [
+  { value: 'aurora', label: 'Aurora (violet)' },
+  { value: 'mint', label: 'Mint (teal)' },
+  { value: 'amber', label: 'Amber (gold)' },
+  { value: 'rose', label: 'Rose (pink)' },
+] as const;
 
 const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }> = {
   overview: {
@@ -28,6 +35,11 @@ const TAB_META: Record<TabId, { label: string; subtitle: string; icon: string }>
     label: 'Account',
     subtitle: 'Sign in to the Beyonders backend.',
     icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2.2-7 5v1h14v-1c0-2.8-3-5-7-5Z',
+  },
+  appearance: {
+    label: 'Appearance',
+    subtitle: 'Orb presence, accent and startup behaviour.',
+    icon: 'M12 3a9 9 0 1 0 0 18 4 4 0 0 0 0-8 4 4 0 0 1 0-8Z',
   },
   diagnostics: {
     label: 'Diagnostics',
@@ -300,6 +312,77 @@ function overviewPanel(doc: Document, state: ControlCenterState): El {
   return panel;
 }
 
+function appearancePanel(
+  doc: Document,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+): El {
+  const panel = h(doc, 'div', 'panel');
+  panel.setAttribute('role', 'tabpanel');
+  panel.id = 'panel-appearance';
+
+  const appearance = state.appearance;
+  const presence = card(doc, 'Presence & startup');
+  presence.append(
+    hint(
+      doc,
+      'The Orb is Aria’s voice surface. Keep it on screen or hide it and summon it with push to talk.',
+    ),
+    toggle(
+      doc,
+      'show-orb',
+      'Show the Orb',
+      appearance.showOrb,
+      true,
+      undefined,
+      (next) => {
+        void bridge.updateSettings({ showOrb: next }).then(refresh);
+      },
+    ),
+    toggle(
+      doc,
+      'start-on-login',
+      'Start Aria when you sign in',
+      appearance.startOnLogin,
+      true,
+      'Stored here; the packaged app applies it through the desktop autostart entry.',
+      (next) => {
+        void bridge.updateSettings({ startOnLogin: next }).then(refresh);
+      },
+    ),
+  );
+
+  const theme = card(doc, 'Accent');
+  theme.append(hint(doc, 'Tint the Control Center and the Orb to match your desktop.'));
+  theme.append(
+    select(
+      doc,
+      'accent-select',
+      'Accent theme',
+      appearance.accent,
+      ACCENT_OPTIONS,
+      true,
+      undefined,
+      (next) => {
+        void bridge.updateSettings({ accent: next }).then(refresh);
+      },
+    ),
+  );
+
+  panel.append(presence, theme);
+  return panel;
+}
+
+function applyAccent(doc: Document, state: ControlCenterState): void {
+  const root = doc.documentElement;
+  if (state.appearance.accent === 'aurora') {
+    root.removeAttribute('data-accent');
+    return;
+  }
+  root.setAttribute('data-accent', state.appearance.accent);
+}
+
 function voicePanel(
   doc: Document,
   state: ControlCenterState,
@@ -382,7 +465,7 @@ function voicePanel(
   const pttKeyRow = h(doc, 'div', 'row');
   const pttLabel = h(doc, 'span', 'row-label');
   text(pttLabel, 'Hold key');
-  pttKeyRow.append(pttLabel, keys(doc, 'Right Ctrl'));
+  pttKeyRow.append(pttLabel, keys(doc, activation.pushToTalk.key));
   keysCard.append(pttKeyRow);
 
   const globalRow = h(doc, 'div', 'row');
@@ -579,6 +662,12 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
   head?.append(badge(doc, backendWord(d.backendState), backendTone(d.backendState)));
   backend.append(
     row(doc, 'Reachability', backendWord(d.backendState), d.backendReason),
+    row(
+      doc,
+      'Voice engine',
+      d.voiceEngine === 'native' ? 'Native capture bound' : 'Unavailable',
+      d.voiceEngineReason,
+    ),
     row(doc, 'Voice input', d.voiceReady ? 'Ready' : 'Not ready', d.voiceReason),
     row(doc, 'Listening', d.listening ? 'yes' : 'no'),
     row(doc, 'Checked at', d.checkedAt),
@@ -686,6 +775,7 @@ export function renderControlCenter(
   const root = doc.getElementById('control-center');
   if (root === null) return;
   root.setAttribute('aria-busy', 'false');
+  applyAccent(doc, state);
 
   const refresh = (): void => {
     void bridge
@@ -722,6 +812,7 @@ export function renderControlCenter(
     overview: overviewPanel(doc, state),
     voice: voicePanel(doc, state, bridge, refresh),
     account: accountPanel(doc, state, bridge, refresh),
+    appearance: appearancePanel(doc, state, bridge, refresh),
     diagnostics: diagnosticsPanel(doc, state),
   };
   for (const id of TABS) {
@@ -731,6 +822,7 @@ export function renderControlCenter(
     panelsToRender.overview,
     panelsToRender.voice,
     panelsToRender.account,
+    panelsToRender.appearance,
     panelsToRender.diagnostics,
   );
 }

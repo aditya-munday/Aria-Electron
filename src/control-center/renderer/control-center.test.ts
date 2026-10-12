@@ -42,7 +42,15 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
       notes: ['Session tokens are held in memory only.'],
     },
     integrations: { backend: { state: 'ok' }, aiEngineer: { state: 'unknown' } },
-    diagnostics: { backendState: 'ok', voiceReady: true, listening: false, checkedAt: 'now', incidents: [] },
+    appearance: { accent: 'aurora', showOrb: true, startOnLogin: false },
+    diagnostics: {
+      backendState: 'ok',
+      voiceReady: true,
+      voiceEngine: 'native',
+      listening: false,
+      checkedAt: 'now',
+      incidents: [],
+    },
     tasks: [],
     ...overrides,
   };
@@ -85,7 +93,10 @@ function mount(): void {
     </main>`;
 }
 
-function render(value: ControlCenterState, tab: 'overview' | 'voice' | 'account' | 'diagnostics' = 'overview') {
+function render(
+  value: ControlCenterState,
+  tab: 'overview' | 'voice' | 'account' | 'appearance' | 'diagnostics' = 'overview',
+) {
   mount();
   const { bridge: b, patches, signIns } = bridge(value);
   renderControlCenter(document, value, b, tab);
@@ -95,7 +106,7 @@ function render(value: ControlCenterState, tab: 'overview' | 'voice' | 'account'
 describe('control center renderer', () => {
   it('renders every section as a tab', () => {
     render(state());
-    for (const id of ['overview', 'voice', 'account', 'diagnostics']) {
+    for (const id of ['overview', 'voice', 'account', 'appearance', 'diagnostics']) {
       expect(document.getElementById(`tab-${id}`)).not.toBeNull();
       expect(document.getElementById(`panel-${id}`)).not.toBeNull();
     }
@@ -297,5 +308,75 @@ describe('control center renderer', () => {
   it('says no errors were reported when the incident list is empty', () => {
     render(state(), 'diagnostics');
     expect(document.body.textContent).toContain('No errors have been reported this session.');
+  });
+
+  it('reports the voice engine honestly instead of claiming capture works', () => {
+    render(
+      state({
+        diagnostics: {
+          backendState: 'ok',
+          voiceReady: false,
+          voiceEngine: 'unavailable',
+          voiceEngineReason: 'This build ships without a bound microphone and speaker.',
+          listening: false,
+          checkedAt: 'now',
+          incidents: [],
+        },
+      }),
+      'diagnostics',
+    );
+    expect(document.body.textContent).toContain('Unavailable');
+    expect(document.body.textContent).toContain('without a bound microphone');
+  });
+
+  it('shows the configured hold key rather than a hard-coded one', () => {
+    render(
+      state({
+        activation: {
+          pushToTalk: {
+            enabled: true,
+            mode: 'hold',
+            key: 'Right Ctrl',
+            globalAccelerator: 'Super+Alt+Space',
+            globalRegistered: true,
+          },
+          wakeWord: { enabled: false, phrase: 'hey aria', available: true },
+          chatShortcut: { enabled: true, accelerator: 'Super+Alt+A', registered: true },
+        },
+      }),
+      'voice',
+    );
+    expect(document.body.textContent).toContain('Right Ctrl');
+    expect(document.body.textContent).not.toContain('Hold ?');
+  });
+
+  it('toggles the Orb presence from the appearance tab', () => {
+    const { patches } = render(state(), 'appearance');
+    const toggle = document.getElementById('show-orb') as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    expect(patches).toContainEqual({ showOrb: false });
+  });
+
+  it('applies the chosen accent to the document root', () => {
+    render(
+      state({ appearance: { accent: 'mint', showOrb: true, startOnLogin: false } }),
+      'appearance',
+    );
+    expect(document.documentElement.getAttribute('data-accent')).toBe('mint');
+  });
+
+  it('clears the accent attribute for the default theme', () => {
+    document.documentElement.setAttribute('data-accent', 'rose');
+    render(state({ appearance: { accent: 'aurora', showOrb: true, startOnLogin: false } }));
+    expect(document.documentElement.hasAttribute('data-accent')).toBe(false);
+  });
+
+  it('sends a settings patch when start-on-login changes', () => {
+    const { patches } = render(state(), 'appearance');
+    const toggle = document.getElementById('start-on-login') as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    expect(patches).toContainEqual({ startOnLogin: true });
   });
 });

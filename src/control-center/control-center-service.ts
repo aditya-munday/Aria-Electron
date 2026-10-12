@@ -47,6 +47,7 @@ export interface ControlCenterRuntime {
   voiceDiagnostics(): VoiceDiagnosticsLike | undefined;
   voice: VoiceControlLike | undefined;
   incidents(): readonly ReportedIncident[];
+  setOrbVisible(visible: boolean): void;
 }
 
 export interface ControlCenterDeps {
@@ -54,6 +55,7 @@ export interface ControlCenterDeps {
   readonly config: AriaConfig;
   readonly activation: ActivationInputs;
   readonly microphonePermission: () => PermissionState;
+  readonly voiceEngine: () => { readonly kind: 'native' | 'unavailable'; readonly reason?: string };
   readonly now?: () => string;
 }
 
@@ -105,6 +107,7 @@ export class ControlCenterService {
       capabilities,
       voice: this.voiceView(settings),
       microphonePermission: this.deps.microphonePermission(),
+      voiceEngine: this.deps.voiceEngine(),
       integrations: this.integrationView(capabilities),
       tasks: this.taskHistory(),
       activation: this.deps.activation,
@@ -144,6 +147,9 @@ export class ControlCenterService {
   }
 
   private async applyToRuntime(patch: SettingsPatchInput): Promise<void> {
+    if (patch.showOrb !== undefined) {
+      this.deps.runtime.setOrbVisible(patch.showOrb);
+    }
     const voice = this.deps.runtime.voice;
     if (voice === undefined) return;
     if (patch.wakeWordEnabled !== undefined) {

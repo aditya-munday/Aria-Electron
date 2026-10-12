@@ -51,7 +51,15 @@ function emptyState(): ControlCenterState {
       notes: [],
     },
     integrations: { backend: { state: 'unknown' }, aiEngineer: { state: 'unknown' } },
-    diagnostics: { backendState: 'unknown', voiceReady: false, listening: false, checkedAt: 'x', incidents: [] },
+    appearance: { accent: 'aurora', showOrb: true, startOnLogin: false },
+    diagnostics: {
+      backendState: 'unknown',
+      voiceReady: false,
+      voiceEngine: 'unavailable',
+      listening: false,
+      checkedAt: 'x',
+      incidents: [],
+    },
     tasks: [],
   };
 }

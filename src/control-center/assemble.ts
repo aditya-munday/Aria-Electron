@@ -2,6 +2,7 @@ import { recoveryForError, type AriaErrorKind } from '../backend/product-errors.
 import type {
   AccountView,
   ActivationView,
+  AppearanceView,
   AriaConfigView,
   BackendState,
   CatalogState,
@@ -174,6 +175,14 @@ function integrationView(sources: ControlCenterSources): IntegrationView {
   return sources.integrations;
 }
 
+function appearanceView(sources: ControlCenterSources): AppearanceView {
+  return {
+    accent: sources.settings.accent,
+    showOrb: sources.settings.showOrb,
+    startOnLogin: sources.settings.startOnLogin,
+  };
+}
+
 function diagnosticsView(sources: ControlCenterSources): DiagnosticView {
   const account = sources.account;
   const capabilities = sources.capabilities;
@@ -207,6 +216,10 @@ function diagnosticsView(sources: ControlCenterSources): DiagnosticView {
     voiceReady,
     ...(voiceReason !== undefined ? { voiceReason } : {}),
     ...(voiceDetail !== undefined ? { voiceDetail } : {}),
+    voiceEngine: sources.voiceEngine.kind,
+    ...(sources.voiceEngine.reason !== undefined
+      ? { voiceEngineReason: sources.voiceEngine.reason }
+      : {}),
     listening: voice.listening,
     checkedAt: sources.now,
     incidents: sources.incidents,
@@ -222,6 +235,7 @@ export function assembleControlCenterState(sources: ControlCenterSources): Contr
     ariaConfig: ariaConfigView(sources),
     privacy: privacyView(sources),
     integrations: integrationView(sources),
+    appearance: appearanceView(sources),
     diagnostics: diagnosticsView(sources),
     tasks: sources.tasks,
   };
