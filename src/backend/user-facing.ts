@@ -22,7 +22,9 @@ export function userFacingMessage(kind: AriaErrorKind): string {
 }
 
 export function userFacingMessageForKind(kind: string): string {
-  return kind in USER_FACING
+  // Own-property check, not `in`: `in` would match an inherited key like
+  // "constructor" and return that prototype function instead of a message.
+  return Object.hasOwn(USER_FACING, kind)
     ? USER_FACING[kind as AriaErrorKind]
     : 'Something went wrong. Try again.';
 }

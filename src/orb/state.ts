@@ -94,7 +94,9 @@ export const ORB_LABEL: Readonly<Record<OrbPresence, string>> = {
 };
 
 export function isOrbPresence(value: string): value is OrbPresence {
-  return value in ORB_CUE;
+  // Own-property check, not `in`: `in` also matches inherited keys, so a stray
+  // "toString" would be accepted as a presence and look up a cue of `undefined`.
+  return Object.hasOwn(ORB_CUE, value);
 }
 
 export interface OrbEnvironment {

@@ -1,5 +1,8 @@
 # Aria-Electron
 
+[![release](https://github.com/aditya-munday/Aria-Electron/actions/workflows/release.yml/badge.svg)](https://github.com/aditya-munday/Aria-Electron/actions/workflows/release.yml)
+[![latest release](https://img.shields.io/github/v/release/aditya-munday/Aria-Electron?label=release)](https://github.com/aditya-munday/Aria-Electron/releases/latest)
+
 Aria is the **local-first voice assistant desktop application** for the
 Directioner ecosystem. This repository is the Linux-native desktop client. It is
 not a web app and not a thin wrapper: it speaks Aria's `/v1` wire contract and

@@ -764,12 +764,47 @@ describe('tray', () => {
     expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
     platform.tray.item('ptt-now')?.onClick();
     await shell.whenIdle();
+    // The runtime reports the real capture; main forwards it to the shell.
+    shell.setPushToTalkActive(true);
     expect(platform.tray.item('ptt-now')?.label).toBe('Stop listening');
     platform.tray.item('ptt-now')?.onClick();
     await shell.whenIdle();
     expect(voice.releases).toBe(1);
     expect(interactionRuntime.captureStarts()).toBe(1);
+    shell.setPushToTalkActive(false);
     expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
+  });
+
+  it('clears the tray label when a capture ends on its own (VAD silence or error)', async () => {
+    const { shell, platform } = build({ ...DEFAULT_SETTINGS, pushToTalkMode: 'toggle' });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    shell.setPushToTalkActive(true);
+    expect(platform.tray.item('ptt-now')?.label).toBe('Stop listening');
+    // A session that ended without a second tap must not keep advertising a
+    // stop that no longer has a capture behind it.
+    shell.setPushToTalkActive(false);
+    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
+  });
+
+  it('treats the next tap as a fresh press after a capture ended on its own', async () => {
+    const { shell, platform, interactionRuntime, voice } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    shell.setPushToTalkActive(true);
+    // The runtime ends the capture on its own, then the user taps again.
+    shell.setPushToTalkActive(false);
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(2);
+    expect(voice.releases).toBe(0);
   });
 
   it('releases a tray-held capture when push-to-talk is disabled mid-capture', async () => {

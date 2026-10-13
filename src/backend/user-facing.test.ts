@@ -16,6 +16,11 @@ describe('userFacingMessageForKind', () => {
     expect(message).not.toContain('internal-host');
     expect(message).toBe('Something went wrong. Try again.');
   });
+
+  it('does not treat an inherited prototype key as a known kind', () => {
+    expect(userFacingMessageForKind('constructor')).toBe('Something went wrong. Try again.');
+    expect(userFacingMessageForKind('toString')).toBe('Something went wrong. Try again.');
+  });
 });
 
 describe('redactUserDetail', () => {

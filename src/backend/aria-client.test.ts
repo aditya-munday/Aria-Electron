@@ -117,6 +117,24 @@ describe('AriaClient unary routes', () => {
     expect(result.error.kind).toBe('forbidden');
     expect(result.error.message).toBe('no entitlement');
   });
+
+  it('redacts a credential echoed in a /v1 error message', async () => {
+    const t = new InMemoryTransport().on({
+      method: 'POST',
+      path: '/v1/tts',
+      status: 401,
+      body: {
+        contract_version: 1,
+        code: 'unauthenticated',
+        message: 'token=sk-live-abcdef123456 rejected',
+      },
+    });
+    const result = await client(t).tts({ text: 'hello' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).not.toContain('sk-live-abcdef123456');
+    expect(result.error.message).toContain('[redacted]');
+  });
 });
 
 describe('AriaClient chat stream', () => {

@@ -30,6 +30,7 @@ import {
   type TtsStreamEvent,
 } from '../contract/aria-contract.js';
 import { ariaError, kindForStatus, type AriaBackendError } from './product-errors.js';
+import { redact } from './task-client.js';
 import { readNdjson } from './ndjson.js';
 import { fail, ok, type Result } from './result.js';
 import { TransportFailure, type StreamingTransport, type TokenSource } from './transport.js';
@@ -380,5 +381,8 @@ function classifyAriaError(status: number, body: unknown): AriaBackendError {
   const message = parsed.success
     ? parsed.data.message
     : `The Aria surface rejected the request (${status}).`;
-  return ariaError(kindForStatus(status), message, { status });
+  // The `/v1` error message is untrusted like the product surface's: redact
+  // anything shaped like a credential before it is surfaced or logged, so the
+  // two clients cannot disagree on what is safe to show.
+  return ariaError(kindForStatus(status), redact(message), { status });
 }

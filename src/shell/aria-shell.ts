@@ -68,6 +68,7 @@ export class AriaShell {
 
   private pttHeld = false;
   private pttToggled = false;
+  private pttActive = false;
   private pttAcceleratorMode: PushToTalkMode | undefined;
   private chatShortcutRegistered = false;
   private pushToTalkRegistered = false;
@@ -163,6 +164,24 @@ export class AriaShell {
   }
 
   /**
+   * Track the runtime's real capture state so the tray cannot disagree with it.
+   *
+   * The tray label is driven by `pttActive`, which only the runtime can settle:
+   * a VAD silence, an empty/short utterance, a max-duration cut-off or an error
+   * all end the session without a second tap. Without this the tray would keep
+   * offering "Stop listening" for a capture that already ended, and a tap on it
+   * would toggle the shell's stale state into a release for nothing.
+   */
+  setPushToTalkActive(active: boolean): void {
+    if (this.pttActive === active) return;
+    this.pttActive = active;
+    // Keep the shell's local pairing state consistent with the runtime so the
+    // next tap in hold mode is a press, not a release for a finished capture.
+    if (!active) this.pttToggled = false;
+    this.refreshTray();
+  }
+
+  /**
    * Reconcile the requested shortcuts with what the OS currently holds. The
    * requested state is persisted settings; the held state is the last grab the
    * OS accepted. Only a change is applied, so a repeated sync is inert.
@@ -252,10 +271,12 @@ export class AriaShell {
     if (this.pushToTalkRequested) {
       // A working microphone control even when every global grab was refused.
       // It drives the same tap semantics as the accelerator, so the two paths
-      // cannot diverge, and its label reports the real capture state.
+      // cannot diverge, and its label reports the runtime's real capture state
+      // rather than the shell's tap bookkeeping, which goes stale the moment a
+      // session ends on its own.
       items.push({
         id: 'ptt-now',
-        label: this.pttToggled ? 'Stop listening' : 'Push to talk',
+        label: this.pttActive ? 'Stop listening' : 'Push to talk',
         onClick: () => this.enqueue(() => this.activatePushToTalk()),
       });
     }

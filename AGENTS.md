@@ -240,7 +240,11 @@ Rules the router enforces, all with tests:
   means the same thing however it arrives: in `toggle` mode it starts capture and
   the next tap finalizes it; in `hold` mode a tap starts capture and the next tap
   releases it. It is never a press paired with an immediate release, which the
-  controller would reject as a zero-length hold.
+  controller would reject as a zero-length hold. The tray label reflects the
+  runtime's real capture state (`setPushToTalkActive`, fed in `main.ts` from the
+  voice runtime's `session.state`), not the shell's tap bookkeeping, so a capture
+  that ends on its own (VAD silence, empty/too-short utterance, max-duration,
+  failure) stops advertising "Stop listening" and the next tap is a fresh press.
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
 - `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
@@ -348,6 +352,9 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
 - `settings.ts` / `settings-file.ts` — persisted shell state. `normalizeSettings`
   keeps only known window kinds and rejects an unknown push-to-talk mode;
   optional ids (capture device, voice, language) survive only when present.
+  `createFileSettingsStore` persists atomically (write a sibling, then rename)
+  with owner-only (`0600`) permissions, so a crash mid-write cannot truncate
+  `shell-settings.json` into a file the next load reads as defaults.
 - `control-center/` (`state.ts`, `assemble.ts`, `control-center-service.ts`) —
   the Control Center domain. `ControlCenterService` reads live sources (Backend
   identity, public capabilities catalog, voice diagnostics, shell settings,
@@ -418,7 +425,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 672 tests / 63 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 722 tests / 72 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

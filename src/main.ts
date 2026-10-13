@@ -317,6 +317,13 @@ function main(): void {
   // pins the Orb in settings it stays up and the dismissal stands down.
   voice?.on((event) => {
     if (event.type === 'session.started') shell.setOrbVisible(true);
+    // The tray's microphone control reflects the runtime's real capture state,
+    // so a capture that ends on its own stops advertising "Stop listening".
+    // `session.state` is the only signal that covers every end — VAD silence,
+    // an empty/short utterance, a max-duration cut-off and a failure alike.
+    if (event.type === 'session.state') {
+      shell.setPushToTalkActive(event.state === 'capturing');
+    }
   });
   const orbDismissal =
     voice !== undefined
