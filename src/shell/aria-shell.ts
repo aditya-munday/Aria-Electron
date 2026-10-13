@@ -1,5 +1,5 @@
 import { InteractionController } from '../interaction/interaction-controller.js';
-import type { InteractionEnvironment, RoutedResult } from '../interaction/interaction-router.js';
+import type { RoutedResult } from '../interaction/interaction-router.js';
 import { ORB_DIAMETER, ORB_WINDOW_OPTIONS, ORB_WINDOW_SIZE } from '../orb/window-options.js';
 import type { OrbBackdropPlan } from '../orb/backdrop.js';
 import { placeOrb } from './placement.js';
@@ -147,6 +147,9 @@ export class AriaShell {
       }
     }
     this.syncShortcuts();
+    // The tray's push-to-talk item follows the requested state, so disabling the
+    // control must drop it rather than leave a stale entry behind.
+    this.refreshTray();
   }
 
   /** Release a push-to-talk capture that no further key event can finalize. */
@@ -248,10 +251,12 @@ export class AriaShell {
     ];
     if (this.pushToTalkRequested) {
       // A working microphone control even when every global grab was refused.
+      // It drives the same tap semantics as the accelerator, so the two paths
+      // cannot diverge, and its label reports the real capture state.
       items.push({
         id: 'ptt-now',
         label: this.pttToggled ? 'Stop listening' : 'Push to talk',
-        onClick: () => this.enqueue(() => this.manualPushToTalk()),
+        onClick: () => this.enqueue(() => this.activatePushToTalk()),
       });
     }
     if (this.pushToTalkRequested && !this.pushToTalkRegistered) {
@@ -285,29 +290,9 @@ export class AriaShell {
   }
 
   /**
-   * The tray's push-to-talk control. It mirrors the accelerator's tap semantics
-   * so the two paths behave identically.
+   * The tray's push-to-talk control shares the accelerator's tap semantics, so
+   * a tray tap and a shortcut tap cannot behave differently.
    */
-  private async manualPushToTalk(): Promise<void> {
-    if (!this.pushToTalkEnabled()) return;
-    this.open('orb');
-    const mode = this.settings.load().pushToTalkMode;
-    if (mode === 'toggle') {
-      if (this.pttToggled) {
-        this.pttToggled = false;
-        this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_release' }));
-      } else {
-        this.pttToggled = true;
-        this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
-      }
-      this.refreshTray();
-      return;
-    }
-    // A tray tap is a single press, so pair it with a release to avoid stranding capture.
-    this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
-    this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_release' }));
-  }
-
   whenIdle(): Promise<void> {
     return this.pending;
   }
@@ -406,16 +391,6 @@ export class AriaShell {
   private pushToTalkEnabled(): boolean {
     if (!this.settings.load().pushToTalkEnabled) return false;
     return this.pttAllowed === undefined || this.pttAllowed();
-  }
-
-  environment(): InteractionEnvironment {
-    const settings = this.settings.load();
-    return {
-      wakeWordEnabled: settings.wakeWordEnabled,
-      microphonePermission: 'granted',
-      captureMuted: settings.captureMuted,
-      voiceSessionActive: false,
-    };
   }
 
   isOpen(kind: WindowKind): boolean {

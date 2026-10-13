@@ -737,6 +737,59 @@ describe('tray', () => {
     expect(shell.isOpen('orb')).toBe(true);
   });
 
+  it('starts a real capture from the tray in hold mode instead of an instant cancel', async () => {
+    const { shell, platform, interactionRuntime, voice } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    // A press paired with an immediate release would be a zero-length hold the
+    // controller cancels; the tray must start capture and wait for a stop.
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    expect(voice.presses).toBe(1);
+    expect(voice.releases).toBe(0);
+    expect(shell.isOpen('orb')).toBe(true);
+  });
+
+  it('stops the tray capture on the next tap and reflects it in the label', async () => {
+    const { shell, platform, interactionRuntime, voice } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    expect(platform.tray.item('ptt-now')?.label).toBe('Stop listening');
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    expect(voice.releases).toBe(1);
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
+  });
+
+  it('releases a tray-held capture when push-to-talk is disabled mid-capture', async () => {
+    const { shell, platform, voice, settings } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'hold',
+    });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    expect(voice.presses).toBe(1);
+    settings.save({ ...settings.load(), pushToTalkEnabled: false });
+    shell.setShortcuts({ pushToTalk: false });
+    await shell.whenIdle();
+    // The tray-held capture must not outlive the control that started it.
+    expect(voice.releases).toBe(1);
+    expect(platform.tray.item('ptt-now')).toBeUndefined();
+  });
+
   it('offers a retry action when every accelerator was refused, and recovers', async () => {
     const { shell, platform } = build();
     platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);

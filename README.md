@@ -7,15 +7,17 @@ coordinates work through the Directioner Platform Backend.
 
 ## What is here
 
-This is the **integration foundation** (Prompt 1/10): the client-side contract
-and the task supervision that lets Aria turn a spoken request into tracked,
-verifiable AI-Engineer work.
+Aria is the native desktop shell plus the integration foundation beneath it: the
+client-side contract, the task supervision that turns a spoken request into
+tracked AI-Engineer work, and the Electron surfaces (Control Center, Orb, chat)
+that present it.
 
 ```
 src/
   contract/
     aria-contract.ts       # Aria /v1 wire contract (speech + chat + streams)
     product-contract.ts    # Backend /api/v1 product contract (tasks, execution, approvals)
+    capability-catalog.ts  # versioned description of what the runtime can do
   backend/
     transport.ts           # the only component that touches the network
     task-client.ts         # authenticated product-surface client
@@ -29,8 +31,17 @@ src/
     engineer-events.ts     # AI-Engineer progress/questions/plan/permission signals
     approval-scope.ts      # what an approval authorizes; material-change detection
     task-store.ts          # durable supervision state (metadata only)
+  voice/                   # wake-word, push-to-talk, VAD, echo cancellation, sessions
+  interaction/             # pure activation routing + the controller that executes it
+  control/                 # honest stop / cancel / mute / emergency-stop
+  shell/                   # Electron lifecycle, windows, tray, IPC, security
+  orb/                     # the floating presence (state, hit test, dismissal)
+  chat/                    # typed-turn service and chat renderer
+  control-center/          # the ten-section Control Center domain and renderer
+  renderer/                # shared stylesheets and HTML for the renderer windows
   config.ts                # runtime configuration
   runtime.ts               # composition root
+  main.ts / preload.ts     # the Electron entry point and the renderer bridge
   index.ts                 # public entry point
 ```
 
@@ -72,8 +83,9 @@ npm test
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `DIRECTIONER_BACKEND_URL` | Backend base URL (both `/api/v1` and `/v1`) | `http://127.0.0.1:8080` |
-| `DIRECTIONER_REQUEST_TIMEOUT_MS` | Per-request timeout for unary calls | `30000` |
+| `ARIA_BACKEND_URL` | Backend base URL (both `/api/v1` and `/v1`) | `https://api.adityamunday.codes` |
+| `ARIA_REQUEST_TIMEOUT_MS` | Per-request timeout for unary calls | `30000` |
+| `ARIA_SESSION_TOKEN` | Seeds the in-memory session token at startup (never written to disk) | unset |
 
 Aria carries only a short-lived user session token, held in memory and never
 written to disk. It holds no provider keys and no privileged local socket.

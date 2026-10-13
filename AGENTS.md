@@ -235,7 +235,12 @@ Rules the router enforces, all with tests:
   and registers the first accelerator the OS accepts. `shortcutStatus()` reports
   the accelerator that is actually active (or the first tried when none is), and
   the tray offers a manual push-to-talk trigger and a re-grab action, so a
-  refused grab leaves the feature reachable rather than silently dead.
+  refused grab leaves the feature reachable rather than silently dead. The tray
+  trigger and the accelerator drive the same `activatePushToTalk` path, so a tap
+  means the same thing however it arrives: in `toggle` mode it starts capture and
+  the next tap finalizes it; in `hold` mode a tap starts capture and the next tap
+  releases it. It is never a press paired with an immediate release, which the
+  controller would reject as a zero-length hold.
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
 - `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
@@ -413,7 +418,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 669 tests / 63 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 672 tests / 63 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
