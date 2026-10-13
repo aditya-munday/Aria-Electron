@@ -48,7 +48,14 @@ the AI-Engineer task executor.
   makes the sandbox engage, so it must be 4755.
 - `.github/workflows/release.yml` runs on `aria-v*` tags: a `gate` job runs
   `npm run ci`, then `package` builds the `.deb`, smoke-tests the install, and
-  attaches the `.deb` plus its `.sha256` to the GitHub release.
+  attaches the `.deb` plus its `.sha256` to the GitHub release. The release page
+  carries install and checksum-verification steps in its body. The package is
+  located with `ls release/*.deb | sort -V | tail -n1` (and `smoke-deb.mjs`
+  mirrors that ordering) so the highest version wins even if `release/` holds
+  more than one build; a plain lexicographic sort would pick the wrong file.
+  A 0 B download of the asset is a GitHub asset-proxy artifact, not a package
+  defect: the `.sha256` is attached so a downloader can tell a truncated file
+  from a good one.
 - Optional-property style: never assign `undefined` to an optional field; build
   the object with a spread guard instead
   (`...(x !== undefined ? { x } : {})`).

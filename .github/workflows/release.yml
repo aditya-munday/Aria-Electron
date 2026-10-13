@@ -37,7 +37,7 @@ jobs:
       - name: Locate package
         id: pkg
         run: |
-          file=$(ls release/*.deb | head -n1)
+          file=$(ls release/*.deb | sort -V | tail -n1)
           echo "file=$file" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$file")" >> "$GITHUB_OUTPUT"
       - name: Smoke test the installed package
@@ -52,6 +52,25 @@ jobs:
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
+          body: |
+            Linux amd64 Debian package for the Aria desktop client.
+
+            ## Install
+            ```sh
+            sudo apt install ./${{ steps.pkg.outputs.name }}
+            ```
+            `apt` (not a bare `dpkg -i`) resolves the declared runtime libraries
+            and runs the postinst that sets up the sandbox helper.
+
+            ## Verify the download
+            A truncated or empty download shows as 0 B in some clients while the
+            asset proxy resolves. Confirm the file against the attached checksum
+            before installing:
+            ```sh
+            sha256sum -c ${{ steps.pkg.outputs.name }}.sha256
+            ```
+
+            This release was created by an AI agent (OpenHands) on behalf of the user.
           files: |
             ${{ steps.pkg.outputs.file }}
             ${{ steps.pkg.outputs.file }}.sha256

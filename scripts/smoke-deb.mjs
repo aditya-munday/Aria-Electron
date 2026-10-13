@@ -20,8 +20,8 @@ function findDeb() {
   if (!existsSync(dir)) return undefined;
   return readdirSync(dir)
     .filter((f) => f.endsWith('.deb'))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .map((f) => join(dir, f))
-    .sort()
     .pop();
 }
 
