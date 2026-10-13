@@ -29,9 +29,9 @@ import {
  * double, so the controller's decisions are tested without audio hardware.
  */
 export interface InteractionRuntime {
-  /** Begin push-to-talk capture (the `?` key went down). */
+  /** Begin push-to-talk capture (the `F5` key went down). */
   pushToTalkPress(): void | Promise<void>;
-  /** Finalize the held push-to-talk utterance (the `?` key came up). */
+  /** Finalize the held push-to-talk utterance (the `F5` key came up). */
   pushToTalkRelease(): void | Promise<void>;
   /** Run a typed turn, bypassing capture and STT. */
   sendText(text: string): void | Promise<void>;

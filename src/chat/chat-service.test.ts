@@ -191,6 +191,25 @@ describe('chat state assembly', () => {
     const state = await service.buildState();
     expect(state.tasks.map((t) => t.taskId)).toEqual(['new', 'old']);
   });
+
+  it('collapses overlapping reconciles into a single backend pass', async () => {
+    let reconciles = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { service } = harness({
+      reconcile: async () => {
+        reconciles += 1;
+        await gate;
+      },
+    });
+    const first = service.buildState();
+    const second = service.buildState();
+    release();
+    await Promise.all([first, second]);
+    expect(reconciles).toBe(1);
+  });
 });
 
 describe('chat typed turns', () => {

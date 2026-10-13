@@ -14,7 +14,7 @@
  * the user or starting capture the user did not ask for:
  *   - A normal launch opens the Control Center with *no input path at all*: no
  *     microphone, no STT, no orchestration, no TTS.
- *   - Push-to-talk (hold the `?` key) starts capture immediately and *never*
+ *   - Push-to-talk (hold the `F5` key) starts capture immediately and *never*
  *     consults wake-word detection; it must not depend on that model existing.
  *   - The wake word captures audio only *after* activation, and only while
  *     detection is enabled and the microphone is permitted; it must not capture
@@ -39,9 +39,9 @@
 export type Activation =
   /** A normal application launch; not a voice or chat activation. */
   | { readonly kind: 'app_launch' }
-  /** Push-to-talk: the `?` key went down. Capture runs while held. */
+  /** Push-to-talk: the `F5` key went down. Capture runs while held. */
   | { readonly kind: 'push_to_talk_press' }
-  /** Push-to-talk: the `?` key came up. The utterance finalizes. */
+  /** Push-to-talk: the `F5` key came up. The utterance finalizes. */
   | { readonly kind: 'push_to_talk_release' }
   /** The local wake-word detector fired. */
   | { readonly kind: 'wake_word' }

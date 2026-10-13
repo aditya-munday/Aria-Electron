@@ -7,9 +7,10 @@ export interface OrbDismissalDelays {
 }
 
 export const DEFAULT_ORB_DISMISSAL: OrbDismissalDelays = {
-  afterPlaybackMs: 2500,
-  afterResponseMs: 4500,
-  afterCancelledMs: 6000,
+  // The Orb is transient: it lingers only long enough to be seen, then goes.
+  afterPlaybackMs: 2200,
+  afterResponseMs: 2600,
+  afterCancelledMs: 3000,
 };
 
 export interface OrbDismissalVoice {

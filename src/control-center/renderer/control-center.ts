@@ -6,6 +6,9 @@ export interface ControlCenterBridge {
   previewVoice(input: unknown): Promise<{ ok: boolean; reason?: string }>;
   signIn(input: unknown): Promise<{ ok: boolean; reason?: string }>;
   signOut(): Promise<{ ok: boolean; reason?: string }>;
+  beginLogin(): Promise<{ ok: boolean; reason?: string; loginUrl?: string }>;
+  awaitLogin(): Promise<{ ok: boolean; reason?: string }>;
+  cancelLogin(): Promise<void>;
   openChat(): Promise<void>;
 }
 
@@ -1297,60 +1300,46 @@ function accountPanel(
   }
 
   wrap.append(
-    hint(doc, 'Aria holds your token in memory for this session only — it is never written to disk.'),
+    hint(
+      doc,
+      'Sign in to use Aria. Aria opens your browser to finish sign-in, then keeps you signed in on this machine.',
+    ),
   );
-  const form = h(doc, 'form', 'auth-form');
-  const emailField = h(doc, 'div', 'field');
-  const emailLabel = h(doc, 'label');
-  emailLabel.setAttribute('for', 'account-email');
-  text(emailLabel, 'Email');
-  const email = h(doc, 'input');
-  email.type = 'email';
-  email.id = 'account-email';
-  email.autocomplete = 'username';
-  email.placeholder = 'you@example.com';
-  emailField.append(emailLabel, email);
-
-  const tokenField = h(doc, 'div', 'field');
-  const tokenLabel = h(doc, 'label');
-  tokenLabel.setAttribute('for', 'account-token');
-  text(tokenLabel, 'Session token');
-  const token = h(doc, 'input');
-  token.type = 'password';
-  token.id = 'account-token';
-  token.autocomplete = 'current-password';
-  token.placeholder = 'Paste your Aria session token';
-  tokenField.append(tokenLabel, token);
-
   const actions = h(doc, 'div', 'auth-actions');
   const note = h(doc, 'p', 'auth-note');
-  const signInButton = button(doc, 'account-sign-in', 'Sign in', 'primary', true, () => undefined);
-  signInButton.type = 'submit';
-  actions.append(signInButton);
-  form.append(emailField, tokenField, actions, note);
-
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const value = token.value.trim();
-    if (value === '') {
-      note.setAttribute('data-tone', 'bad');
-      text(note, 'Enter your session token to continue.');
-      token.focus();
-      return;
-    }
-    signInButton.disabled = true;
-    text(note, 'Signing in…');
-    void bridge.signIn({ token: value, email: email.value.trim() }).then((result) => {
-      if (result.ok) {
-        refresh();
+  const beyondersButton = button(doc, 'account-beyonders-sign-in', 'Sign in', 'primary', true, () => {
+    beyondersButton.disabled = true;
+    note.removeAttribute('data-tone');
+    text(note, 'Opening your browser…');
+    void bridge.beginLogin().then((result) => {
+      if (!result.ok) {
+        beyondersButton.disabled = false;
+        note.setAttribute('data-tone', 'bad');
+        text(note, result.reason ?? 'Could not start sign-in.');
         return;
       }
-      signInButton.disabled = false;
-      note.setAttribute('data-tone', 'bad');
-      text(note, result.reason ?? 'Sign-in failed.');
+      text(note, 'Waiting for you to finish in the browser…');
+      const waiting = button(doc, 'account-cancel-sign-in', 'Cancel', 'ghost', true, () => {
+        void bridge.cancelLogin().then(() => {
+          beyondersButton.disabled = false;
+          text(note, 'Sign-in cancelled.');
+        });
+      });
+      actions.append(waiting);
+      void bridge.awaitLogin().then((awaited) => {
+        waiting.remove();
+        if (awaited.ok) {
+          refresh();
+          return;
+        }
+        beyondersButton.disabled = false;
+        note.setAttribute('data-tone', 'bad');
+        text(note, awaited.reason ?? 'Sign-in failed.');
+      });
     });
   });
-  wrap.append(form);
+  actions.append(beyondersButton);
+  wrap.append(actions, note);
   panel.append(wrap);
   return panel;
 }

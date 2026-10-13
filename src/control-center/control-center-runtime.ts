@@ -14,7 +14,7 @@ export function createControlCenterRuntime(
   return {
     identity: () => runtime.identity(),
     capabilities: async () => {
-      const result = await runtime.aria.capabilities();
+      const result = await runtime.capabilities();
       if (!result.ok) return result;
       const value = result.value;
       const ttsDetails = value.tts_language_details ?? [];

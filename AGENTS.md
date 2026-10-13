@@ -223,7 +223,7 @@ dependency — callers ask the router what to do.
 
 Rules the router enforces, all with tests:
 - App launch → Control Center, `input: 'none'`, no capture/STT/orchestration.
-- Push-to-talk (hold the `?` key) → Orb, capture starts immediately; never
+- Push-to-talk (hold the `F5` key) → Orb, capture starts immediately; never
   consults wake-word detection, so it works with the detector disabled. Needs
   microphone permission. The global accelerator is `Win + Alt + T`
   (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell, the
@@ -425,10 +425,43 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 722 tests / 72 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 757 tests / 76 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
+
+## Account and sign-in (`src/auth/`)
+
+Sign-in is a browser device-code flow against the Beyonders account surface.
+
+- `device-login.ts` (`DeviceLoginClient`) — `requestCode(fingerprintId)` opens a
+  code at `/api/auth/cli/code`; `poll` reads the status endpoint until the
+  account is linked, the server-provided deadline passes, or the caller aborts.
+  Time and sleep are injectable so the loop is deterministic in tests. A
+  transport failure is a classified `transport` result, never a throw.
+- `fingerprint.ts` — a stable machine fingerprint id/hash used to bind the code.
+- `credential-store.ts` (`CredentialStore`) — the durable credential at
+  `~/.config/aria/credentials.json` (honouring `ARIA_CONFIG_DIR` /
+  `XDG_CONFIG_HOME`), in the Directioner CLI's own shape
+  (`{ default: { …, authToken } }`). It prefers Aria's own file, falls back to an
+  existing CLI login, preserves unrelated profiles, writes atomically, and clamps
+  the file to `0600` on every read and write.
+- `account.ts` (`AccountManager`) — `restore`/`beginLogin`/`awaitLogin`/`clear`.
+  `awaitLogin` persists the credential on success and maps a timeout/abort to a
+  classified failure.
+- `AriaRuntime` owns an `AccountManager`; `beginLogin`/`awaitLogin`/`cancelLogin`
+  and `signOut`/`setSessionToken` invalidate the session-scoped reads. The
+  Control Center Account tab and the `accountBeginLogin`/`accountAwaitLogin`/
+  `accountCancelLogin` IPC channels drive it.
+
+## Caching (`src/cache/`)
+
+`async-cache.ts` (`AsyncCache`) is a TTL cache with single-flight de-duplication:
+a value read within its lifetime is served from memory, and concurrent misses for
+one key share a single producer call. Only successful results are cached, so a
+transient failure is retried rather than pinned. `AriaRuntime` routes
+`capabilities()` and memoises identity through it, invalidating on a session
+change.
 
 ## Chat and task submission (`src/chat/`)
 
@@ -442,7 +475,12 @@ The typed/chat turn pipeline above the voice runtime and the supervisor.
   submitted request is `awaiting_approval`, never running, and a human still
   grants the approval. A `RouteHint` with no confirmation requirement is a plain
   conversation and is not submitted. `buildState` reconciles tracked tasks with
-  the Backend before rendering so the surface shows current truth.
+  the Backend before rendering so the surface shows current truth. Overlapping
+  `buildState` calls share one reconcile (`reconcileOnce`): the surface polls on
+  an interval, and without de-duplication a backend slower than the interval
+  stacks a fresh reconcile — and its backend round-trips — on every tick, which
+  is what made the window feel laggy. `recordViews` fetches each task's approvals
+  concurrently.
 - `submission.ts` — the pure policy for the above: `shouldSubmit(route)`,
   `deriveTitle(text)` (the user's own words, bounded), and
   `operationForRoute(route)` (describes only the capability the hint carried;

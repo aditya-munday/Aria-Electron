@@ -1,4 +1,4 @@
-import { app, ipcMain, screen, session } from 'electron';
+import { app, ipcMain, screen, session, shell as electronShell } from 'electron';
 
 import { join } from 'node:path';
 
@@ -26,6 +26,7 @@ import { loadVoiceConfig } from './voice/voice-config.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import type { PreviewVoiceResult } from './shell/ipc.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
+import { recoveryForError } from './backend/product-errors.js';
 import { createControlCenterRuntime } from './control-center/control-center-runtime.js';
 import { OrbService } from './orb/orb-service.js';
 import { createOrbDismissal } from './orb/dismiss.js';
@@ -195,7 +196,7 @@ function main(): void {
     activation: () => {
       const status = shell.shortcutStatus();
       return {
-        request: 'Hold ?',
+        request: 'Hold F5',
         wakeWordPhrase: voiceConfig.wakeWord.phrase,
         // Report the accelerator the OS actually accepted, so the UI never
         // claims a shortcut that fell back to a different combination.
@@ -293,9 +294,43 @@ function main(): void {
       return outcome;
     },
     signOut: (): SignInOutcome => {
-      runtime.setSessionToken(undefined);
+      runtime.signOut();
       return { ok: true, signedIn: false, reason: 'Signed out.' };
     },
+    beginLogin: async () => {
+      const result = await runtime.beginLogin();
+      if (!result.ok) {
+        return { ok: false, reason: result.error.message, recovery: recoveryForError(result.error.kind) };
+      }
+      // Open the browser to the device-code URL. Only an https URL is opened;
+      // a malformed or downgraded URL is reported rather than launched.
+      const loginUrl = result.value.loginUrl;
+      if (!/^https:\/\//i.test(loginUrl)) {
+        return { ok: false, reason: 'The sign-in service returned an unsafe URL.' };
+      }
+      await electronShell.openExternal(loginUrl);
+      return {
+        ok: true,
+        loginUrl,
+        expiresAt: result.value.expiresAt,
+        ...(result.value.expiresInMs !== undefined ? { expiresInMs: result.value.expiresInMs } : {}),
+      };
+    },
+    awaitLogin: async () => {
+      const result = await runtime.awaitLogin();
+      if (result.ok) {
+        applySettingsToRuntime(settings.load());
+        applyAutostart(settings.load());
+        return { ok: true, signedIn: true, reason: `Signed in as ${result.value.email ?? result.value.id ?? 'your account'}.` };
+      }
+      return {
+        ok: false,
+        signedIn: false,
+        reason: result.error.message,
+        recovery: recoveryForError(result.error.kind),
+      };
+    },
+    cancelLogin: (): void => runtime.cancelLogin(),
     orbState: (): OrbState => orb.buildState(),
     orbSetInteractive: (interactive: boolean): void => shell.setOrbInteractive(interactive),
     chatState: (): Promise<ChatState> => chat.buildState(),
@@ -312,9 +347,10 @@ function main(): void {
   shellRef = shell;
 
   // The Orb is a transient presence: surface it while a voice turn runs, then
-  // dismiss it a few seconds after the spoken output (or a failed/cancelled
-  // turn) goes quiet, so it never lingers on screen permanently. While the user
-  // pins the Orb in settings it stays up and the dismissal stands down.
+  // dismiss it a couple of seconds after the spoken output (or a failed or
+  // cancelled turn) goes quiet, so it never lingers on screen permanently. The
+  // "pin the Orb" setting is a manual show/hide control for the moment, not a
+  // permanent overlay: it never stops the automatic dismissal.
   voice?.on((event) => {
     if (event.type === 'session.started') shell.setOrbVisible(true);
     // The tray's microphone control reflects the runtime's real capture state,
@@ -329,9 +365,7 @@ function main(): void {
     voice !== undefined
       ? createOrbDismissal({
           voice,
-          hide: () => {
-            if (!shell.currentSettings().showOrb) shell.setOrbVisible(false);
-          },
+          hide: () => shell.setOrbVisible(false),
           isVisible: () => shell.isOpen('orb'),
         })
       : undefined;

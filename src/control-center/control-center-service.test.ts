@@ -21,7 +21,7 @@ const CONFIG: AriaConfig = {
 };
 
 const ACTIVATION: ActivationInputs = {
-  request: 'Hold ?',
+  request: 'Hold F5',
   wakeWordPhrase: 'hey aria',
   chatAccelerator: 'Super+Alt+A',
   pushToTalkAccelerator: 'Super+Alt+T',

@@ -361,12 +361,13 @@ export class AriaShell {
   }
 
   /**
-   * The global accelerator is a tap: the OS reports the key going down and
-   * never its release, so a hold gesture is impossible through it. The voice
-   * controller owns the mode semantics — a tap is a `press`, and in toggle mode
-   * the controller finalizes on the next press. Only in hold mode, where a lone
-   * press would otherwise capture forever, does the shell pair the press with a
-   * release on the next tap.
+   * The global accelerator is the supreme toggle: the OS reports the key going
+   * down and never its release, so a hold gesture is impossible through it.
+   * The voice controller owns the mode semantics — a tap is a `press`, and in
+   * toggle mode the controller finalizes on the next press. Only in hold mode,
+   * where a lone press would otherwise capture forever, does the shell pair the
+   * press with a release on the next tap. Hold-to-talk lives on the focused
+   * `F5` key, which does report a release.
    */
   private async activatePushToTalk(): Promise<void> {
     if (!this.pushToTalkEnabled()) return;

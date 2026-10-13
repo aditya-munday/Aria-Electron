@@ -12,21 +12,28 @@ export const ARIA_MODEL: AriaModel = {
 
 export interface AriaConfig {
   readonly backendBaseUrl: string;
+  /** Origin serving the device-code sign-in flow; defaults to directioner.com. */
+  readonly loginBaseUrl?: string;
   readonly requestTimeoutMs: number;
   readonly model: AriaModel;
 }
 
 const DEFAULT_BACKEND_BASE_URL = 'https://api.adityamunday.codes';
+const DEFAULT_LOGIN_BASE_URL = 'https://directioner.com';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AriaConfig {
   const raw = env['ARIA_BACKEND_URL']?.trim();
+  const loginRaw = env['ARIA_LOGIN_URL']?.trim();
   const timeoutRaw = env['ARIA_REQUEST_TIMEOUT_MS']?.trim();
   const timeout = timeoutRaw !== undefined ? Number.parseInt(timeoutRaw, 10) : NaN;
 
   return {
     backendBaseUrl: normalizeBaseUrl(
       raw !== undefined && raw !== '' ? raw : DEFAULT_BACKEND_BASE_URL,
+    ),
+    loginBaseUrl: normalizeBaseUrl(
+      loginRaw !== undefined && loginRaw !== '' ? loginRaw : DEFAULT_LOGIN_BASE_URL,
     ),
     requestTimeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS,
     model: ARIA_MODEL,

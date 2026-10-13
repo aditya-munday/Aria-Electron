@@ -5,6 +5,39 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.5.0] - 2026-10-11
+
+### Added
+- Sign in with a Beyonders account through the browser device-code flow
+  (`src/auth/`): `DeviceLoginClient` requests a code, opens the login URL, and
+  polls the status endpoint until the account is linked. The credential is
+  persisted to `~/.config/aria/credentials.json` in the Directioner CLI's own
+  shape (`{ default: { …, authToken } }`), so an existing CLI login is picked up
+  for free; the file is owner-only (`0600`) and re-tightened on every read and
+  write. The Control Center Account tab, `AccountManager`, and the
+  `accountBeginLogin`/`accountAwaitLogin`/`accountCancelLogin` IPC channels are
+  wired end to end.
+- A TTL + single-flight cache (`src/cache/async-cache.ts`) behind capabilities
+  and identity reads, so a renderer refresh or a burst of callers no longer
+  re-fetches the same backend resource. Only successful results are cached, and
+  a sign-in/sign-out invalidates the reads that depend on the session.
+
+### Fixed
+- The chat window no longer lags. `AriaSupervisor.refresh` reads a task's
+  execution and journal concurrently instead of in series, `reconcile` refreshes
+  tracked tasks in parallel rather than one at a time, and `ChatService`
+  collapses overlapping reconciliations (and `bootstrapChat` overlapping polls)
+  into a single in-flight pass — so a backend slower than the poll interval no
+  longer stacks concurrent reads and repaints on every tick.
+- The Control Center Account copy names no backend or product vocabulary; the
+  sign-in control reads "Sign in" and explains that Aria opens the browser.
+
+### Changed
+- Test suite grows from 722 to 757 tests; adds coverage for the auth layer
+  (`device-login`, `account`, `credential-store`), the cache, and the
+  reconcile/poll de-duplication.
+- `AGENTS.md` documents the auth, cache, and chat-latency behaviour.
+
 ## [0.4.0] - 2026-10-11
 
 ### Fixed

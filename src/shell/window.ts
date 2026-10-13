@@ -3,7 +3,7 @@ import type { ScreenProvider } from './placement.js';
 
 export type WindowKind = 'control_center' | 'orb' | 'orb_backdrop' | 'chat';
 
-export type PhysicalKey = 'question' | 'a';
+export type PhysicalKey = 'f5' | 'a';
 
 export type PushToTalkMode = 'hold' | 'toggle';
 
@@ -13,7 +13,7 @@ export interface KeyRepertoire {
 }
 
 export const DEFAULT_KEY_REPERTOIRE: KeyRepertoire = {
-  pushToTalk: 'question',
+  pushToTalk: 'f5',
   chatShortcut: 'a',
 };
 
@@ -131,19 +131,19 @@ export const CHAT_SHORTCUT_ACCELERATORS = [
 export const CHAT_SHORTCUT_ACCELERATOR = CHAT_SHORTCUT_ACCELERATORS[0];
 
 /**
- * A true global push-to-talk accelerator. Unlike the focused `?` key, this is
+ * A true global push-to-talk accelerator. Unlike the focused `F5` key, this is
  * grabbed from the OS, so it fires while another application has focus.
  *
  * A global accelerator only reports the key going down, never its release, so
  * the shell treats each press as a tap and defers to the voice controller's
  * mode: `toggle` finalizes on the next tap, while `hold` pairs each tap with a
  * release so capture cannot run forever. True hold-to-talk remains available
- * through the focused `?` key.
+ * through the focused `F5` key.
  *
- * `Super+Alt+T` is the preferred grab, but a desktop environment often holds it
- * (GNOME binds Super-based combinations freely). Registration tries each
- * candidate in order and keeps the first the OS accepts, so push-to-talk works
- * on a desktop that has taken the preferred combination.
+ * `Super+Alt+T` is the supreme grab: it is registered first and is the toggle
+ * the user can rely on. A desktop environment often holds Super-based
+ * combinations (GNOME binds them freely), so registration falls back through
+ * the candidate list and keeps the first the OS accepts.
  */
 export const PUSH_TO_TALK_ACCELERATORS = [
   'Super+Alt+T',

@@ -183,3 +183,32 @@ describe('AriaSupervisor crash recovery', () => {
     if (result.ok) expect(result.value.requeued).toBe(1);
   });
 });
+
+describe('AriaSupervisor reconcile fan-out', () => {
+  /** A backend that records the maximum number of overlapping reads it saw. */
+  class ConcurrencyBackend extends FlakyBackend {
+    inFlight = 0;
+    peak = 0;
+    reads = 0;
+
+    override async getTask(taskId: string): Promise<Result<TaskDto>> {
+      this.inFlight += 1;
+      this.peak = Math.max(this.peak, this.inFlight);
+      this.reads += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      this.inFlight -= 1;
+      return super.getTask(taskId);
+    }
+  }
+
+  it('refreshes tracked tasks concurrently rather than one at a time', async () => {
+    const backend = new ConcurrencyBackend();
+    const s = supervisor(backend);
+    await s.submitRequest({ title: 'one' });
+    await s.submitRequest({ title: 'two' });
+    await s.submitRequest({ title: 'three' });
+    backend.peak = 0;
+    await s.reconcile();
+    expect(backend.peak).toBeGreaterThan(1);
+  });
+});

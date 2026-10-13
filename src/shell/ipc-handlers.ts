@@ -5,6 +5,8 @@ import type { ShellSettings } from './settings.js';
 import { isTrustedSender, type IpcSenderEvent } from './security.js';
 import {
   IPC_CHANNELS,
+  type AwaitLoginResult,
+  type BeginLoginResult,
   type IpcRegistrar,
   type PreviewVoiceResult,
   type SettingsUpdateResult,
@@ -21,6 +23,9 @@ export interface IpcHost {
   previewVoice(input: unknown): PreviewVoiceResult | Promise<PreviewVoiceResult>;
   signIn(input: unknown): SignInResult | Promise<SignInResult>;
   signOut(): SignInResult | Promise<SignInResult>;
+  beginLogin(): BeginLoginResult | Promise<BeginLoginResult>;
+  awaitLogin(): AwaitLoginResult | Promise<AwaitLoginResult>;
+  cancelLogin(): void | Promise<void>;
   orbState(): OrbState | Promise<OrbState>;
   orbSetInteractive(interactive: boolean): void | Promise<void>;
   chatState(): ChatState | Promise<ChatState>;
@@ -80,6 +85,15 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     IPC_CHANNELS.accountSignOut,
     (): SignInResult | Promise<SignInResult> => host.signOut(),
   );
+  handle(
+    IPC_CHANNELS.accountBeginLogin,
+    (): BeginLoginResult | Promise<BeginLoginResult> => host.beginLogin(),
+  );
+  handle(
+    IPC_CHANNELS.accountAwaitLogin,
+    (): AwaitLoginResult | Promise<AwaitLoginResult> => host.awaitLogin(),
+  );
+  handle(IPC_CHANNELS.accountCancelLogin, (): void | Promise<void> => host.cancelLogin());
   handle(IPC_CHANNELS.orbState, (): OrbState | Promise<OrbState> => host.orbState());
   handle(
     IPC_CHANNELS.orbSetInteractive,

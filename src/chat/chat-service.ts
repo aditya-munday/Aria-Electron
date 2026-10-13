@@ -99,6 +99,7 @@ export class ChatService {
   private readonly turns: ChatTurn[] = [];
   private turnCounter = 0;
   private emergency: EmergencyStopView | undefined;
+  private reconciling: Promise<void> | undefined;
 
   constructor(deps: ChatDeps) {
     this.deps = deps;
@@ -106,7 +107,7 @@ export class ChatService {
   }
 
   async buildState(): Promise<ChatState> {
-    await this.deps.runtime.tasks.reconcile();
+    await this.reconcileOnce();
     const now = this.now();
     const records = await this.recordViews();
     const mute = this.deps.runtime.control?.muteState;
@@ -118,6 +119,24 @@ export class ChatService {
         mute !== undefined ? { muted: mute.muted, mode: mute.mode } : undefined,
       now,
     });
+  }
+
+  /**
+   * Collapse overlapping reconciliations into one. The chat surface re-reads
+   * its state on a timer; without this, a backend slower than the poll interval
+   * accumulates a fresh reconcile (and its backend round-trips) on every tick,
+   * and the pile-up — not the render — is what makes the window feel laggy.
+   */
+  private async reconcileOnce(): Promise<void> {
+    if (this.reconciling !== undefined) return this.reconciling;
+    const run = this.deps.runtime.tasks
+      .reconcile()
+      .then(() => undefined)
+      .finally(() => {
+        this.reconciling = undefined;
+      });
+    this.reconciling = run;
+    return run;
   }
 
   /**
@@ -368,11 +387,7 @@ export class ChatService {
     const records = [...this.deps.runtime.tasks.records()].sort((a, b) =>
       a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0,
     );
-    const views: ChatRecordView[] = [];
-    for (const record of records) {
-      views.push(await this.recordView(record));
-    }
-    return views;
+    return Promise.all(records.map((record) => this.recordView(record)));
   }
 
   private async recordView(record: SupervisionRecord): Promise<ChatRecordView> {

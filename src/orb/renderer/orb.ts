@@ -265,8 +265,16 @@ export function bootstrapOrb(doc: Document, bridge: OrbBridge, intervalMs = 600)
     root.replaceChildren(loading);
   }
 
+  let lastPresence: string | undefined;
   const refresh = (): void => {
-    void bridge.orbState().then((state) => renderOrb(doc, state));
+    void bridge.orbState().then((state) => {
+      // The presence carries everything that is drawn; skip the rebuild when it
+      // has not changed rather than repainting the glass several times a second.
+      const key = JSON.stringify(state.presence);
+      if (key === lastPresence) return;
+      lastPresence = key;
+      renderOrb(doc, state);
+    });
   };
 
   // The Orb is a live presence: it must follow the voice runtime without the

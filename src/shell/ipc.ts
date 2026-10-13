@@ -12,6 +12,9 @@ export const IPC_CHANNELS = {
   previewVoice: 'aria:control-center:preview-voice',
   accountSignIn: 'aria:control-center:sign-in',
   accountSignOut: 'aria:control-center:sign-out',
+  accountBeginLogin: 'aria:control-center:begin-login',
+  accountAwaitLogin: 'aria:control-center:await-login',
+  accountCancelLogin: 'aria:control-center:cancel-login',
   orbState: 'aria:orb:state',
   orbSetInteractive: 'aria:orb:set-interactive',
   chatState: 'aria:chat:state',
@@ -50,6 +53,16 @@ export type SignInResult =
       readonly recovery?: string;
     };
 
+/** The device-code sign-in: the URL to open and the code the browser carries. */
+export type BeginLoginResult =
+  | { readonly ok: true; readonly loginUrl: string; readonly expiresAt: string; readonly expiresInMs?: number }
+  | { readonly ok: false; readonly reason: string; readonly recovery?: string };
+
+/** The outcome of waiting for the browser to complete a started sign-in. */
+export type AwaitLoginResult =
+  | { readonly ok: true; readonly signedIn: true; readonly reason: string }
+  | { readonly ok: false; readonly signedIn: false; readonly reason: string; readonly recovery?: string };
+
 export type { ApprovalDecisionOutcome, ChatActionResult, EmergencyStopView };
 
 export interface AriaBridge {
@@ -60,6 +73,9 @@ export interface AriaBridge {
   previewVoice(input: unknown): Promise<PreviewVoiceResult>;
   signIn(input: unknown): Promise<SignInResult>;
   signOut(): Promise<SignInResult>;
+  beginLogin(): Promise<BeginLoginResult>;
+  awaitLogin(): Promise<AwaitLoginResult>;
+  cancelLogin(): Promise<void>;
   orbState(): Promise<OrbState>;
   orbSetInteractive(interactive: boolean): Promise<void>;
   chatState(): Promise<ChatState>;
@@ -86,6 +102,9 @@ export const BRIDGE_METHODS = [
   'previewVoice',
   'signIn',
   'signOut',
+  'beginLogin',
+  'awaitLogin',
+  'cancelLogin',
   'orbState',
   'orbSetInteractive',
   'chatState',
@@ -141,6 +160,12 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
       ipc.invoke(IPC_CHANNELS.accountSignIn, input) as Promise<SignInResult>,
     signOut: (): Promise<SignInResult> =>
       ipc.invoke(IPC_CHANNELS.accountSignOut) as Promise<SignInResult>,
+    beginLogin: (): Promise<BeginLoginResult> =>
+      ipc.invoke(IPC_CHANNELS.accountBeginLogin) as Promise<BeginLoginResult>,
+    awaitLogin: (): Promise<AwaitLoginResult> =>
+      ipc.invoke(IPC_CHANNELS.accountAwaitLogin) as Promise<AwaitLoginResult>,
+    cancelLogin: (): Promise<void> =>
+      ipc.invoke(IPC_CHANNELS.accountCancelLogin) as Promise<void>,
     orbState: (): Promise<OrbState> => ipc.invoke(IPC_CHANNELS.orbState) as Promise<OrbState>,
     orbSetInteractive: (interactive: boolean): Promise<void> =>
       ipc.invoke(IPC_CHANNELS.orbSetInteractive, interactive) as Promise<void>,

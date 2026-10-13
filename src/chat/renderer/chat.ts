@@ -801,6 +801,10 @@ export function renderChat(doc: Document, state: ChatState, bridge: ChatBridge):
       : null;
   const scrollTop = root.scrollTop;
   const atBottom = root.scrollHeight - root.clientHeight - root.scrollTop <= 8;
+  // A rebuild replaces the composer node; carry the user's unsent draft across
+  // so a background refresh never erases what they are typing.
+  const priorInput = doc.getElementById('composer-input');
+  const composerValue = priorInput instanceof HTMLTextAreaElement ? priorInput.value : '';
 
   const refresh = (): void => {
     void bridge.chatState().then((next) => renderChat(doc, next, bridge));
@@ -819,6 +823,12 @@ export function renderChat(doc: Document, state: ChatState, bridge: ChatBridge):
   // Re-rendering the whole surface would otherwise snap the log back to the top
   // and drop the caret out of the composer on every refresh.
   root.scrollTop = atBottom ? root.scrollHeight : scrollTop;
+  const restoredInput = doc.getElementById('composer-input');
+  if (restoredInput instanceof HTMLTextAreaElement && composerValue !== '') {
+    restoredInput.value = composerValue;
+    restoredInput.style.height = 'auto';
+    restoredInput.style.height = `${Math.min(restoredInput.scrollHeight, 200)}px`;
+  }
   if (focusId !== '') {
     const restored = doc.getElementById(focusId);
     if (restored instanceof HTMLElement) {
@@ -833,6 +843,17 @@ export function renderChat(doc: Document, state: ChatState, bridge: ChatBridge):
   }
 }
 
+/**
+ * A render key that ignores `generatedAt`: the timestamp advances on every poll
+ * even when nothing the user can see has changed, and re-rendering for it alone
+ * is what makes the surface feel heavy.
+ */
+function stateKey(state: ChatState): string {
+  const rest: Record<string, unknown> = { ...state };
+  delete rest['generatedAt'];
+  return JSON.stringify(rest);
+}
+
 export function bootstrapChat(doc: Document, bridge: ChatBridge): void {
   const root = doc.getElementById('chat');
   if (root !== null) {
@@ -840,14 +861,32 @@ export function bootstrapChat(doc: Document, bridge: ChatBridge): void {
     loader.append(typingDots(doc));
     root.replaceChildren(loader);
   }
+  let lastKey: string | undefined;
+  let pending = false;
   const refresh = (): void => {
-    void bridge.chatState().then((state) => renderChat(doc, state, bridge));
+    // Skip a tick while the previous read is still in flight, so a slow backend
+    // cannot stack concurrent state reads and repaints.
+    if (pending) return;
+    pending = true;
+    void bridge.chatState().then(
+      (state) => {
+        pending = false;
+        const key = stateKey(state);
+        if (key === lastKey) return;
+        lastKey = key;
+        renderChat(doc, state, bridge);
+      },
+      () => {
+        pending = false;
+      },
+    );
   };
   refresh();
   // Chat is a live surface: task phases, approvals and stop reports change
   // without a user action, so it re-reads its state on an interval instead of
-  // rendering once and freezing.
-  const timer = setInterval(refresh, 1500);
+  // rendering once and freezing. The poll is cheap; the render is skipped
+  // whenever the state is unchanged, so an idle chat costs nothing.
+  const timer = setInterval(refresh, 2000);
   doc.defaultView?.addEventListener('pagehide', () => clearInterval(timer));
 }
 

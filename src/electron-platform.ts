@@ -45,7 +45,7 @@ const RENDERER_BY_KIND: Record<WindowKind, { file: string; width: number; height
 };
 
 const PHYSICAL_BY_CODE: Record<string, PhysicalKey> = {
-  Slash: 'question',
+  F5: 'f5',
   KeyA: 'a',
 };
 

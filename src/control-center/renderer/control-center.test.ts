@@ -42,7 +42,7 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
       pushToTalk: {
         enabled: true,
         mode: 'hold',
-        key: 'Hold ?',
+        key: 'Hold F5',
         globalAccelerator: 'Super+Alt+T',
         globalRegistered: true,
       },
@@ -122,15 +122,18 @@ function bridge(stateValue: ControlCenterState): {
   bridge: ControlCenterBridge;
   patches: unknown[];
   signIns: unknown[];
+  awaitCalls: { count: number };
   previews: unknown[];
 } {
   const patches: unknown[] = [];
   const signIns: unknown[] = [];
   const previews: unknown[] = [];
+  const awaitCalls = { count: 0 };
   return {
     patches,
     signIns,
     previews,
+    awaitCalls,
     bridge: {
       controlCenterState: async () => stateValue,
       updateSettings: async (patch) => {
@@ -146,6 +149,15 @@ function bridge(stateValue: ControlCenterState): {
         return { ok: false, signedIn: false, reason: 'The session token was rejected.' };
       },
       signOut: async () => ({ ok: true, signedIn: true }),
+      beginLogin: async () => {
+        signIns.push('begin');
+        return { ok: true, loginUrl: 'https://directioner.com/login' };
+      },
+      awaitLogin: async () => {
+        awaitCalls.count += 1;
+        return { ok: true, signedIn: true, reason: 'Signed in as ada@example.com.' };
+      },
+      cancelLogin: async () => undefined,
       openChat: async () => undefined,
     },
   };
@@ -177,9 +189,9 @@ function render(
     | 'general' = 'profile',
 ) {
   mount();
-  const { bridge: b, patches, signIns, previews } = bridge(value);
+  const { bridge: b, patches, signIns, previews, awaitCalls } = bridge(value);
   renderControlCenter(document, value, b, tab);
-  return { patches, signIns, previews };
+  return { patches, signIns, previews, awaitCalls };
 }
 
 describe('control center renderer', () => {
@@ -241,31 +253,19 @@ describe('control center renderer', () => {
     expect(glyph?.getAttribute('aria-label')).toBe('Aria');
   });
 
-  it('renders a sign-in form with email and token fields when signed out', () => {
+  it('renders a Beyonders sign-in control when signed out', () => {
     render(state(), 'account');
-    expect(document.getElementById('account-email')).not.toBeNull();
-    expect(document.getElementById('account-token')).not.toBeNull();
-    expect(document.getElementById('account-sign-in')).not.toBeNull();
+    expect(document.getElementById('account-beyonders-sign-in')).not.toBeNull();
     expect(document.getElementById('account-sign-out')).toBeNull();
   });
 
-  it('submits the entered token when signing in', () => {
-    const { signIns } = render(state(), 'account');
-    const token = document.getElementById('account-token') as HTMLInputElement;
-    const email = document.getElementById('account-email') as HTMLInputElement;
-    token.value = 'tok-123';
-    email.value = 'ada@example.com';
-    const form = token.closest('form');
-    form?.dispatchEvent(new Event('submit'));
-    expect(signIns).toContainEqual({ token: 'tok-123', email: 'ada@example.com' });
-  });
-
-  it('refuses to submit an empty token and says why', () => {
-    const { signIns } = render(state(), 'account');
-    const token = document.getElementById('account-token') as HTMLInputElement;
-    token.closest('form')?.dispatchEvent(new Event('submit'));
-    expect(signIns).toHaveLength(0);
-    expect(document.body.textContent).toContain('Enter your session token');
+  it('starts the browser sign-in and then waits for it to finish', async () => {
+    const { signIns, awaitCalls } = render(state(), 'account');
+    (document.getElementById('account-beyonders-sign-in') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(signIns).toContain('begin');
+    expect(awaitCalls.count).toBe(1);
   });
 
   it('renders the signed-in identity with a sign-out control', () => {
@@ -374,7 +374,7 @@ describe('control center renderer', () => {
           pushToTalk: {
         enabled: true,
         mode: 'hold',
-        key: 'Hold ?',
+        key: 'Hold F5',
         globalAccelerator: 'Super+Alt+T',
         globalRegistered: true,
       },
@@ -440,8 +440,12 @@ describe('control center renderer', () => {
     const b: ControlCenterBridge = {
       controlCenterState: async () => state(),
       updateSettings: async () => ({ ok: true }),
+      previewVoice: async () => ({ ok: true }),
       signIn: async () => ({ ok: true, signedIn: true }),
       signOut: async () => ({ ok: true, signedIn: true }),
+      beginLogin: async () => ({ ok: true, loginUrl: 'https://directioner.com/login' }),
+      awaitLogin: async () => ({ ok: true, signedIn: true, reason: 'Signed in.' }),
+      cancelLogin: async () => undefined,
       openChat: async () => {
         opened += 1;
       },
@@ -544,7 +548,7 @@ describe('control center renderer', () => {
       'activation',
     );
     expect(document.body.textContent).toContain('Right Ctrl');
-    expect(document.body.textContent).not.toContain('Hold ?');
+    expect(document.body.textContent).not.toContain('Hold F5');
   });
 
   it('toggles the Orb presence from the appearance tab', () => {

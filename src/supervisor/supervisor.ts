@@ -242,11 +242,15 @@ export class AriaSupervisor {
     if (!taskResult.ok) return existing;
     const task = taskResult.value;
 
-    const executionResult = await this.client.getExecution(taskId);
+    // Execution and journal reads do not depend on each other (the event window
+    // comes from the record we already hold), so they run together rather than
+    // in series — three sequential round-trips per task is what makes a poll
+    // feel heavy once a few tasks are tracked.
+    const [executionResult, eventsResult] = await Promise.all([
+      this.client.getExecution(taskId),
+      this.client.listEvents(taskId, existing?.lastSequence ?? 0),
+    ]);
     const execution = executionResult.ok ? executionResult.value : undefined;
-
-    const since = existing?.lastSequence ?? 0;
-    const eventsResult = await this.client.listEvents(taskId, since);
     const events = eventsResult.ok ? eventsResult.value : [];
 
     const record = this.fold(existing, task, execution, events);
@@ -254,15 +258,17 @@ export class AriaSupervisor {
     return record;
   }
 
-  /** Reconcile every tracked task; returns the refreshed records. */
+  /**
+   * Reconcile every tracked task; returns the refreshed records.
+   *
+   * Tasks are refreshed concurrently: they are independent reads, and doing
+   * them one after another multiplies a slow backend's latency by the number of
+   * tracked tasks.
+   */
   async reconcile(): Promise<readonly SupervisionRecord[]> {
     const ids = this.store.all().map((record) => record.taskId);
-    const refreshed: SupervisionRecord[] = [];
-    for (const id of ids) {
-      const record = await this.refresh(id);
-      if (record !== undefined) refreshed.push(record);
-    }
-    return refreshed;
+    const refreshed = await Promise.all(ids.map((id) => this.refresh(id)));
+    return refreshed.filter((record): record is SupervisionRecord => record !== undefined);
   }
 
   backendAvailability(): BackendAvailabilityState {

@@ -231,6 +231,78 @@ describe('AriaRuntime', () => {
     expect(runtime.voice?.diagnostics().lastError?.kind).toBe('invalid_configuration');
   });
 
+describe('AriaRuntime caching', () => {
+  function countingFetch(seen: { me: number; capabilities: number }): typeof fetch {
+    return (async (url: string, init: RequestInit) => {
+      const path = new URL(url).pathname;
+      const method = (init.method ?? 'GET') as string;
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (method === 'GET' && path === '/api/v1/me') {
+        seen.me += 1;
+        return json(200, {
+          identity: { userId: 'u1', roles: ['user'], providers: ['email'], anonymous: false },
+        });
+      }
+      if (method === 'GET' && path === '/v1/capabilities') {
+        seen.capabilities += 1;
+        return json(200, {
+          contract_version: 1,
+          backend_version: 'test/1',
+          stt_languages: ['en'],
+          tts_languages: ['en'],
+          voices: [],
+          streaming_stt: false,
+          streaming_chat: true,
+          streaming_tts: false,
+        });
+      }
+      return json(404, { error: { code: 'NOT_FOUND', message: 'no route' } });
+    }) as unknown as typeof fetch;
+  }
+
+  it('memoises identity so a second read does not hit the backend', async () => {
+    const seen = { me: 0, capabilities: 0 };
+    const runtime = new AriaRuntime({
+      config: { backendBaseUrl: 'https://api.test', requestTimeoutMs: 1000 },
+      fetchImpl: countingFetch(seen),
+      sessionToken: 'tok-1',
+    });
+    const first = await runtime.identity();
+    const second = await runtime.identity();
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(seen.me).toBe(1);
+  });
+
+  it('drops the cached identity when the session changes', async () => {
+    const seen = { me: 0, capabilities: 0 };
+    const runtime = new AriaRuntime({
+      config: { backendBaseUrl: 'https://api.test', requestTimeoutMs: 1000 },
+      fetchImpl: countingFetch(seen),
+      sessionToken: 'tok-1',
+    });
+    await runtime.identity();
+    runtime.signOut();
+    runtime.setSessionToken('tok-2');
+    await runtime.identity();
+    expect(seen.me).toBe(2);
+  });
+
+  it('shares one capabilities fetch across callers', async () => {
+    const seen = { me: 0, capabilities: 0 };
+    const runtime = new AriaRuntime({
+      config: { backendBaseUrl: 'https://api.test', requestTimeoutMs: 1000 },
+      fetchImpl: countingFetch(seen),
+    });
+    await Promise.all([runtime.capabilities(), runtime.capabilities(), runtime.capabilities()]);
+    expect(seen.capabilities).toBe(1);
+  });
+});
+
 describe('AriaRuntime session', () => {
   it('seeds the session token from the option without signing in by default', () => {
     const signedOut = new AriaRuntime({ config: { backendBaseUrl: 'https://api.adityamunday.codes', requestTimeoutMs: 1000, model: { provider: 'groq', id: 'groq/llama-3.3-70b-versatile', displayName: 'Llama 3.3 70B (Groq)' } } });
