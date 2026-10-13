@@ -50,6 +50,11 @@ export class ManualSpeaker implements Speaker {
   private streamReject: ((error: VoiceError) => void) | undefined;
   private stopped = false;
   private readonly played: Int16Array[] = [];
+  private referenceTap: ((chunk: Int16Array) => void) | undefined;
+
+  setReferenceTap(tap: ((chunk: Int16Array) => void) | undefined): void {
+    this.referenceTap = tap;
+  }
 
   async play(pcm: Int16Array): Promise<void> {
     if (this.pending !== undefined) {
@@ -57,6 +62,7 @@ export class ManualSpeaker implements Speaker {
       this.pending.reject(new VoiceError('cancelled', 'Playback was replaced.'));
       this.pending = undefined;
     }
+    this.referenceTap?.(pcm);
     return new Promise<void>((resolve, reject) => {
       this.pending = { resolve, reject, pcm };
     });
@@ -67,6 +73,7 @@ export class ManualSpeaker implements Speaker {
     _format: { sampleRate: number; channels: number },
   ): Promise<void> {
     this.stopped = false;
+    const tap = this.referenceTap;
     return new Promise<void>((resolve, reject) => {
       this.streamReject = reject;
       void (async () => {
@@ -74,6 +81,7 @@ export class ManualSpeaker implements Speaker {
           for await (const chunk of chunks) {
             // `stop()` has already rejected; the chunk is simply dropped.
             if (this.stopped) return;
+            tap?.(chunk);
             this.played.push(chunk);
           }
           resolve();

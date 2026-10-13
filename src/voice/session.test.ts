@@ -4,6 +4,7 @@ import { DEFAULT_VOICE_CONFIG, type VoiceRuntimeConfig } from './voice-config.js
 import { VoiceEventBus, type VoiceEvent } from './events.js';
 import { VoiceSession } from './session.js';
 import { ManualSpeaker } from './playback.js';
+import { FarEndReference } from './echo-cancellation.js';
 import { VoiceError } from './errors.js';
 import { FakeMicrophone, tone } from './testing/fake-audio.js';
 import { RecordingOrchestrator, SpeechDouble } from './testing/voice-doubles.js';
@@ -37,6 +38,7 @@ function harness(options: {
   streamingStt?: boolean;
   streamingTts?: boolean;
   streamingChat?: boolean;
+  farEnd?: FarEndReference;
 }): Harness {
   const microphone = options.microphone ?? new FakeMicrophone();
   const speaker = options.speaker ?? new ManualSpeaker();
@@ -54,6 +56,7 @@ function harness(options: {
     orchestrator,
     events: bus,
     now: () => 0,
+    ...(options.farEnd !== undefined ? { farEnd: options.farEnd } : {}),
     ...(options.streamingStt !== undefined ? { streamingStt: options.streamingStt } : {}),
     ...(options.streamingTts !== undefined ? { streamingTts: options.streamingTts } : {}),
     ...(options.streamingChat !== undefined ? { streamingChat: options.streamingChat } : {}),
@@ -488,5 +491,24 @@ describe('VoiceSession chat streaming', () => {
     expect(h.orchestrator.calls).toHaveLength(1);
     expect(h.orchestrator.streamCalls).toHaveLength(0);
     expect(types(h.events)).not.toContain('response.delta');
+  });
+});
+
+describe('VoiceSession echo cancellation', () => {
+  it('drains the shared far-end reference for every captured frame', async () => {
+    const farEnd = new FarEndReference(16_000);
+    const reference = new Int16Array(320);
+    for (let i = 0; i < reference.length; i += 1) reference[i] = (i % 2 === 0 ? 1 : -1) * 16_000;
+    farEnd.push(reference);
+    const h = harness({ farEnd });
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
+    h.speaker.advance();
+    await run;
+    // Each captured frame consumed one frame of the reference; the queue drains.
+    expect(farEnd.depth).toBe(0);
   });
 });

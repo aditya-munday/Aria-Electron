@@ -68,7 +68,11 @@ lets the main process push a settings change to the voice runtime
 next Control Center refresh. `applySettingsToRuntime` in `src/main.ts` is the
 single applier, called at startup, on every settings change, and on sign-in, so
 a persisted `speakResponses` is honoured on the first voice turn rather than
-only after an unrelated toggle. The renderer reads current settings through the
+only after an unrelated toggle. Local activation — the push-to-talk mode and
+wake-word listening — is applied even while signed out; gating it on sign-in
+would leave a signed-out user unable to speak to the app at all, so only the
+account-scoped preferences wait for an identity. The renderer reads current
+settings through the
 `aria:shell:settings` IPC channel. `setSpeechOutput` changes the
 voice/language/speed used by subsequent sessions only; a session already in
 flight keeps the output it started with.
@@ -78,8 +82,22 @@ flight keeps the output it started with.
 The pipeline is wake-listener -> session -> runtime, all local except speech:
 
 - `wake-listener.ts` + `wake-word.ts` — wake-word detection and activation.
+  `wake-phrase-engine.ts` (`createWakePhraseEngine`) is the real offline spotter:
+  an energy/activity segmenter feeding a DTW match against the wake phrase, so
+  "hey aria" is detected locally with no network and no bundled binary. It
+  replaces the old porcupine stub; `wake-word.ts` wraps it in
+  `EngineWakeWordDetector`. `DEFAULT_WAKE_WORD.enabled` stays `false` at the
+  runtime layer because product-level activation comes from shell settings
+  (`DEFAULT_SETTINGS.wakeWordEnabled`).
 - `vad.ts`, `segmenter.ts`, `ring-buffer.ts`, `noise-reduction.ts` — audio
   front end. `push-to-talk.ts` bypasses wake-word detection entirely.
+- `echo-cancellation.ts` — `EchoCanceller` (cascaded NLMS adaptive filter with
+  double-talk detection and a residual echo suppressor) and `FarEndReference`,
+  the queue of playback PCM used as the reference signal. `VoiceRuntime` taps the
+  speaker once (`Speaker.setReferenceTap`) and shares that single reference with
+  the wake listener and every session, so both cancel Aria's own playback echo.
+  A speaker without the optional tap (or a config with echo cancellation off)
+  leaves `farEnd` undefined and the pipeline runs unmodified.
 - `session.ts` (`VoiceSession`) — one turn: capture -> STT -> orchestrate ->
   optional TTS/playback. It emits the final `transcript` **before** calling the
   orchestrator, so a failed orchestration still reports what the user said. A
@@ -133,6 +151,9 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
 - `session.ts` finalizes the utterance on push-to-talk release even when no
   speech was detected (the VAD is off by one at the boundary), and a release
   that lands before the first frame completes the turn instead of hanging.
+  `VoiceRuntime.finishSession` clears the push-to-talk controller when a session
+  ends without a release (VAD silence or the max-duration cap), so the next
+  press starts a new capture instead of being read as a duplicate press.
 - `testing/` holds deterministic doubles (`FakeMicrophone`, `ManualSpeaker`,
   `SpeechDouble`, `RecordingOrchestrator`, `manualClock`); tests use these, not
   mocks of the module under test.
@@ -181,7 +202,9 @@ Rules the router enforces, all with tests:
   so a dead orchestration connection cannot undo it; it depends on no model
   inference and no connection.
 - Two voice interactions never merge: an activation during an active session is
-  refused (`voice_session_active`).
+  refused (`voice_session_active`). `main.ts` supplies the live session state
+  (`voice.diagnostics().sessionId !== undefined`) as the router's
+  `voiceSessionActive`, so the refusal reflects a real session, not a constant.
 
 `VoiceActivationSource` in `voice/events.ts` (`'push_to_talk' | 'wake_word' |
 'text'`) is reused as the vocabulary; the router's `VoiceInputPath` is that set
@@ -205,7 +228,12 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   what the OS actually accepted, never an assumed grab; `stop()` releases both.
   Push-to-talk is gated by an injected `pttAllowed` predicate (wired in
   `main.ts` to microphone permission), so a denied microphone leaves the
-  shortcut inert even when the setting is on.
+  shortcut inert even when the setting is on. Disabling push-to-talk mid-hold
+  releases the stranded capture rather than leaving the microphone running, and
+  a mode change mid-gesture resets the local press/release pairing so a toggle
+  press is never paired with a hold release. `electron-platform.ts` also emits a
+  synthetic `key_up` on window blur for any key held down, because a focused key
+  released while the window lost focus never arrives as a `keyUp`.
 - `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
   `Platform`) — the seam that keeps the shell testable without Electron.
   `Platform = { windows, keys, shortcuts, tray }`. `WindowOptions.launchHidden`
@@ -315,7 +343,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 598 tests / 61 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 619 tests / 63 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

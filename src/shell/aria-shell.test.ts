@@ -329,7 +329,7 @@ describe('global push-to-talk accelerator', () => {
   it('refuses a second activation while a voice session is active', async () => {
     let active = false;
     const { shell, platform, voice } = build(
-      { ...DEFAULT_SETTINGS, pushToTalkMode: 'hold' },
+      { ...DEFAULT_SETTINGS, pushToTalkMode: 'toggle' },
       undefined,
       false,
       undefined,
@@ -348,7 +348,7 @@ describe('global push-to-talk accelerator', () => {
     active = true;
     platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
     await shell.whenIdle();
-    // The router refuses; nothing new reaches the runtime.
+    // The router refuses the second activation; nothing new reaches the runtime.
     expect(voice.presses).toBe(1);
     expect(voice.releases).toBe(0);
   });
