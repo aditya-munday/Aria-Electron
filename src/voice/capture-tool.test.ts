@@ -199,4 +199,57 @@ describe('PcmPlayback', () => {
     expect(child.killed).toBe(true);
     await expect(done).rejects.toMatchObject({ kind: 'cancelled' });
   });
+
+  it('ignores a superseded player that closes late', async () => {
+    const first = new FakeChild();
+    const second = new FakeChild();
+    const children = [first, second];
+    let spawnCount = 0;
+    const playback = new PcmPlayback({
+      command: 'pacat',
+      argsFor: () => [],
+      spawn: () => children[spawnCount++] as FakeChild,
+    });
+    const firstDone = playback.play(new Int16Array([1]), format);
+    await Promise.resolve();
+    const secondDone = playback.play(new Int16Array([2]), format);
+    await flush();
+    await expect(firstDone).rejects.toMatchObject({ kind: 'cancelled' });
+    // The replaced player exiting must not resolve the playback that now owns
+    // the speaker.
+    first.close(0);
+    let settled = false;
+    void secondDone.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await flush();
+    expect(settled).toBe(false);
+    second.close(0);
+    await expect(secondDone).resolves.toBeUndefined();
+  });
+
+  it('ignores a superseded player that errors late', async () => {
+    const first = new FakeChild();
+    const second = new FakeChild();
+    const children = [first, second];
+    let spawnCount = 0;
+    const playback = new PcmPlayback({
+      command: 'pacat',
+      argsFor: () => [],
+      spawn: () => children[spawnCount++] as FakeChild,
+    });
+    const firstDone = playback.play(new Int16Array([1]), format);
+    await Promise.resolve();
+    const secondDone = playback.play(new Int16Array([2]), format);
+    await flush();
+    await expect(firstDone).rejects.toMatchObject({ kind: 'cancelled' });
+    first.fail(new Error('late device loss'));
+    second.close(0);
+    await expect(secondDone).resolves.toBeUndefined();
+  });
 });

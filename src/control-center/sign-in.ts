@@ -4,6 +4,7 @@ import { recoveryForError } from '../backend/product-errors.js';
 
 export type SignInOutcome =
   | { readonly ok: true; readonly signedIn: true; readonly reason?: string }
+  | { readonly ok: true; readonly signedIn: false; readonly reason: string }
   | {
       readonly ok: false;
       readonly signedIn: false;

@@ -283,7 +283,9 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   against the Backend before treating the user as signed in, and rolls the token
   back when the identity read fails, so a rejected credential never leaves a
   half-signed-in shell. The outcome carries the real identity or the classified
-  failure (`recoveryForError`), never a fabricated success.
+  failure (`recoveryForError`), never a fabricated success. A sign-out reports
+  `ok: true, signedIn: false` — a successful action that leaves the shell signed
+  out — so a consumer reading `signedIn` is never told the opposite of the truth.
 - `settings.ts` / `settings-file.ts` — persisted shell state. `normalizeSettings`
   keeps only known window kinds and rejects an unknown push-to-talk mode;
   optional ids (capture device, voice, language) survive only when present.

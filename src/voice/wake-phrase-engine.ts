@@ -115,6 +115,9 @@ export class WakePhraseEngine implements WakeWordEngine {
     if (this.template.length === 0) {
       throw new VoiceError('invalid_configuration', 'The wake phrase has no matchable content.');
     }
+    // A reset re-inits the streaming state, so a stale segment or adapted noise
+    // floor cannot leak into the next listen.
+    this.reset();
     this.initialized = true;
   }
 

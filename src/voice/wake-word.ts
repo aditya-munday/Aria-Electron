@@ -124,13 +124,12 @@ export class EngineWakeWordDetector implements WakeWordDetector {
 
   reset(): void {
     if (this.state === 'ready') {
-      try {
-        // Engines are stateful (buffered history); a reset is a re-init of the
-        // streaming state, not a model reload.
-        this.engine.init();
-      } catch {
+      // Engines are stateful (buffered history); a reset is a re-init of the
+      // streaming state, not a model reload. init() is async, so latch a
+      // rejected re-init instead of leaving an unhandled rejection behind.
+      void this.engine.init().catch(() => {
         this.state = 'failed';
-      }
+      });
     }
   }
 

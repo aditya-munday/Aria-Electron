@@ -178,7 +178,6 @@ export class PcmPlayback {
   private readonly options: PcmPlayerOptions;
   private process: AudioChildProcess | undefined;
   private current: { resolve: () => void; reject: (error: VoiceError) => void } | undefined;
-  private stopped = false;
 
   constructor(options: PcmPlayerOptions) {
     this.options = options;
@@ -186,7 +185,6 @@ export class PcmPlayback {
 
   async play(pcm: Int16Array, format: AudioFormat): Promise<void> {
     if (this.process !== undefined || this.current !== undefined) await this.stop();
-    this.stopped = false;
     const spawnProcess = this.options.spawn ?? defaultAudioSpawn;
     let process: AudioChildProcess;
     try {
@@ -204,9 +202,14 @@ export class PcmPlayback {
     }
     await new Promise<void>((resolve, reject) => {
       this.current = { resolve, reject };
-      process.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      // A superseded player (a later play()/stop() replaced this.process) must
+      // not settle the promise that now belongs to the newer playback.
+      process.on('error', (error) => {
+        if (this.process !== process) return;
+        this.fail(new VoiceError('playback_failed', error.message));
+      });
       process.on('close', (code) => {
-        if (this.stopped) return;
+        if (this.process !== process) return;
         this.process = undefined;
         const current = this.current;
         this.current = undefined;
@@ -214,11 +217,14 @@ export class PcmPlayback {
         if (code === 0 || code === null) current.resolve();
         else current.reject(new VoiceError('playback_failed', `The player exited with code ${code}.`));
       });
-      stdin.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      stdin.on('error', (error) => {
+        if (this.process !== process) return;
+        this.fail(new VoiceError('playback_failed', error.message));
+      });
       try {
         stdin.end(toPcmBytes(pcm));
       } catch (error) {
-        this.fail(new VoiceError('playback_failed', describeError(error)));
+        if (this.process === process) this.fail(new VoiceError('playback_failed', describeError(error)));
       }
     });
   }
@@ -234,7 +240,6 @@ export class PcmPlayback {
     format: AudioFormat,
   ): Promise<void> {
     if (this.process !== undefined || this.current !== undefined) await this.stop();
-    this.stopped = false;
     const spawnProcess = this.options.spawn ?? defaultAudioSpawn;
     let process: AudioChildProcess;
     try {
@@ -252,9 +257,14 @@ export class PcmPlayback {
     }
     await new Promise<void>((resolve, reject) => {
       this.current = { resolve, reject };
-      process.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      // Same supersession guard as play(): a replaced player must not settle the
+      // promise that now belongs to the newer playback.
+      process.on('error', (error) => {
+        if (this.process !== process) return;
+        this.fail(new VoiceError('playback_failed', error.message));
+      });
       process.on('close', (code) => {
-        if (this.stopped) return;
+        if (this.process !== process) return;
         this.process = undefined;
         const current = this.current;
         this.current = undefined;
@@ -262,25 +272,29 @@ export class PcmPlayback {
         if (code === 0 || code === null) current.resolve();
         else current.reject(new VoiceError('playback_failed', `The player exited with code ${code}.`));
       });
-      stdin.on('error', (error) => this.fail(new VoiceError('playback_failed', error.message)));
+      stdin.on('error', (error) => {
+        if (this.process !== process) return;
+        this.fail(new VoiceError('playback_failed', error.message));
+      });
       void (async () => {
         try {
           for await (const chunk of chunks) {
-            if (this.stopped) return;
+            if (this.process !== process) return;
             try {
               stdin.write(toPcmBytes(chunk));
             } catch (error) {
-              this.fail(new VoiceError('playback_failed', describeError(error)));
+              if (this.process === process) this.fail(new VoiceError('playback_failed', describeError(error)));
               return;
             }
           }
-          if (this.stopped) return;
+          if (this.process !== process) return;
           try {
             stdin.end();
           } catch {
             // The player already exited; the close handler reports it.
           }
         } catch (error) {
+          if (this.process !== process) return;
           this.fail(
             error instanceof VoiceError
               ? error
@@ -296,7 +310,6 @@ export class PcmPlayback {
     this.process = undefined;
     const current = this.current;
     this.current = undefined;
-    this.stopped = true;
     if (process !== undefined) {
       try {
         process.kill('SIGTERM');

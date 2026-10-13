@@ -42,6 +42,7 @@ export type PreviewVoiceResult =
 
 export type SignInResult =
   | { readonly ok: true; readonly signedIn: true; readonly reason?: string }
+  | { readonly ok: true; readonly signedIn: false; readonly reason: string }
   | {
       readonly ok: false;
       readonly signedIn: false;

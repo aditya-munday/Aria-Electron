@@ -114,7 +114,6 @@ export class EchoCanceller {
   /** Feed the far-end reference — the PCM Aria is playing — one frame at a time. */
   setFarEnd(frame: Float64Array): void {
     if (!this.config.enabled || this.bypassed) return;
-    this.writeIndex = this.writeIndex;
     for (let i = 0; i < frame.length; i += 1) {
       this.reference[this.writeIndex] = frame[i] as number;
       this.writeIndex = (this.writeIndex + 1) % this.reference.length;

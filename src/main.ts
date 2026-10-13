@@ -96,10 +96,10 @@ function main(): void {
     // account: gating it on sign-in would leave a signed-out user unable to
     // speak to the app at all. Only account-scoped preferences wait for sign-in.
     runtime.voice?.setPushToTalkMode(next.pushToTalkMode);
-    if (!signedIn()) return;
     void runtime.voice?.setWakeWordEnabled(next.wakeWordEnabled).catch((error: unknown) => {
       errors.report('settings:wakeWord', error);
     });
+    if (!signedIn()) return;
     runtime.voice?.setSpeakResponses(next.speakResponses);
     runtime.voice?.setSpeechOutput({
       voice: next.voice ?? null,
@@ -260,7 +260,7 @@ function main(): void {
     },
     signOut: (): SignInOutcome => {
       runtime.setSessionToken(undefined);
-      return { ok: true, signedIn: true, reason: 'Signed out.' };
+      return { ok: true, signedIn: false, reason: 'Signed out.' };
     },
     orbState: (): OrbState => orb.buildState(),
     orbSetInteractive: (interactive: boolean): void => shell.setOrbInteractive(interactive),
