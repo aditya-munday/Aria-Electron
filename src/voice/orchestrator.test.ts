@@ -34,6 +34,7 @@ describe('ChatOrchestrator streaming', () => {
     const result = await orchestrator(t).respondStream(
       { text: 'greet', sessionId: 's1', signal: SIGNAL },
       (delta) => deltas.push(delta),
+      () => undefined,
     );
     expect(deltas).toEqual(['Hel', 'lo', ' world']);
     expect(result.text).toBe('Hello world');
@@ -57,8 +58,27 @@ describe('ChatOrchestrator streaming', () => {
     const result = await orchestrator(t).respondStream(
       { text: 'deploy', sessionId: 's1', signal: SIGNAL },
       () => undefined,
+      () => undefined,
     );
     expect(result.route).toEqual({ capability: 'deploy.service', requires_confirmation: true });
+  });
+
+  it('fails when the stream ends without a final event, never returning partial text', async () => {
+    const t = new InMemoryTransport().onStream({
+      method: 'POST',
+      path: '/v1/chat/stream',
+      status: 200,
+      lines: lines([
+        { contract_version: 1, is_final: false, delta: 'Half a thought' },
+      ]),
+    });
+    await expect(
+      orchestrator(t).respondStream(
+        { text: 'hi', sessionId: 's1', signal: SIGNAL },
+        () => undefined,
+        () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(VoiceError);
   });
 
   it('throws a backend_unavailable VoiceError when the stream fails', async () => {
@@ -71,5 +91,24 @@ describe('ChatOrchestrator streaming', () => {
     await expect(
       orchestrator(t).respondStream({ text: 'hi', sessionId: 's1', signal: SIGNAL }, () => undefined),
     ).rejects.toBeInstanceOf(VoiceError);
+  });
+
+  it('sends confirm:true on the stream only when asked', async () => {
+    const reply = lines([
+      { contract_version: 1, is_final: false, delta: 'ok' },
+      { contract_version: 1, is_final: true, delta: '' },
+    ]);
+    const t = new InMemoryTransport()
+      .onStream({ method: 'POST', path: '/v1/chat/stream', status: 200, lines: reply })
+      .onStream({ method: 'POST', path: '/v1/chat/stream', status: 200, lines: reply });
+    const orch = orchestrator(t);
+    await orch.respondStream({ text: 'hi', sessionId: 's1', signal: SIGNAL }, () => undefined, () => undefined);
+    await orch.respondStream(
+      { text: 'yes', sessionId: 's1', signal: SIGNAL, confirm: true },
+      () => undefined,
+      () => undefined,
+    );
+    expect(t.recorded()[0]?.body).not.toHaveProperty('confirm');
+    expect(t.recorded()[1]?.body).toMatchObject({ confirm: true });
   });
 });

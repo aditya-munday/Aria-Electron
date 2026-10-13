@@ -42,6 +42,9 @@ export interface SpeechDoubleOptions {
   /** The number of audio chunks a streaming synthesis yields. */
   readonly ttsStreamChunks?: number;
   readonly ttsStreamError?: Error;
+  /** Hold the synthesis after this many chunks until `ttsStreamGate` resolves. */
+  readonly ttsStreamGateAfter?: number;
+  readonly ttsStreamGate?: Promise<void>;
 }
 
 export class SpeechDouble implements SpeechProxy {
@@ -94,6 +97,9 @@ export class SpeechDouble implements SpeechProxy {
     if (this.options.ttsStreamError !== undefined) throw this.options.ttsStreamError;
     const chunks = this.options.ttsStreamChunks ?? 2;
     for (let i = 0; i < chunks; i += 1) {
+      if (i === this.options.ttsStreamGateAfter && this.options.ttsStreamGate !== undefined) {
+        await this.options.ttsStreamGate;
+      }
       yield pcmPayload(toInt16(tone(160, 0.3)));
     }
   }
@@ -193,13 +199,14 @@ export class FakeWakeWordDetector implements WakeWordDetector {
 }
 
 export class RecordingOrchestrator implements Orchestrator {
-  readonly calls: { text: string; sessionId: string }[] = [];
-  readonly streamCalls: { text: string; sessionId: string }[] = [];
+  readonly calls: { text: string; sessionId: string; confirm?: boolean }[] = [];
+  readonly streamCalls: { text: string; sessionId: string; confirm?: boolean }[] = [];
   private readonly respond_: (text: string) => string;
   private readonly error: Error | undefined;
   private readonly delayTicks: number;
   private readonly route: RouteHint | null | undefined;
   private readonly streamDeltas: readonly string[] | undefined;
+  private readonly streamSentences: readonly string[] | undefined;
   private readonly streamError: Error | undefined;
 
   constructor(
@@ -210,6 +217,8 @@ export class RecordingOrchestrator implements Orchestrator {
       route?: RouteHint | null;
       /** When set, `respondStream` is implemented and yields these deltas. */
       streamDeltas?: readonly string[];
+      /** Sentences `respondStream` hands to the speech stream, in order. */
+      streamSentences?: readonly string[];
       streamError?: Error;
     } = {},
   ) {
@@ -218,6 +227,7 @@ export class RecordingOrchestrator implements Orchestrator {
     this.delayTicks = options.delayTicks ?? 0;
     this.route = options.route;
     this.streamDeltas = options.streamDeltas;
+    this.streamSentences = options.streamSentences;
     this.streamError = options.streamError;
   }
 
@@ -225,8 +235,13 @@ export class RecordingOrchestrator implements Orchestrator {
     readonly text: string;
     readonly sessionId: string;
     readonly signal: AbortSignal;
+    readonly confirm?: boolean;
   }): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
-    this.calls.push({ text: input.text, sessionId: input.sessionId });
+    this.calls.push({
+      text: input.text,
+      sessionId: input.sessionId,
+      ...(input.confirm !== undefined ? { confirm: input.confirm } : {}),
+    });
     for (let i = 0; i < this.delayTicks; i += 1) await Promise.resolve();
     if (this.error !== undefined) throw this.error;
     return {
@@ -236,10 +251,20 @@ export class RecordingOrchestrator implements Orchestrator {
   }
 
   async respondStream(
-    input: { readonly text: string; readonly sessionId: string; readonly signal: AbortSignal },
+    input: {
+      readonly text: string;
+      readonly sessionId: string;
+      readonly signal: AbortSignal;
+      readonly confirm?: boolean;
+    },
     onDelta: (delta: string) => void,
+    onSentence: (sentence: string) => void,
   ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
-    this.streamCalls.push({ text: input.text, sessionId: input.sessionId });
+    this.streamCalls.push({
+      text: input.text,
+      sessionId: input.sessionId,
+      ...(input.confirm !== undefined ? { confirm: input.confirm } : {}),
+    });
     for (let i = 0; i < this.delayTicks; i += 1) await Promise.resolve();
     if (this.streamError !== undefined) throw this.streamError;
     const deltas = this.streamDeltas ?? [this.respond_(input.text)];
@@ -249,6 +274,7 @@ export class RecordingOrchestrator implements Orchestrator {
       onDelta(delta);
       await Promise.resolve();
     }
+    for (const sentence of this.streamSentences ?? []) onSentence(sentence);
     return {
       text,
       ...(this.route !== undefined ? { route: this.route } : {}),

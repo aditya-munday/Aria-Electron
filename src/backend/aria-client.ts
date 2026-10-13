@@ -121,6 +121,12 @@ export interface AriaChatInput {
   readonly messages: readonly ChatMessage[];
   readonly conversationId?: string;
   readonly language?: string;
+  /**
+   * Set only when the user has affirmed a route hint the Backend proposed; it
+   * asks the Backend to execute the previously proposed operation. Aria never
+   * executes a system action itself.
+   */
+  readonly confirm?: boolean;
 }
 
 export interface AriaSttInput {
@@ -168,6 +174,7 @@ export class AriaClient {
       messages: input.messages,
       ...(input.conversationId !== undefined ? { conversation_id: input.conversationId } : {}),
       ...(input.language !== undefined ? { language: input.language } : {}),
+      ...(input.confirm !== undefined ? { confirm: input.confirm } : {}),
     });
     if (!raw.ok) return raw;
     const parsed = chatResponseSchema.safeParse(raw.value);
@@ -224,6 +231,7 @@ export class AriaClient {
       messages: input.messages,
       ...(input.conversationId !== undefined ? { conversation_id: input.conversationId } : {}),
       ...(input.language !== undefined ? { language: input.language } : {}),
+      ...(input.confirm !== undefined ? { confirm: input.confirm } : {}),
     };
     for await (const value of this.streamJson(
       ARIA_ENDPOINTS.chatStream,

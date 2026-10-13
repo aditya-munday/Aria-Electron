@@ -30,6 +30,8 @@ import { EchoCanceller, createEchoCanceller, FarEndReference } from './echo-canc
 import { UtteranceAssembler, bytesToBase64, type UtteranceOutcome } from './segmenter.js';
 import type { SpeechProxy } from './speech.js';
 import type { Speaker } from './playback.js';
+import { confirmationReply, interpretConfirmation, requiresConfirmation } from './os-routing.js';
+import { AsyncQueue } from './stream-queue.js';
 import { VoiceActivityDetector, createVad } from './vad.js';
 import type { VoiceRuntimeConfig } from './voice-config.js';
 
@@ -39,13 +41,20 @@ export interface Orchestrator {
     readonly text: string;
     readonly sessionId: string;
     readonly signal: AbortSignal;
+    readonly confirm?: boolean;
   }): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
   /**
    * Optional: an orchestrator without it is used through the batch `respond`.
    */
   respondStream?(
-    input: { readonly text: string; readonly sessionId: string; readonly signal: AbortSignal },
+    input: {
+      readonly text: string;
+      readonly sessionId: string;
+      readonly signal: AbortSignal;
+      readonly confirm?: boolean;
+    },
     onDelta: (delta: string) => void,
+    onSentence: (sentence: string) => void,
   ): Promise<{ readonly text: string; readonly route?: RouteHint | null }>;
 }
 
@@ -65,6 +74,11 @@ export interface VoiceSessionDeps {
   readonly streamingTts?: boolean;
   /** Whether the Backend advertised streaming chat. */
   readonly streamingChat?: boolean;
+  /**
+   * A system action the previous turn proposed and is awaiting confirmation
+   * for. This turn answers it, so it is sent with `confirm: true`.
+   */
+  readonly pendingConfirmation?: RouteHint;
   /** The far-end reference of Aria's own playback, for echo cancellation. */
   readonly farEnd?: FarEndReference;
 }
@@ -99,6 +113,16 @@ export class VoiceSession {
   private utteranceResolve: (() => void) | undefined;
   private responseText: string | undefined;
   private responseRoute: RouteHint | null | undefined;
+  private pendingConfirmation: RouteHint | undefined;
+  private turnAudio: AsyncQueue<Int16Array> | undefined;
+  private turnPlayback: Promise<void> | undefined;
+  private turnPushedAudio = false;
+  private readonly turnSyntheses = new Set<Promise<void>>();
+  private turnStartedAt = 0;
+  private firstDeltaAt: number | undefined;
+  private firstAudioAt: number | undefined;
+  private lastAudioAt: number | undefined;
+  private maxAudioGap = 0;
 
   constructor(deps: VoiceSessionDeps) {
     this.id = deps.id;
@@ -113,6 +137,7 @@ export class VoiceSession {
     this.streamingStt = deps.streamingStt ?? false;
     this.streamingTts = deps.streamingTts ?? false;
     this.streamingChat = deps.streamingChat ?? false;
+    this.pendingConfirmation = deps.pendingConfirmation;
     this.farEnd = deps.farEnd;
   }
 
@@ -131,6 +156,11 @@ export class VoiceSession {
 
   get route(): RouteHint | null | undefined {
     return this.responseRoute;
+  }
+
+  /** The action a route hint proposed and is awaiting confirmation for, if any. */
+  get awaitingConfirmation(): RouteHint | undefined {
+    return this.pendingConfirmation;
   }
 
   isCancelled(): boolean {
@@ -165,6 +195,7 @@ export class VoiceSession {
         this.setState('idle');
         return;
       }
+      this.beginTurnMetrics();
       const transcript = await this.transcribe(outcome.pcm);
       this.ensureActive();
       const text = transcript.trim();
@@ -175,39 +206,10 @@ export class VoiceSession {
         return;
       }
       this.events.emit({ type: 'transcript', sessionId: this.id, at: this.now(), text, final: true });
-      let response: { readonly text: string; readonly route?: RouteHint | null } | undefined;
-      try {
-        response = await this.respond(text);
-      } catch (error) {
-        const voiceError = asVoiceError(error);
-        // A device loss or an explicit cancellation aborts the whole turn; the
-        // outer handler distinguishes them. Anything else is an orchestration
-        // failure: the transcript is still the user's, so it is kept and the
-        // failure is reported without discarding it.
-        if (this.isCancelled()) throw voiceError;
-        this.events.emit({
-          type: 'session.failed',
-          sessionId: this.id,
-          at: this.now(),
-          error: voiceError.message,
-          kind: voiceError.kind,
-        });
-        this.setState('idle');
-        return;
-      }
-      this.ensureActive();
-      if (response !== undefined) {
-        this.responseText = response.text;
-        this.responseRoute = response.route;
-        this.events.emit({
-          type: 'response',
-          sessionId: this.id,
-          at: this.now(),
-          text: response.text,
-          ...(response.route !== undefined ? { route: response.route } : {}),
-        });
-        await this.speak(response.text);
-      }
+      const pending = this.takePendingConfirmation();
+      const spoken = await this.deliver(text, pending);
+      if (spoken !== undefined && spoken !== "") await this.speak(spoken);
+      this.emitTurnMetrics();
       if (!this.isCancelled()) this.setState('idle');
     } catch (error) {
       const voiceError = asVoiceError(error);
@@ -242,35 +244,11 @@ export class VoiceSession {
         text,
         final: true,
       });
-      let response: { readonly text: string; readonly route?: RouteHint | null } | undefined;
-      try {
-        response = await this.respond(text);
-      } catch (error) {
-        const voiceError = asVoiceError(error);
-        if (this.isCancelled()) throw voiceError;
-        this.events.emit({
-          type: 'session.failed',
-          sessionId: this.id,
-          at: this.now(),
-          error: voiceError.message,
-          kind: voiceError.kind,
-        });
-        this.setState('idle');
-        return;
-      }
-      if (this.isCancelled()) return;
-      if (response !== undefined) {
-        this.responseText = response.text;
-        this.responseRoute = response.route;
-        this.events.emit({
-          type: 'response',
-          sessionId: this.id,
-          at: this.now(),
-          text: response.text,
-          ...(response.route !== undefined ? { route: response.route } : {}),
-        });
-        await this.speak(response.text);
-      }
+      this.beginTurnMetrics();
+      const pending = this.takePendingConfirmation();
+      const spoken = await this.deliver(text, pending);
+      if (spoken !== undefined && spoken !== "") await this.speak(spoken);
+      this.emitTurnMetrics();
       if (!this.isCancelled()) this.setState('idle');
     } catch (error) {
       const voiceError = asVoiceError(error);
@@ -292,6 +270,7 @@ export class VoiceSession {
     this.controller.abort(new VoiceError('cancelled', reason));
     this.finalizeRequested = true;
     this.utteranceResolve?.();
+    this.abandonSpeechStream();
     await this.speaker.stop().catch(() => undefined);
     this.setState('cancelled');
     this.events.emit({ type: 'session.cancelled', sessionId: this.id, at: this.now(), reason });
@@ -431,7 +410,16 @@ export class VoiceSession {
     };
     try {
       if (this.streamingStt && this.speech.transcribeStream !== undefined) {
-        return await this.transcribeStreaming(audio);
+        try {
+          return await this.transcribeStreaming(audio);
+        } catch (error) {
+          if (this.isCancelled()) throw error;
+          // A stream the backend could not serve falls back to the batch
+          // transcription; a stream that violated the protocol (ended without a
+          // final event) does not, because batch would hide a real error.
+          const kind = asVoiceError(error, 'speech_failed').kind;
+          if (kind !== 'backend_unavailable' && kind !== 'timeout') throw error;
+        }
       }
       const result = await raceWithSignal(
         this.speech.transcribe({
@@ -486,14 +474,21 @@ export class VoiceSession {
 
   private async respond(
     text: string,
+    streamingSpeech: boolean,
+    confirm?: boolean,
   ): Promise<{ readonly text: string; readonly route?: RouteHint | null } | undefined> {
     this.setState('thinking');
     try {
       const useStream = this.streamingChat && this.orchestrator.respondStream !== undefined;
       const response = await raceWithSignal(
         useStream
-          ? this.respondStreaming(text)
-          : this.orchestrator.respond({ text, sessionId: this.id, signal: this.controller.signal }),
+          ? this.respondStreaming(text, streamingSpeech, confirm)
+          : this.orchestrator.respond({
+              text,
+              sessionId: this.id,
+              signal: this.controller.signal,
+              ...(confirm !== undefined ? { confirm } : {}),
+            }),
         this.controller.signal,
         this.config.responseTimeoutMs,
       );
@@ -506,17 +501,117 @@ export class VoiceSession {
   }
 
   /**
+   * One orchestration turn, shared by the voice and typed paths. A pending
+   * confirmation is answered by re-sending the request with `confirm: true`; any
+   * other turn is sent verbatim. The returned text is what the caller speaks on
+   * the batch path; `undefined` means the streaming path already spoke it.
+   *
+   * A route hint is only surfaced when OS routing is enabled. A hint that
+   * requires confirmation is remembered for the *next* turn and the user is
+   * asked to confirm it; a hint that does not is reported but never executed.
+   */
+  private async deliver(
+    text: string,
+    pending: RouteHint | undefined,
+  ): Promise<string | undefined> {
+    const streamingSpeech = this.beginSpeechStream();
+    // A pending proposal is answered by re-sending the request with `confirm:
+    // true`, but only when the user's reply is an affirmation. A denial or an
+    // unrelated reply is sent verbatim, so the Backend never executes an action
+    // the user did not agree to.
+    const confirm =
+      pending !== undefined && interpretConfirmation(text) === 'affirm' ? true : undefined;
+    let response: { readonly text: string; readonly route?: RouteHint | null } | undefined;
+    try {
+      response = await this.respond(text, streamingSpeech, confirm);
+    } catch (error) {
+      const voiceError = asVoiceError(error);
+      if (streamingSpeech) this.abandonSpeechStream();
+      // A device loss or an explicit cancellation aborts the whole turn; the
+      // outer handler distinguishes them. Anything else is an orchestration
+      // failure: the transcript is still the user's, so it is kept and the
+      // failure is reported without discarding it.
+      if (this.isCancelled()) throw voiceError;
+      this.events.emit({
+        type: 'session.failed',
+        sessionId: this.id,
+        at: this.now(),
+        error: voiceError.message,
+        kind: voiceError.kind,
+      });
+      this.setState('idle');
+      return undefined;
+    }
+    this.ensureActive();
+    if (response === undefined) {
+      if (streamingSpeech) this.abandonSpeechStream();
+      return undefined;
+    }
+    this.responseText = response.text;
+    this.responseRoute = response.route;
+    const proposal =
+      this.config.osRouting && requiresConfirmation(response.route) ? response.route : undefined;
+    this.pendingConfirmation = proposal;
+    const reply =
+      proposal !== undefined
+        ? confirmationReply(response.text, proposal)
+        : { text: response.text, spoken: undefined as string | undefined };
+    if (proposal !== undefined) {
+      this.events.emit({
+        type: 'route.proposed',
+        sessionId: this.id,
+        at: this.now(),
+        route: proposal,
+        prompt: reply.text,
+      });
+    }
+    this.events.emit({
+      type: 'response',
+      sessionId: this.id,
+      at: this.now(),
+      text: reply.text,
+      ...(response.route !== undefined ? { route: response.route } : {}),
+    });
+    if (streamingSpeech) {
+      // A backend question is already being spoken sentence-by-sentence; only a
+      // bare yes/no cue is appended when the reply did not carry one.
+      if (reply.spoken !== undefined && reply.spoken !== "") this.speakSentence(reply.spoken);
+      await this.finishSpeechStream();
+      return undefined;
+    }
+    return reply.spoken ?? reply.text;
+  }
+
+  /** Take and clear the confirmation a previous turn proposed, if any. */
+  private takePendingConfirmation(): RouteHint | undefined {
+    const pending = this.pendingConfirmation;
+    this.pendingConfirmation = undefined;
+    return pending;
+  }
+
+  /**
    * The authoritative text comes from the returned value, never from the
    * accumulated deltas, so a late or missing fragment cannot fabricate one.
+   * Each completed sentence is handed to the live speech stream, so synthesis
+   * begins on the first sentence rather than after the whole reply.
    */
   private async respondStreaming(
     text: string,
+    streamingSpeech: boolean,
+    confirm?: boolean,
   ): Promise<{ readonly text: string; readonly route?: RouteHint | null }> {
     let accumulated = '';
+    const onSentence = streamingSpeech ? (sentence: string): void => this.speakSentence(sentence) : undefined;
     return this.orchestrator.respondStream!(
-      { text, sessionId: this.id, signal: this.controller.signal },
+      {
+        text,
+        sessionId: this.id,
+        signal: this.controller.signal,
+        ...(confirm !== undefined ? { confirm } : {}),
+      },
       (delta) => {
         if (this.isCancelled()) return;
+        if (this.firstDeltaAt === undefined) this.firstDeltaAt = this.now();
         accumulated += delta;
         this.events.emit({
           type: 'response.delta',
@@ -526,6 +621,7 @@ export class VoiceSession {
           delta,
         });
       },
+      onSentence ?? (() => undefined),
     );
   }
 
@@ -537,7 +633,13 @@ export class VoiceSession {
     this.setState('speaking');
     this.events.emit({ type: 'synthesis.started', sessionId: this.id, at: this.now(), text });
     if (this.streamingTts && this.speech.synthesizeStream !== undefined) {
-      await this.speakStreaming(text);
+      const audio = new AsyncQueue<Int16Array>();
+      this.turnAudio = audio;
+      this.turnSyntheses.clear();
+      this.events.emit({ type: 'playback.started', sessionId: this.id, at: this.now() });
+      this.turnPlayback = this.runSpeechStream(audio);
+      this.speakSentence(text);
+      await this.finishSpeechStream();
       return;
     }
     let audio: AudioPayload;
@@ -608,88 +710,141 @@ export class VoiceSession {
   }
 
   /**
-   * Stream the response speech. Chunks are played as they arrive through the
-   * speaker's streaming path when it offers one; a speaker without it falls back
-   * to buffering the whole stream and playing it once. A stream failure is a TTS
-   * failure that does not erase the text response.
+   * Open the live speech stream for a turn. The device starts on the first
+   * chunk, and later chunks from later sentences append in order; the stream is
+   * closed once the reply's last sentence has been synthesized.
    */
-  private async speakStreaming(text: string): Promise<void> {
-    const chunks = this.synthesizeChunks(text);
+  private beginSpeechStream(): boolean {
+    if (!this.config.speakResponses) return false;
+    if (!this.streamingTts || this.speech.synthesizeStream === undefined) return false;
+    // Sentences only arrive from a streaming chat response; without it the whole
+    // reply is synthesized once through the batch/streaming `speak` path.
+    if (!this.streamingChat || this.orchestrator.respondStream === undefined) return false;
+    const audio = new AsyncQueue<Int16Array>();
+    this.turnAudio = audio;
+    this.turnPushedAudio = false;
+    this.turnSyntheses.clear();
     this.events.emit({ type: 'playback.started', sessionId: this.id, at: this.now() });
+    this.turnPlayback = this.runSpeechStream(audio);
+    return true;
+  }
+
+  private async runSpeechStream(audio: AsyncQueue<Int16Array>): Promise<void> {
     try {
       if (this.speaker.playStream !== undefined) {
-        await raceWithSignal(
-          this.speaker.playStream(chunks, {
-            sampleRate: SPEECH_SAMPLE_RATE,
-            channels: 1,
-          }),
-          this.controller.signal,
-          undefined,
-        );
-      } else {
-        const collected: Int16Array[] = [];
-        let total = 0;
-        for await (const pcm of chunks) {
-          if (this.isCancelled()) return;
-          collected.push(pcm);
-          total += pcm.length;
-        }
-        if (total === 0) {
-          this.events.emit({
-            type: 'session.failed',
-            sessionId: this.id,
-            at: this.now(),
-            error: 'Synthesis returned no audio.',
-            kind: 'malformed_audio',
-          });
-          return;
-        }
-        const merged = new Int16Array(total);
-        let offset = 0;
-        for (const pcm of collected) {
-          merged.set(pcm, offset);
-          offset += pcm.length;
-        }
-        await raceWithSignal(
-          this.speaker.play(merged, { sampleRate: SPEECH_SAMPLE_RATE, channels: 1 }),
-          this.controller.signal,
-          undefined,
-        );
+        await this.speaker.playStream(audio, { sampleRate: SPEECH_SAMPLE_RATE, channels: 1 });
+        return;
       }
-      this.events.emit({ type: 'playback.finished', sessionId: this.id, at: this.now() });
+      const collected: Int16Array[] = [];
+      let total = 0;
+      for await (const pcm of audio) {
+        if (this.isCancelled()) return;
+        collected.push(pcm);
+        total += pcm.length;
+      }
+      if (total === 0) {
+        this.fail('Synthesis returned no audio.', 'malformed_audio');
+        return;
+      }
+      const merged = new Int16Array(total);
+      let offset = 0;
+      for (const pcm of collected) {
+        merged.set(pcm, offset);
+        offset += pcm.length;
+      }
+      await this.speaker.play(merged, { sampleRate: SPEECH_SAMPLE_RATE, channels: 1 });
     } catch (error) {
       const voiceError = asVoiceError(error, 'playback_failed');
       if (voiceError.kind === 'cancelled' || this.isCancelled()) {
         this.events.emit({ type: 'playback.interrupted', sessionId: this.id, at: this.now() });
         return;
       }
-      // A synthesis stream failure is a TTS failure: the text response stands.
       const kind = voiceError.kind === 'playback_failed' ? 'speech_failed' : voiceError.kind;
+      this.fail(voiceError.message, kind);
+    }
+  }
+
+  /**
+   * Synthesize one sentence into the live stream. A sentence that fails to
+   * synthesize does not end the turn: the remaining sentences still speak, and
+   * the failure is reported without erasing the text response.
+   */
+  private speakSentence(sentence: string): void {
+    const audio = this.turnAudio;
+    if (audio === undefined) return;
+    const synthesis = this.synthesizeSentence(sentence, audio);
+    this.turnSyntheses.add(synthesis);
+    void synthesis.finally(() => this.turnSyntheses.delete(synthesis));
+  }
+
+  private async synthesizeSentence(sentence: string, audio: AsyncQueue<Int16Array>): Promise<void> {
+    try {
+      for await (const chunk of this.speech.synthesizeStream!({
+        text: sentence,
+        ...(this.config.language !== undefined ? { language: this.config.language } : {}),
+        ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
+        ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
+        ...(this.config.pitch !== undefined ? { pitch: this.config.pitch } : {}),
+        ...(this.config.volume !== undefined ? { volume: this.config.volume } : {}),
+        ...(this.config.style !== undefined ? { style: this.config.style } : {}),
+        sampleRate: SPEECH_SAMPLE_RATE,
+        signal: this.controller.signal,
+      })) {
+        if (this.isCancelled()) return;
+        const pcm = base64ToPcm(chunk.samples_le_base64);
+        if (pcm.length > 0) {
+          this.setState('speaking');
+          this.noteAudioChunk();
+          audio.push(pcm);
+        }
+      }
+    } catch (error) {
+      const voiceError = asVoiceError(error, 'speech_failed');
+      if (this.isCancelled() || voiceError.kind === 'cancelled') return;
       this.events.emit({
         type: 'session.failed',
         sessionId: this.id,
         at: this.now(),
         error: voiceError.message,
-        kind,
+        kind: voiceError.kind,
       });
     }
   }
 
-  /** Decode the streaming synthesis into raw PCM chunks, in order. */
-  private async *synthesizeChunks(text: string): AsyncGenerator<Int16Array, void, void> {
-    for await (const chunk of this.speech.synthesizeStream!({
-      text,
-      ...(this.config.language !== undefined ? { language: this.config.language } : {}),
-      ...(this.config.voice !== undefined ? { voice: this.config.voice } : {}),
-      ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}),
-      ...(this.config.pitch !== undefined ? { pitch: this.config.pitch } : {}),
-      ...(this.config.volume !== undefined ? { volume: this.config.volume } : {}),
-      ...(this.config.style !== undefined ? { style: this.config.style } : {}),
-      sampleRate: SPEECH_SAMPLE_RATE,
-      signal: this.controller.signal,
-    })) {
-      yield base64ToPcm(chunk.samples_le_base64);
+  /** Close the stream and wait for the reply's audio to finish playing. */
+  private async finishSpeechStream(): Promise<void> {
+    const audio = this.turnAudio;
+    if (audio === undefined) return;
+    await Promise.all([...this.turnSyntheses]);
+    const pushed = this.turnPushedAudio;
+    audio.close();
+    const playback = this.turnPlayback;
+    this.turnAudio = undefined;
+    this.turnPlayback = undefined;
+    this.turnSyntheses.clear();
+    if (playback === undefined) return;
+    try {
+      await raceWithSignal(playback, this.controller.signal, undefined);
+      // No audio was ever pushed (a failed synthesis): a finished playback would
+      // claim the user heard something they did not.
+      if (pushed) this.events.emit({ type: 'playback.finished', sessionId: this.id, at: this.now() });
+    } catch (error) {
+      const voiceError = asVoiceError(error, 'playback_failed');
+      if (voiceError.kind === 'cancelled' || this.isCancelled()) {
+        this.events.emit({ type: 'playback.interrupted', sessionId: this.id, at: this.now() });
+        return;
+      }
+      const kind = voiceError.kind === 'playback_failed' ? 'speech_failed' : voiceError.kind;
+      this.fail(voiceError.message, kind);
     }
+  }
+
+  private abandonSpeechStream(): void {
+    const audio = this.turnAudio;
+    this.turnAudio = undefined;
+    this.turnPlayback = undefined;
+    this.turnSyntheses.clear();
+    audio?.close();
   }
 
   private async releaseCapture(): Promise<void> {
@@ -712,14 +867,52 @@ export class VoiceSession {
     this.events.emit({ type: 'session.state', sessionId: this.id, at: this.now(), state });
   }
 
-  private fail(error: VoiceError): void {
+  /** Mark the moment the user stopped speaking; all latency is measured from it. */
+  private beginTurnMetrics(): void {
+    this.turnStartedAt = this.now();
+    this.firstDeltaAt = undefined;
+    this.firstAudioAt = undefined;
+    this.lastAudioAt = undefined;
+    this.maxAudioGap = 0;
+  }
+
+  private noteAudioChunk(): void {
+    const now = this.now();
+    if (this.firstAudioAt === undefined) this.firstAudioAt = now;
+    if (this.lastAudioAt !== undefined) {
+      this.maxAudioGap = Math.max(this.maxAudioGap, now - this.lastAudioAt);
+    }
+    this.lastAudioAt = now;
+    this.turnPushedAudio = true;
+  }
+
+  private emitTurnMetrics(): void {
+    if (!this.config.debug || this.turnStartedAt === 0) return;
+    this.events.emit({
+      type: 'turn.metrics',
+      sessionId: this.id,
+      at: this.now(),
+      metrics: {
+        ...(this.firstDeltaAt !== undefined
+          ? { firstDeltaMs: this.firstDeltaAt - this.turnStartedAt }
+          : {}),
+        ...(this.firstAudioAt !== undefined
+          ? { firstAudioMs: this.firstAudioAt - this.turnStartedAt }
+          : {}),
+        ...(this.firstAudioAt !== undefined ? { streamGapMs: this.maxAudioGap } : {}),
+      },
+    });
+  }
+
+  private fail(error: VoiceError | string, kind?: VoiceErrorKind): void {
+    const voiceError = error instanceof VoiceError ? error : new VoiceError(kind ?? 'internal', error);
     this.setState('failed');
     this.events.emit({
       type: 'session.failed',
       sessionId: this.id,
       at: this.now(),
-      error: error.message,
-      kind: error.kind,
+      error: voiceError.message,
+      kind: voiceError.kind,
     });
   }
 }

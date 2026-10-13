@@ -26,6 +26,18 @@ export interface VoiceEventBase {
   readonly at: number;
 }
 
+/**
+ * Per-turn latency, measured from the end of the user's speech. `firstAudioMs`
+ * is the headline number (time to first sound); `firstDeltaMs` is how long the
+ * reply took to start streaming, and `streamGapMs` is the largest pause between
+ * two audio chunks (a gaplessness proxy).
+ */
+export interface VoiceTurnMetrics {
+  readonly firstDeltaMs?: number;
+  readonly firstAudioMs?: number;
+  readonly streamGapMs?: number;
+}
+
 export type VoiceEvent =
   | (VoiceEventBase & { readonly type: 'session.started'; readonly source: VoiceActivationSource })
   | (VoiceEventBase & { readonly type: 'capture.started'; readonly deviceId?: string })
@@ -53,9 +65,15 @@ export type VoiceEvent =
       readonly text: string;
       readonly delta: string;
     })
+  | (VoiceEventBase & {
+      readonly type: 'route.proposed';
+      readonly route: RouteHint;
+      readonly prompt: string;
+    })
   | (VoiceEventBase & { readonly type: 'synthesis.started'; readonly text: string })
   | (VoiceEventBase & { readonly type: 'playback.started' })
   | (VoiceEventBase & { readonly type: 'playback.finished' })
+  | (VoiceEventBase & { readonly type: 'turn.metrics'; readonly metrics: VoiceTurnMetrics })
   | (VoiceEventBase & { readonly type: 'playback.interrupted' })
   | (VoiceEventBase & { readonly type: 'session.state'; readonly state: VoiceSessionState })
   | (VoiceEventBase & { readonly type: 'session.failed'; readonly error: string; readonly kind: string })

@@ -96,6 +96,19 @@ describe('AriaClient unary routes', () => {
     expect(t.recorded()[0]?.body).toMatchObject({ contract_version: 1 });
   });
 
+  it('sends confirm:true only when asked, never by default', async () => {
+    const t = new InMemoryTransport().on({
+      method: 'POST',
+      path: '/v1/chat',
+      status: 200,
+      body: { contract_version: 1, text: 'ok', route: null },
+    });
+    await client(t).chat({ messages: [{ role: 'user', content: 'hi' }] });
+    await client(t).chat({ messages: [{ role: 'user', content: 'yes' }], confirm: true });
+    expect(t.recorded()[0]?.body).not.toHaveProperty('confirm');
+    expect(t.recorded()[1]?.body).toMatchObject({ confirm: true });
+  });
+
   it('requires a token for a protected route', async () => {
     const t = new InMemoryTransport();
     const result = await client(t, new NoToken()).chat({ messages: [{ role: 'user', content: 'hi' }] });

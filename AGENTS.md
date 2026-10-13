@@ -161,7 +161,25 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   session uses it only when the Backend advertises `streaming_chat` **and** the
   orchestrator implements it (`VoiceRuntime.setStreamingSupport`); otherwise the
   turn falls back to the batch `respond`. A route hint on the final event is
-  surfaced, never treated as authorization.
+  surfaced, never treated as authorization. Deltas are fed to `text-segmenter.ts`,
+  which releases the first speakable sentence at a smaller threshold than later
+  ones, so synthesis starts on the first sentence while the reply is still
+  streaming (`response.delta` events carry the running text).
+- `os-routing.ts` — the client half of the OS/CLI route surface, pure and
+  testable. When `ARIA_OS_ROUTING` is on and a reply carries a route hint with
+  `requires_confirmation: true`, the session speaks the Backend's own question
+  with a yes/no cue (`confirmationReply`) and remembers the hint across turns
+  (`VoiceRuntime` carries it, since each turn is a fresh session). A reply that
+  reads as an affirmation (`interpretConfirmation`) re-sends the turn with
+  `confirm: true` so the Backend — never Aria — executes the proposed operation;
+  a denial or an unrelated reply is sent verbatim. While the flag is off the hint
+  is ignored entirely. The route hint is advisory throughout: Aria has no
+  authority over the operating system and never claims success on a hint alone.
+- Latency flags: `ARIA_VOICE_STREAMING` (consume the streaming endpoints; on by
+  default), `ARIA_VAD_SILENCE_MS` (end-of-speech silence), `ARIA_VOICE_DEBUG`
+  (`turn.metrics`: `firstDeltaMs`, `firstAudioMs`, `maxAudioGapMs` from the
+  moment speech ends), and `ARIA_VOICE_FAST` (streaming everywhere, an 8-char
+  first sentence, ~350 ms silence).
 - Synthesis output controls (`pitch`, `volume`, `style`) are an optional,
   additive Backend capability (`output_controls`). `VoiceRuntime.setOutputControls`
   records what the Backend advertises and drops any control it does not offer, so

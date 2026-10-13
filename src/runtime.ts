@@ -117,6 +117,9 @@ export class AriaRuntime {
       const orchestrator = new ChatOrchestrator({
         client: this.aria,
         ...(voiceConfig.language !== undefined ? { language: voiceConfig.language } : {}),
+        ...(voiceConfig.firstSentenceChars !== undefined
+          ? { firstSentenceChars: voiceConfig.firstSentenceChars }
+          : {}),
       });
       this.voice = new VoiceRuntime({
         config: voiceConfig,

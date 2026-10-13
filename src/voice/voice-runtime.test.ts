@@ -286,6 +286,28 @@ describe('VoiceRuntime text turn', () => {
     const reply = await turn;
     expect(reply.route).toEqual(route);
   });
+
+  it('carries a confirming proposal into the next turn and sends confirm:true on an affirmation', async () => {
+    const route = { capability: 'system.restart_service', requires_confirmation: true };
+    const built = build({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({ route }),
+    });
+    const first = built.runtime.sendText('restart the api');
+    await waitFor(() => types(built.events).includes('playback.started'), 'first playback');
+    built.speaker.advance();
+    await first;
+    expect(types(built.events)).toContain('route.proposed');
+
+    const answer = built.runtime.sendText('yes');
+    await waitFor(
+      () => built.events.filter((e) => e.type === 'playback.started').length >= 2,
+      'second playback',
+    );
+    built.speaker.advance();
+    await answer;
+    expect(built.orchestrator.calls[1]).toEqual({ text: 'yes', sessionId: 'voice-2', confirm: true });
+  });
 });
 
 describe('VoiceRuntime speech output', () => {

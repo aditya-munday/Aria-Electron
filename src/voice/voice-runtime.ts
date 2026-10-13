@@ -88,6 +88,12 @@ export class VoiceRuntime {
   private current: VoiceSession | undefined;
   private sessionCounter = 0;
   private lastError: VoiceError | undefined;
+  /**
+   * A system action the last turn proposed and is awaiting confirmation for.
+   * It outlives the session that proposed it, so the next activation (a voice
+   * "yes" or a typed "yes") answers it.
+   */
+  private pendingConfirmation: RouteHint | undefined;
   private devices: readonly AudioDevice[] = [];
   private unsubscribeDeviceChange: (() => void) | undefined;
   private streamingStt = false;
@@ -163,9 +169,11 @@ export class VoiceRuntime {
     readonly tts: boolean;
     readonly chat?: boolean;
   }): void {
-    this.streamingStt = streaming.stt && this.speech.transcribeStream !== undefined;
-    this.streamingTts = streaming.tts && this.speech.synthesizeStream !== undefined;
-    this.streamingChat = streaming.chat === true && this.orchestrator.respondStream !== undefined;
+    const enabled = this.config.streaming;
+    this.streamingStt = enabled && streaming.stt && this.speech.transcribeStream !== undefined;
+    this.streamingTts = enabled && streaming.tts && this.speech.synthesizeStream !== undefined;
+    this.streamingChat =
+      enabled && streaming.chat === true && this.orchestrator.respondStream !== undefined;
   }
 
   /**
@@ -492,6 +500,9 @@ export class VoiceRuntime {
       streamingStt: this.streamingStt,
       streamingTts: this.streamingTts,
       streamingChat: this.streamingChat,
+      ...(this.pendingConfirmation !== undefined
+        ? { pendingConfirmation: this.pendingConfirmation }
+        : {}),
       ...(this.farEnd !== undefined ? { farEnd: this.farEnd } : {}),
     });
     this.current = session;
@@ -506,6 +517,9 @@ export class VoiceRuntime {
     // Only clear if this session is still the current one; a newer session has
     // already taken ownership and must not be dropped by a late finisher.
     if (this.current === session) {
+      // Carry a proposal into the next turn so the user's answer reaches it; a
+      // turn that proposed nothing clears any stale one.
+      this.pendingConfirmation = session.awaitingConfirmation;
       this.current = undefined;
       // A session that self-finalized (VAD silence or the max-duration cap) ends
       // without a release; clear the controller so the next press starts a new

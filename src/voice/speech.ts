@@ -281,6 +281,7 @@ export class BackendSpeechProxy implements SpeechProxy {
    * is not yielded.
    */
   async *synthesizeStream(input: TtsStreamInput): AsyncIterable<AudioPayload> {
+    let expected = 0;
     try {
       for await (const event of this.client.ttsStream(
         {
@@ -295,6 +296,16 @@ export class BackendSpeechProxy implements SpeechProxy {
         },
         { ...(input.signal !== undefined ? { signal: input.signal } : {}) },
       )) {
+        // Chunks must arrive in a contiguous, zero-based order: a gap would
+        // splice unrelated audio together, so it is a failed synthesis rather
+        // than a silently reordered stream.
+        if (event.sequence !== expected) {
+          throw new VoiceError(
+            'speech_failed',
+            'The synthesis stream skipped a chunk (out-of-order sequence).',
+          );
+        }
+        expected += 1;
         if (event.audio.samples_le_base64 !== '') yield event.audio;
         if (event.is_final) return;
       }

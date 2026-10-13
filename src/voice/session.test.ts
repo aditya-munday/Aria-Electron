@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { RouteHint } from '../contract/aria-contract.js';
 import { DEFAULT_VOICE_CONFIG, type VoiceRuntimeConfig } from './voice-config.js';
 import { VoiceEventBus, type VoiceEvent } from './events.js';
 import { VoiceSession } from './session.js';
@@ -39,6 +40,8 @@ function harness(options: {
   streamingTts?: boolean;
   streamingChat?: boolean;
   farEnd?: FarEndReference;
+  pendingConfirmation?: RouteHint;
+  now?: () => number;
 }): Harness {
   const microphone = options.microphone ?? new FakeMicrophone();
   const speaker = options.speaker ?? new ManualSpeaker();
@@ -55,11 +58,14 @@ function harness(options: {
     speech,
     orchestrator,
     events: bus,
-    now: () => 0,
+    now: options.now ?? (() => 0),
     ...(options.farEnd !== undefined ? { farEnd: options.farEnd } : {}),
     ...(options.streamingStt !== undefined ? { streamingStt: options.streamingStt } : {}),
     ...(options.streamingTts !== undefined ? { streamingTts: options.streamingTts } : {}),
     ...(options.streamingChat !== undefined ? { streamingChat: options.streamingChat } : {}),
+    ...(options.pendingConfirmation !== undefined
+      ? { pendingConfirmation: options.pendingConfirmation }
+      : {}),
   });
   return { session, microphone, speaker, speech, orchestrator, events };
 }
@@ -365,6 +371,92 @@ describe('VoiceSession cancellation and stale results', () => {
   });
 });
 
+describe('VoiceSession OS route confirmation', () => {
+  const PROPOSAL: RouteHint = { capability: 'system.restart_service', requires_confirmation: true };
+
+  it('ignores a route hint entirely while OS routing is disabled', async () => {
+    const h = harness({ orchestrator: new RecordingOrchestrator({ route: PROPOSAL }) });
+    const run = h.session.runText('restart the api');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(types(h.events)).not.toContain('route.proposed');
+    expect(h.session.awaitingConfirmation).toBeUndefined();
+    const response = h.events.find((e) => e.type === 'response');
+    expect(response?.type === 'response' && response.text).toBe('response:restart the api');
+  });
+
+  it('surfaces a confirming route hint and speaks the yes/no prompt', async () => {
+    const h = harness({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
+    });
+    const run = h.session.runText('restart the api');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    const proposed = h.events.find((e) => e.type === 'route.proposed');
+    expect(proposed).toMatchObject({ route: PROPOSAL, prompt: 'response:restart the api Say yes or no.' });
+    const response = h.events.find((e) => e.type === 'response');
+    expect(response?.type === 'response' && response.text).toBe('response:restart the api Say yes or no.');
+    expect(h.session.awaitingConfirmation).toEqual(PROPOSAL);
+  });
+
+  it('does not surface a hint that needs no confirmation', async () => {
+    const h = harness({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({
+        route: { capability: 'desktop.open_app', requires_confirmation: false },
+      }),
+    });
+    const run = h.session.runText('open the editor');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(types(h.events)).not.toContain('route.proposed');
+    expect(h.session.awaitingConfirmation).toBeUndefined();
+  });
+
+  it('sends confirm:true only when the user affirms a pending proposal', async () => {
+    const h = harness({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
+      pendingConfirmation: PROPOSAL,
+    });
+    const run = h.session.runText('yes');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(h.orchestrator.calls).toEqual([{ text: 'yes', sessionId: 's1', confirm: true }]);
+  });
+
+  it('does not send confirm:true when the user denies', async () => {
+    const h = harness({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
+      pendingConfirmation: PROPOSAL,
+    });
+    const run = h.session.runText('no');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(h.orchestrator.calls).toEqual([{ text: 'no', sessionId: 's1' }]);
+  });
+
+  it('does not send confirm:true when the user says something unrelated', async () => {
+    const h = harness({
+      config: config({ osRouting: true }),
+      orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
+      pendingConfirmation: PROPOSAL,
+    });
+    const run = h.session.runText('what service do you mean');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    h.speaker.advance();
+    await run;
+    expect(h.orchestrator.calls).toEqual([{ text: 'what service do you mean', sessionId: 's1' }]);
+  });
+});
+
 describe('VoiceSession streaming', () => {
   it('streams the transcription, emitting partials and using the final transcript', async () => {
     const h = harness({
@@ -491,6 +583,62 @@ describe('VoiceSession chat streaming', () => {
     expect(h.orchestrator.calls).toHaveLength(1);
     expect(h.orchestrator.streamCalls).toHaveLength(0);
     expect(types(h.events)).not.toContain('response.delta');
+  });
+
+  it('starts playback on the first audio chunk, not the last', async () => {
+    let releaseGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const h = harness({
+      speech: new SpeechDouble({
+        sttText: 'greet',
+        ttsStreamChunks: 2,
+        ttsStreamGateAfter: 1,
+        ttsStreamGate: gate,
+      }),
+      orchestrator: new RecordingOrchestrator({
+        streamDeltas: ['One two three.'],
+        streamSentences: ['One two three.'],
+      }),
+      streamingChat: true,
+      streamingTts: true,
+    });
+    const run = h.session.runText('greet');
+    await waitFor(() => h.speaker.playedBuffers().length >= 1, 'first audio chunk');
+    expect(h.speaker.playedBuffers()).toHaveLength(1);
+    expect(types(h.events)).toContain('playback.started');
+    expect(types(h.events)).not.toContain('playback.finished');
+    releaseGate();
+    await waitFor(() => types(h.events).includes('playback.finished'), 'playback finished');
+    await run;
+    expect(h.speaker.playedBuffers()).toHaveLength(2);
+  });
+
+  it('emits per-turn latency metrics when debugging is enabled', async () => {
+    let clock = 0;
+    const h = harness({
+      speech: new SpeechDouble({ sttText: 'greet', ttsStreamChunks: 2 }),
+      orchestrator: new RecordingOrchestrator({
+        streamDeltas: ['One two three.'],
+        streamSentences: ['One two three.'],
+      }),
+      config: config({ debug: true, streaming: true }),
+      streamingChat: true,
+      streamingTts: true,
+      now: () => (clock += 1),
+    });
+    const run = h.session.runText('greet');
+    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
+    h.speaker.advance();
+    await run;
+    const metrics = h.events.find((e) => e.type === 'turn.metrics');
+    expect(metrics).toBeDefined();
+    const m = metrics && metrics.type === 'turn.metrics' ? metrics.metrics : undefined;
+    expect(m?.firstDeltaMs).toBeGreaterThan(0);
+    expect(m?.firstAudioMs).toBeGreaterThan(0);
+    expect(m?.firstAudioMs ?? 0).toBeGreaterThanOrEqual(m?.firstDeltaMs ?? 0);
+    expect(m?.streamGapMs).toBeGreaterThanOrEqual(0);
   });
 });
 

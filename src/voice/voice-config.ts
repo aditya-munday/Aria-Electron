@@ -36,6 +36,23 @@ export interface VoiceRuntimeConfig {
   readonly maxUtteranceMs: number;
   /** Capture/processing sample rate; the Backend snaps synthesis rates. */
   readonly sampleRate: number;
+  /**
+   * Continuous silence that ends a turn. Smaller is snappier but risks cutting
+   * a slow speaker off; `ARIA_VAD_SILENCE_MS` overrides it.
+   */
+  readonly endpointSilenceMs: number;
+  /** Whether the streaming chat/STT/TTS path is consumed (the flag's value). */
+  readonly streaming: boolean;
+  /** Whether per-turn latency metrics are emitted (`ARIA_VOICE_DEBUG`). */
+  readonly debug: boolean;
+  /**
+   * Whether a route hint proposing a system/CLI action is surfaced and confirmed
+   * (`ARIA_OS_ROUTING`). Off by default until the Backend's gateway is enabled;
+   * while off, a route hint is ignored entirely.
+   */
+  readonly osRouting: boolean;
+  /** Minimum length of the first spoken sentence; `ARIA_VOICE_FAST` shrinks it. */
+  readonly firstSentenceChars?: number;
   /** How long to wait for the STT proxy before the outcome is uncertain. */
   readonly sttTimeoutMs: number;
   /** How long to wait for the TTS proxy before the outcome is uncertain. */
@@ -76,6 +93,10 @@ export const DEFAULT_VOICE_CONFIG: VoiceRuntimeConfig = {
   minUtteranceMs: DEFAULT_MIN_UTTERANCE_MS,
   maxUtteranceMs: 60_000,
   sampleRate: SPEECH_SAMPLE_RATE,
+  endpointSilenceMs: 400,
+  streaming: true,
+  debug: false,
+  osRouting: false,
   sttTimeoutMs: 30_000,
   ttsTimeoutMs: 30_000,
   responseTimeoutMs: 120_000,
@@ -91,6 +112,7 @@ export function validateVoiceConfig(config: VoiceRuntimeConfig): void {
     }
   };
   positive('sampleRate', config.sampleRate);
+  positive('endpointSilenceMs', config.endpointSilenceMs);
   positive('minUtteranceMs', config.minUtteranceMs);
   positive('maxUtteranceMs', config.maxUtteranceMs);
   positive('sttTimeoutMs', config.sttTimeoutMs);
@@ -186,6 +208,10 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     return Number.isFinite(parsed) ? parsed : undefined;
   };
 
+  const fast = bool('ARIA_VOICE_FAST', false);
+  const endpointSilenceMs =
+    optionalNumber('ARIA_VAD_SILENCE_MS') ?? (fast ? 350 : DEFAULT_VOICE_CONFIG.endpointSilenceMs);
+
   return {
     ...DEFAULT_VOICE_CONFIG,
     pushToTalk: {
@@ -211,7 +237,13 @@ export function loadVoiceConfig(env: NodeJS.ProcessEnv = process.env): VoiceRunt
     vad: {
       ...DEFAULT_VAD,
       enabled: bool('ARIA_VAD_ENABLED', DEFAULT_VAD.enabled),
+      endSilenceMs: endpointSilenceMs,
     },
+    endpointSilenceMs,
+    streaming: bool('ARIA_VOICE_STREAMING', DEFAULT_VOICE_CONFIG.streaming),
+    debug: bool('ARIA_VOICE_DEBUG', DEFAULT_VOICE_CONFIG.debug),
+    osRouting: bool('ARIA_OS_ROUTING', DEFAULT_VOICE_CONFIG.osRouting),
+    ...(fast ? { firstSentenceChars: 8 } : {}),
     speakResponses: bool('ARIA_SPEAK_RESPONSES', DEFAULT_VOICE_CONFIG.speakResponses),
     ...(str('ARIA_VOICE') !== undefined ? { voice: str('ARIA_VOICE') as string } : {}),
     ...(str('ARIA_LANGUAGE') !== undefined ? { language: str('ARIA_LANGUAGE') as string } : {}),
