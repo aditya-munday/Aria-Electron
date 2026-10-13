@@ -336,24 +336,20 @@ describe('VoiceSession cancellation and stale results', () => {
     expect(types(h.events)).toContain('session.cancelled');
   });
 
-  it('a text turn goes straight to orchestration, bypassing STT', async () => {
+  it('a text turn goes straight to orchestration, bypassing STT and speech', async () => {
     const h = harness({});
-    const run = h.session.runText('typed input');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
+    await h.session.runText('typed input');
     expect(h.speech.sttCalls).toHaveLength(0);
     expect(h.orchestrator.calls).toEqual([{ text: 'typed input', sessionId: 's1' }]);
-    h.speaker.advance();
-    await run;
     expect(types(h.events)).toContain('response');
+    expect(types(h.events)).not.toContain('playback.started');
+    expect(h.speech.ttsCalls).toHaveLength(0);
   });
 
   it('threads an advisory route hint from the orchestrator onto the response', async () => {
     const route = { capability: 'deploy.service', requires_confirmation: true };
     const h = harness({ orchestrator: new RecordingOrchestrator({ route }) });
-    const run = h.session.runText('deploy the api');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('deploy the api');
     const response = h.events.find((e) => e.type === 'response');
     expect(response).toMatchObject({ text: 'response:deploy the api', route });
     expect(h.session.route).toEqual(route);
@@ -361,10 +357,7 @@ describe('VoiceSession cancellation and stale results', () => {
 
   it('leaves the route undefined when the Backend sent no hint', async () => {
     const h = harness({});
-    const run = h.session.runText('just talking');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('just talking');
     const response = h.events.find((e) => e.type === 'response');
     expect(response?.type === 'response' && response.route).toBeFalsy();
     expect(h.session.route).toBeUndefined();
@@ -376,25 +369,19 @@ describe('VoiceSession OS route confirmation', () => {
 
   it('ignores a route hint entirely while OS routing is disabled', async () => {
     const h = harness({ orchestrator: new RecordingOrchestrator({ route: PROPOSAL }) });
-    const run = h.session.runText('restart the api');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('restart the api');
     expect(types(h.events)).not.toContain('route.proposed');
     expect(h.session.awaitingConfirmation).toBeUndefined();
     const response = h.events.find((e) => e.type === 'response');
     expect(response?.type === 'response' && response.text).toBe('response:restart the api');
   });
 
-  it('surfaces a confirming route hint and speaks the yes/no prompt', async () => {
+  it('surfaces a confirming route hint with a yes/no prompt', async () => {
     const h = harness({
       config: config({ osRouting: true }),
       orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
     });
-    const run = h.session.runText('restart the api');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('restart the api');
     const proposed = h.events.find((e) => e.type === 'route.proposed');
     expect(proposed).toMatchObject({ route: PROPOSAL, prompt: 'response:restart the api Say yes or no.' });
     const response = h.events.find((e) => e.type === 'response');
@@ -409,10 +396,7 @@ describe('VoiceSession OS route confirmation', () => {
         route: { capability: 'desktop.open_app', requires_confirmation: false },
       }),
     });
-    const run = h.session.runText('open the editor');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('open the editor');
     expect(types(h.events)).not.toContain('route.proposed');
     expect(h.session.awaitingConfirmation).toBeUndefined();
   });
@@ -423,10 +407,7 @@ describe('VoiceSession OS route confirmation', () => {
       orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
       pendingConfirmation: PROPOSAL,
     });
-    const run = h.session.runText('yes');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('yes');
     expect(h.orchestrator.calls).toEqual([{ text: 'yes', sessionId: 's1', confirm: true }]);
   });
 
@@ -436,10 +417,7 @@ describe('VoiceSession OS route confirmation', () => {
       orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
       pendingConfirmation: PROPOSAL,
     });
-    const run = h.session.runText('no');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('no');
     expect(h.orchestrator.calls).toEqual([{ text: 'no', sessionId: 's1' }]);
   });
 
@@ -449,10 +427,7 @@ describe('VoiceSession OS route confirmation', () => {
       orchestrator: new RecordingOrchestrator({ route: PROPOSAL }),
       pendingConfirmation: PROPOSAL,
     });
-    const run = h.session.runText('what service do you mean');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback start');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('what service do you mean');
     expect(h.orchestrator.calls).toEqual([{ text: 'what service do you mean', sessionId: 's1' }]);
   });
 });
@@ -553,15 +528,12 @@ describe('VoiceSession streaming', () => {
 });
 
 describe('VoiceSession chat streaming', () => {
-  it('streams the response as deltas and speaks the authoritative text', async () => {
+  it('streams the response as deltas and keeps the authoritative text, without speaking', async () => {
     const h = harness({
       orchestrator: new RecordingOrchestrator({ streamDeltas: ['Hel', 'lo', ' world'] }),
       streamingChat: true,
     });
-    const run = h.session.runText('greet');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('greet');
     const deltas = h.events.filter((e) => e.type === 'response.delta');
     expect(deltas.map((e) => e.text)).toEqual(['Hel', 'Hello', 'Hello world']);
     expect(h.events.find((e) => e.type === 'response')).toMatchObject({
@@ -569,6 +541,7 @@ describe('VoiceSession chat streaming', () => {
     });
     expect(h.orchestrator.streamCalls).toHaveLength(1);
     expect(h.orchestrator.calls).toHaveLength(0);
+    expect(types(h.events)).not.toContain('playback.started');
   });
 
   it('falls back to batch orchestration when chat streaming is not advertised', async () => {
@@ -576,10 +549,7 @@ describe('VoiceSession chat streaming', () => {
       orchestrator: new RecordingOrchestrator({ streamDeltas: ['x'] }),
       streamingChat: false,
     });
-    const run = h.session.runText('greet');
-    await waitFor(() => types(h.events).includes('playback.started'), 'playback');
-    h.speaker.advance();
-    await run;
+    await h.session.runText('greet');
     expect(h.orchestrator.calls).toHaveLength(1);
     expect(h.orchestrator.streamCalls).toHaveLength(0);
     expect(types(h.events)).not.toContain('response.delta');
@@ -604,7 +574,10 @@ describe('VoiceSession chat streaming', () => {
       streamingChat: true,
       streamingTts: true,
     });
-    const run = h.session.runText('greet');
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
     await waitFor(() => h.speaker.playedBuffers().length >= 1, 'first audio chunk');
     expect(h.speaker.playedBuffers()).toHaveLength(1);
     expect(types(h.events)).toContain('playback.started');
@@ -628,7 +601,10 @@ describe('VoiceSession chat streaming', () => {
       streamingTts: true,
       now: () => (clock += 1),
     });
-    const run = h.session.runText('greet');
+    const run = h.session.run('push_to_talk');
+    await waitFor(() => h.microphone.lastHandle()?.isStarted === true, 'capture start');
+    await speakUtterance(h);
+    h.session.finalizeUtterance();
     await waitFor(() => types(h.events).includes('playback.started'), 'playback');
     h.speaker.advance();
     await run;

@@ -266,7 +266,11 @@ Rules the router enforces, all with tests:
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
 - `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
-- Typed text → chat, straight to orchestration, STT bypassed.
+- Typed text → chat, straight to orchestration, STT bypassed. Chat is
+  text-to-text: a typed turn never speaks and never raises the Orb, so the chat
+  surface stays a chat surface. Speech output belongs only to a voice turn
+  (push-to-talk or wake word); `runText` disables the session's speech stream,
+  and `main.ts` raises the Orb only for a non-`text` activation.
 - `stop_playback` (interrupt) / `task_cancellation_requested` / `emergency_stop`
   are three distinct control outputs. A cancellation is a request, never a
   confirmed stop. The emergency stop engages locally and synchronously first,
@@ -331,9 +335,10 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   finished, response text without speech, failed, cancelled, or an empty final
   transcript), hides the Orb after a short grace period, cancelling the timer the
   moment a new turn starts. `main.ts` supplies `hide` (a no-op while the user has
-  pinned the Orb with `showOrb`) and raises the Orb on `session.started`, so the
-  Orb appears for a turn and steps away a couple of seconds after it ends instead
-  of lingering forever.
+  pinned the Orb with `showOrb`) and raises the Orb on a non-`text`
+  `session.started`, so the Orb appears for a voice turn and steps away a couple
+  of seconds after it ends instead of lingering forever. A typed chat turn never
+  raises it.
 - `interaction-runtime.ts` (`VoiceInteractionRuntime`) — adapts a
   `VoiceRuntimeLike` to the controller's `InteractionRuntime` seam and counts
   captures started, so tests can assert "a capture start is the only thing that

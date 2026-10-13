@@ -68,6 +68,19 @@ async function waitFor(predicate: () => boolean, label: string): Promise<void> {
   throw new Error(`timed out waiting for ${label}`);
 }
 
+// Speech output belongs to a voice turn, not the typed chat path, so tests that
+// assert synthesis/playback drive a push-to-talk turn.
+async function voiceTurn(built: Built): Promise<void> {
+  await built.runtime.pushToTalkPress();
+  await waitFor(() => built.microphone.lastHandle()?.isStarted === true, 'capture start');
+  for (let i = 0; i < 20; i += 1) built.microphone.lastHandle()?.emit(FRAME);
+  built.clock.advance(500);
+  await built.runtime.pushToTalkRelease();
+  await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+  built.speaker.advance();
+  await waitFor(() => types(built.events).includes('playback.finished'), 'playback finished');
+}
+
 describe('VoiceRuntime push-to-talk', () => {
   it('begins capture immediately on press without consulting a wake-word detector', async () => {
     const detector = new FakeWakeWordDetector({ id: 'spy' });
@@ -207,8 +220,6 @@ describe('VoiceRuntime session ownership', () => {
     await waitFor(() => types(built.events).includes('session.cancelled'), 'cancel');
     const started = built.events.filter((e) => e.type === 'session.started');
     expect(started).toHaveLength(2);
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
     await turn;
   });
 
@@ -251,15 +262,14 @@ describe('VoiceRuntime session ownership', () => {
 });
 
 describe('VoiceRuntime text turn', () => {
-  it('routes typed input to orchestration without capture or STT', async () => {
+  it('routes typed input to orchestration without capture, STT or speech', async () => {
     const built = build({});
-    const turn = built.runtime.sendText('typed');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
+    await built.runtime.sendText('typed');
     expect(built.microphone.openCount).toBe(0);
     expect(built.speech.sttCalls).toHaveLength(0);
     expect(built.orchestrator.calls).toEqual([{ text: 'typed', sessionId: 'voice-1' }]);
-    built.speaker.advance();
-    await turn;
+    expect(types(built.events)).not.toContain('playback.started');
+    expect(built.speech.ttsCalls).toHaveLength(0);
   });
 
   it('ignores empty typed input', async () => {
@@ -270,20 +280,14 @@ describe('VoiceRuntime text turn', () => {
 
   it('returns the reply text so a caller can read the response', async () => {
     const built = build({});
-    const turn = built.runtime.sendText('typed');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    const reply = await turn;
+    const reply = await built.runtime.sendText('typed');
     expect(reply.text).toBe('response:typed');
   });
 
   it('carries the advisory route hint back to the caller', async () => {
     const route = { capability: 'deploy.service', requires_confirmation: true };
     const built = build({ orchestrator: new RecordingOrchestrator({ route }) });
-    const turn = built.runtime.sendText('deploy the api');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    const reply = await turn;
+    const reply = await built.runtime.sendText('deploy the api');
     expect(reply.route).toEqual(route);
   });
 
@@ -293,19 +297,10 @@ describe('VoiceRuntime text turn', () => {
       config: config({ osRouting: true }),
       orchestrator: new RecordingOrchestrator({ route }),
     });
-    const first = built.runtime.sendText('restart the api');
-    await waitFor(() => types(built.events).includes('playback.started'), 'first playback');
-    built.speaker.advance();
-    await first;
+    await built.runtime.sendText('restart the api');
     expect(types(built.events)).toContain('route.proposed');
 
-    const answer = built.runtime.sendText('yes');
-    await waitFor(
-      () => built.events.filter((e) => e.type === 'playback.started').length >= 2,
-      'second playback',
-    );
-    built.speaker.advance();
-    await answer;
+    await built.runtime.sendText('yes');
     expect(built.orchestrator.calls[1]).toEqual({ text: 'yes', sessionId: 'voice-2', confirm: true });
   });
 });
@@ -314,30 +309,21 @@ describe('VoiceRuntime speech output', () => {
   it('applies a new voice and language to the next synthesized turn', async () => {
     const built = build({});
     built.runtime.setSpeechOutput({ voice: 'magnus', language: 'en-GB' });
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]).toMatchObject({ voice: 'magnus', language: 'en-GB' });
   });
 
   it('clamps an out-of-range speed instead of sending it to the Backend', async () => {
     const built = build({});
     built.runtime.setSpeechOutput({ speed: 9 });
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]?.speed).toBe(2);
   });
 
   it('clears the voice so the Backend default is used', async () => {
     const built = build({ config: config({ voice: 'magnus' }) });
     built.runtime.setSpeechOutput({ voice: null });
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]?.voice).toBeUndefined();
   });
 
@@ -369,10 +355,7 @@ describe('VoiceRuntime output controls', () => {
     const built = build({});
     built.runtime.setOutputControls({ pitch: true, volume: true, styles: true });
     built.runtime.setSpeechOutput({ pitch: 1.1, volume: 0.9, style: 'warm' });
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]).toMatchObject({ pitch: 1.1, volume: 0.9, style: 'warm' });
   });
 
@@ -381,10 +364,7 @@ describe('VoiceRuntime output controls', () => {
     built.runtime.setOutputControls({ pitch: false, volume: false, styles: false });
     built.runtime.setSpeechOutput({ pitch: 1.1, volume: 0.9, style: 'warm' });
     expect(built.runtime.diagnostics().lastError?.kind).toBe('invalid_configuration');
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]?.pitch).toBeUndefined();
     expect(built.speech.ttsCalls[0]?.volume).toBeUndefined();
     expect(built.speech.ttsCalls[0]?.style).toBeUndefined();
@@ -395,10 +375,7 @@ describe('VoiceRuntime output controls', () => {
     built.runtime.setOutputControls({ pitch: true, volume: true, styles: true });
     built.runtime.setSpeechOutput({ pitch: 1.1 });
     built.runtime.setOutputControls(undefined);
-    const turn = built.runtime.sendText('hello');
-    await waitFor(() => types(built.events).includes('playback.started'), 'playback');
-    built.speaker.advance();
-    await turn;
+    await voiceTurn(built);
     expect(built.speech.ttsCalls[0]?.pitch).toBeUndefined();
   });
 });

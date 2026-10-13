@@ -114,6 +114,7 @@ export class VoiceSession {
   private responseText: string | undefined;
   private responseRoute: RouteHint | null | undefined;
   private pendingConfirmation: RouteHint | undefined;
+  private speakEnabled = true;
   private turnAudio: AsyncQueue<Int16Array> | undefined;
   private turnPlayback: Promise<void> | undefined;
   private turnPushedAudio = false;
@@ -232,10 +233,11 @@ export class VoiceSession {
 
   /**
    * Run a text turn: typed input goes directly to Backend AI orchestration,
-   * bypassing microphone capture and STT entirely. Speech output still follows
-   * the user's preference.
+   * bypassing microphone capture and STT entirely. A typed turn is text-only —
+   * it never speaks, so the chat surface stays a chat surface.
    */
   async runText(text: string): Promise<void> {
+    this.speakEnabled = false;
     try {
       this.events.emit({
         type: 'transcript',
@@ -246,8 +248,9 @@ export class VoiceSession {
       });
       this.beginTurnMetrics();
       const pending = this.takePendingConfirmation();
-      const spoken = await this.deliver(text, pending);
-      if (spoken !== undefined && spoken !== "") await this.speak(spoken);
+      // Chat is text-to-text: the reply is rendered, never voiced. Spoken output
+      // belongs to a voice turn (push-to-talk or wake word), not this path.
+      await this.deliver(text, pending);
       this.emitTurnMetrics();
       if (!this.isCancelled()) this.setState('idle');
     } catch (error) {
@@ -715,6 +718,7 @@ export class VoiceSession {
    * closed once the reply's last sentence has been synthesized.
    */
   private beginSpeechStream(): boolean {
+    if (!this.speakEnabled) return false;
     if (!this.config.speakResponses) return false;
     if (!this.streamingTts || this.speech.synthesizeStream === undefined) return false;
     // Sentences only arrive from a streaming chat response; without it the whole

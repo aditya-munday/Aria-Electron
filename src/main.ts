@@ -352,7 +352,10 @@ function main(): void {
   // "pin the Orb" setting is a manual show/hide control for the moment, not a
   // permanent overlay: it never stops the automatic dismissal.
   voice?.on((event) => {
-    if (event.type === 'session.started') shell.setOrbVisible(true);
+    // The Orb belongs to a voice turn; a typed chat turn must not surface it.
+    if (event.type === 'session.started' && event.source !== 'text') {
+      shell.setOrbVisible(true);
+    }
     // The tray's microphone control reflects the runtime's real capture state,
     // so a capture that ends on its own stops advertising "Stop listening".
     // `session.state` is the only signal that covers every end — VAD silence,
