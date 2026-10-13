@@ -19,6 +19,7 @@ import type {
   MicrophonePermission,
 } from '../device.js';
 import { VoiceError } from '../errors.js';
+import { synthesizePhrase } from '../formant-synth.js';
 
 export function silence(samples: number): Float64Array {
   return new Float64Array(samples);
@@ -42,6 +43,33 @@ export function noise(samples: number, amplitude = 0.01, seed = 1): Float64Array
   }
   return out;
 }
+
+/**
+ * A deterministic, formant-synthesised "spoken" sound. Each phoneme is rendered
+ * as a glottal buzz shaped by two formant resonators, so the result carries a
+ * real vowel/consonant spectral shape and a natural amplitude envelope rather
+ * than a flat tone. It is the fixture the wake-word engine is scored against.
+ */
+export function speakPhrase(
+  phrase: string,
+  sampleRate = 16_000,
+  seed = 1,
+  amplitude = 0.5,
+): Float64Array {
+  return synthesizePhrase(phrase, sampleRate, 1, seed, amplitude);
+}
+
+/** Slice a buffer into fixed-size frames, padding the last with silence. */
+export function frameBuffer(buffer: Float64Array, frameSamples: number): Float64Array[] {
+  const frames: Float64Array[] = [];
+  for (let i = 0; i < buffer.length; i += frameSamples) {
+    const frame = new Float64Array(frameSamples);
+    frame.set(buffer.subarray(i, Math.min(i + frameSamples, buffer.length)));
+    frames.push(frame);
+  }
+  return frames;
+}
+
 
 export class FakeCaptureHandle implements CaptureHandle {
   readonly deviceId: string;

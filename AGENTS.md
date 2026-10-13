@@ -97,12 +97,20 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
 
 - `wake-listener.ts` + `wake-word.ts` — wake-word detection and activation.
   `wake-phrase-engine.ts` (`createWakePhraseEngine`) is the real offline spotter:
-  an energy/activity segmenter feeding a DTW match against the wake phrase, so
-  "hey aria" is detected locally with no network and no bundled binary. It
-  replaces the old porcupine stub; `wake-word.ts` wraps it in
-  `EngineWakeWordDetector`. `DEFAULT_WAKE_WORD.enabled` stays `false` at the
-  runtime layer because product-level activation comes from shell settings
-  (`DEFAULT_SETTINGS.wakeWordEnabled`).
+  an energy/activity segmenter feeds a spectral DTW match against the wake
+  phrase, so "hey aria" is detected locally with no network and no bundled
+  binary. Each frame is reduced to formant (F1/F2), tonal↔noisy and band-split
+  features; the phrase templates are built by rendering the phrase through
+  `formant-synth.ts` and the engine's own featurizer, so template and audio
+  share one feature space. A segment must be the right length, voiced-dominant
+  and spectrally varied, then match a speaking-rate template (ensemble
+  0.6–1.4x) below `matchThreshold`. It replaces the old porcupine stub;
+  `wake-word.ts` wraps it in `EngineWakeWordDetector`. `DEFAULT_WAKE_WORD.enabled`
+  stays `false` at the runtime layer because product-level activation comes from
+  shell settings (`DEFAULT_SETTINGS.wakeWordEnabled`). `formant-synth.ts` is the
+  single renderer shared by the engine templates and the test fixture
+  (`testing/fake-audio.ts` `speakPhrase`), so a fixture and a template cannot
+  drift apart.
 - `vad.ts`, `segmenter.ts`, `ring-buffer.ts`, `noise-reduction.ts` — audio
   front end. `push-to-talk.ts` bypasses wake-word detection entirely.
 - `echo-cancellation.ts` — `EchoCanceller` (cascaded NLMS adaptive filter with

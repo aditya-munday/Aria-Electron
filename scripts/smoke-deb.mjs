@@ -109,6 +109,15 @@ if (exited) {
   fail(`the app exited during boot (code ${exitCode}, signal ${exitSignal})`, [stdout, stderr].join('\n'));
 }
 
+// A live process is not a working app: the renderer can fail to load (a bad
+// asar path, a fuse that blocks file://) and the main process keeps running
+// with a blank window. The Control Center load failure is reported on stderr,
+// so a boot that logs one has not actually come up.
+const rendererFailure = /renderer:[a-z_]+:/.exec(`${stdout}\n${stderr}`);
+if (rendererFailure !== null) {
+  fail(`the renderer failed to load (${rendererFailure[0]})`, [stdout, stderr].join('\n'));
+}
+
 const cleanExit = await terminate(child, exitMs);
 if (!cleanExit) {
   fail(`the app did not exit within ${exitMs} ms after SIGTERM`, [stdout, stderr].join('\n'));
