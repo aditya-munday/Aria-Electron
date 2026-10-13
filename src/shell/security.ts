@@ -107,34 +107,64 @@ export interface PermissionDetails {
 export interface HardenedWebContents {
   on(event: string, listener: (...args: never[]) => void): unknown;
   setWindowOpenHandler(handler: (details: { readonly url: string }) => { action: 'deny' }): unknown;
-  readonly session: {
-    setPermissionRequestHandler(
-      handler: (
-        contents: unknown,
-        permission: string,
-        callback: (granted: boolean) => void,
-        details: PermissionDetails,
-      ) => void,
-    ): void;
-    setPermissionCheckHandler(
-      handler: (
-        contents: unknown,
-        permission: string,
-        requestingOrigin: string,
-        details: PermissionDetails,
-      ) => boolean,
-    ): void;
-  };
 }
 
 /**
- * Apply the whole navigation/permission policy to one webContents.
+ * The slice of Electron's `Session` the policy drives. Permission handlers and
+ * the request filter live on the session, not the window, so they are applied
+ * once to the app's session rather than per webContents.
+ */
+export interface HardenedSession {
+  readonly webRequest: {
+    onBeforeRequest(
+      filter: { readonly urls: readonly string[] },
+      listener: (
+        details: { readonly url: string; readonly resourceType?: string },
+        callback: (response: { readonly cancel: boolean }) => void,
+      ) => void,
+    ): void;
+  };
+  setPermissionRequestHandler(
+    handler: (
+      contents: unknown,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details: PermissionDetails,
+    ) => void,
+  ): void;
+  setPermissionCheckHandler(
+    handler: (
+      contents: unknown,
+      permission: string,
+      requestingOrigin: string,
+      details: PermissionDetails,
+    ) => boolean,
+  ): void;
+  /**
+   * The optional handlers are typed loosely on purpose: Electron gives each a
+   * concrete request/callback shape, and a stricter signature here would make
+   * the real `Session` fail to satisfy this interface. The policy never reads the
+   * argument, so `unknown` is the honest type.
+   */
+  setDevicePermissionHandler?(handler: unknown): void;
+  setDisplayMediaRequestHandler?(handler: unknown): void;
+  clearStorageData?(): Promise<void>;
+}
+
+/** The schemes a renderer must never reach: the main process owns the network. */
+export const REMOTE_SCHEMES: readonly string[] = ['http', 'https', 'ws', 'wss', 'ftp'];
+
+/** The `onBeforeRequest` filter that matches every remote request. */
+export const REMOTE_REQUEST_FILTER: { readonly urls: readonly string[] } = {
+  urls: REMOTE_SCHEMES.map((scheme) => `${scheme}://*/*`),
+};
+
+/**
+ * Apply the whole navigation/popup/webview policy to one webContents.
  *
  * - Any navigation away from the app's own `file://` pages is cancelled.
  * - Any popup is denied, with no shell fallback.
  * - A `<webview>` is denied outright: Aria embeds no remote content.
- * - Only the microphone permission is granted, and only to a main frame that is
- *   itself an app page; every other request and synchronous check is denied.
  */
 export function applyWebContentsHardening(contents: HardenedWebContents): void {
   const denyNavigation = (event: NavigationEvent, url: string): void => {
@@ -146,13 +176,38 @@ export function applyWebContentsHardening(contents: HardenedWebContents): void {
     event.preventDefault();
   }) as (...args: never[]) => void);
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  contents.session.setPermissionRequestHandler((_contents, permission, callback, details) => {
+}
+
+/**
+ * Apply the session-scoped policy to the app's session.
+ *
+ * - Every remote request a renderer makes is cancelled. The renderer is a local
+ *   page with no network business; the backend is reached from the main process,
+ *   whose Node `fetch` does not use this filter.
+ * - Only the microphone permission is granted, and only to a main frame that is
+ *   itself an app page; every other request and synchronous check is denied.
+ * - Device (HID/serial/USB) and screen-capture access are denied outright.
+ */
+export function applySessionHardening(session: HardenedSession): void {
+  session.webRequest.onBeforeRequest(REMOTE_REQUEST_FILTER, (_details, callback) => {
+    callback({ cancel: true });
+  });
+  session.setPermissionRequestHandler((_contents, permission, callback, details) => {
     const mainFrame = details.isMainFrame !== false;
     const fromApp = details.requestingUrl === undefined || isAppUrl(details.requestingUrl);
     callback(mainFrame && fromApp && isPermissionAllowed(permission));
   });
-  contents.session.setPermissionCheckHandler((_contents, permission, requestingOrigin) => {
+  session.setPermissionCheckHandler((_contents, permission, requestingOrigin) => {
     const fromApp = requestingOrigin === '' || isAppUrl(requestingOrigin);
     return fromApp && isPermissionAllowed(permission);
   });
+  session.setDevicePermissionHandler?.((() => false) as unknown);
+  session.setDisplayMediaRequestHandler?.(
+    ((_request: unknown, callback: (streams: unknown) => void) => callback({})) as unknown,
+  );
+}
+
+/** Drop every cookie, cache and storage record the session accumulated. */
+export function clearSessionStorage(session: HardenedSession): Promise<void> {
+  return session.clearStorageData?.() ?? Promise.resolve();
 }

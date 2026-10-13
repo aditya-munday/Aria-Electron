@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 
 const args = process.argv.slice(2);
 const skipInstall = args.includes('--no-install');
@@ -36,10 +36,20 @@ if (deb === undefined) fail('no .deb found under release/; run `npm run pack:deb
 if (!existsSync(deb)) fail(`package not found: ${deb}`);
 
 if (!skipInstall) {
-  const install = spawnSync('sudo', ['-n', 'dpkg', '-i', deb], { encoding: 'utf8' });
+  // The package declares runtime library dependencies (libnotify, libxss). Use
+  // apt so they are resolved and the postinst runs (it sets the chrome-sandbox
+  // SUID bit); raw dpkg would leave the package unconfigured.
+  const absolute = resolve(deb);
+  let install = spawnSync('sudo', ['-n', 'apt-get', 'install', '-y', absolute], { encoding: 'utf8' });
   if (install.status !== 0) {
+    install = spawnSync('sudo', ['-n', 'dpkg', '-i', absolute], { encoding: 'utf8' });
+  }
+  // dpkg unpacks the files even when it cannot configure the package because the
+  // host lacks a declared library. The boot check below is the real gate, so a
+  // non-zero status is only fatal when the binary never landed.
+  if (install.status !== 0 && resolveBinary() === undefined) {
     fail(
-      `dpkg -i ${deb} failed (status ${install.status})`,
+      `installing ${deb} failed (status ${install.status})`,
       `${install.stdout ?? ''}${install.stderr ?? ''}`,
     );
   }
@@ -48,13 +58,27 @@ if (!skipInstall) {
 const bin = resolveBinary();
 if (bin === undefined) fail('installed binary not found on PATH and not at /opt/Aria/aria-desktop');
 
+// The smoke runs the real, sandboxed launch: no `--no-sandbox`. The SUID helper
+// the package ships must be usable (root-owned 4755) or the kernel must allow
+// unprivileged user namespaces, otherwise Chromium would either abort or — worse
+// — silently fall back. This asserts the strong posture instead of assuming it.
+if (!args.includes('--allow-unconfigured-sandbox') && !sandboxUsable()) {
+  fail(
+    'the sandbox is not usable: /opt/Aria/chrome-sandbox is not root-owned mode 4755 ' +
+      'and unprivileged user namespaces are unavailable. Install the package with a ' +
+      'package manager so its postinst sets the bit, or pass --allow-unconfigured-sandbox.',
+  );
+}
+
 const env = {
   ...process.env,
   ARIA_BACKEND_URL: process.env.ARIA_BACKEND_URL ?? 'http://127.0.0.1:9',
   ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
 };
 
-const child = spawn('xvfb-run', ['-a', bin, '--no-sandbox'], {
+const { command, launchArgs } = launcher(bin);
+
+const child = spawn(command, launchArgs, {
   env,
   detached: true,
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -102,6 +126,30 @@ function resolveBinary() {
     if (existsSync(candidate)) return candidate;
   }
   return existsSync('/opt/Aria/aria-desktop') ? '/opt/Aria/aria-desktop' : undefined;
+}
+
+/**
+ * Whether Chromium's sandbox can engage: either the SUID helper is root-owned
+ * mode 4755, or the kernel allows unprivileged user namespaces (an `unshare`
+ * of a user namespace succeeds).
+ */
+function sandboxUsable() {
+  const helper = '/opt/Aria/chrome-sandbox';
+  if (existsSync(helper)) {
+    const stat = spawnSync('stat', ['-c', '%u %a', helper], { encoding: 'utf8' });
+    if (stat.status === 0 && stat.stdout.trim() === '0 4755') return true;
+  }
+  const unshare = spawnSync('unshare', ['--user', 'true'], { encoding: 'utf8' });
+  return unshare.status === 0;
+}
+
+/** Pick the launcher: a virtual X server when available, else Ozone headless. */
+function launcher(bin) {
+  const hasXvfb = spawnSync('which', ['xvfb-run'], { encoding: 'utf8' }).status === 0;
+  if (hasXvfb) return { command: 'xvfb-run', launchArgs: ['-a', bin] };
+  const hasX = existsSync('/tmp/.X11-unix') || (process.env.DISPLAY ?? '') !== '';
+  if (hasX) return { command: bin, launchArgs: [] };
+  return { command: bin, launchArgs: ['--ozone-platform=headless', '--disable-gpu'] };
 }
 
 function waitFor(predicate, timeoutMs) {

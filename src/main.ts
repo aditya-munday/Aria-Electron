@@ -1,10 +1,14 @@
-import { app, ipcMain, screen } from 'electron';
+import { app, ipcMain, screen, session } from 'electron';
 
 import { join } from 'node:path';
 
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
-import { applyWebContentsHardening } from './shell/security.js';
+import {
+  applySessionHardening,
+  applyWebContentsHardening,
+  clearSessionStorage,
+} from './shell/security.js';
 import { InteractionController } from './interaction/interaction-controller.js';
 import type { InteractionRuntime } from './interaction/interaction-controller.js';
 import { AriaRuntime } from './runtime.js';
@@ -46,6 +50,11 @@ if (!gotLock) {
   // A privileged renderer must never run unsandboxed: this default applies to
   // every window, including one created without explicit webPreferences.
   app.enableSandbox();
+  // Features with no use here and a history of trouble: the built-in PDF
+  // viewer, Chromium's spellcheck downloader, and the HTTP cache a remote
+  // response could be recovered from.
+  app.commandLine.appendSwitch('disable-features', 'PdfOopif,Spellcheck,NetworkServiceInProcess');
+  app.commandLine.appendSwitch('disable-http-cache');
   app.on('second-instance', () => {
     shellRef?.open('control_center');
   });
@@ -74,6 +83,10 @@ function main(): void {
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     applyWebContentsHardening(contents);
   });
+
+  // The session-scoped policy (network, permissions, device/display capture) is
+  // installed once, before any window exists, so no renderer can outrun it.
+  applySessionHardening(session.defaultSession);
 
   const voiceConfig = loadVoiceConfig();
   const audio = createNativeAudio({
@@ -318,6 +331,8 @@ function main(): void {
     orbDismissal?.stop();
     shell.stop();
     void runtime.stopVoice();
+    // Leave no cookie, cache entry or storage record behind on disk.
+    void clearSessionStorage(session.defaultSession);
   });
 }
 

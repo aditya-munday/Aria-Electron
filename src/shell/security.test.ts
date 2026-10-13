@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ALLOWED_PERMISSIONS,
+  applySessionHardening,
   applyWebContentsHardening,
+  clearSessionStorage,
   hardenedWebPreferences,
   isAppUrl,
   isPermissionAllowed,
   isTrustedSender,
+  REMOTE_REQUEST_FILTER,
+  REMOTE_SCHEMES,
   RENDERER_WEB_PREFERENCES,
+  type HardenedSession,
   type HardenedWebContents,
   type NavigationEvent,
   type PermissionDetails,
@@ -22,23 +27,6 @@ class FakeWebContents implements HardenedWebContents {
   readonly redirect: NavigateListener[] = [];
   readonly attachWebview: WebviewListener[] = [];
   readonly windowOpen: ((details: { readonly url: string }) => { action: 'deny' })[] = [];
-  requestHandler:
-    | ((c: unknown, p: string, cb: (g: boolean) => void, d: PermissionDetails) => void)
-    | undefined;
-  checkHandler: ((c: unknown, p: string, origin: string, d: PermissionDetails) => boolean) | undefined;
-
-  readonly session = {
-    setPermissionRequestHandler: (
-      handler: (c: unknown, p: string, cb: (g: boolean) => void, d: PermissionDetails) => void,
-    ): void => {
-      this.requestHandler = handler;
-    },
-    setPermissionCheckHandler: (
-      handler: (c: unknown, p: string, origin: string, d: PermissionDetails) => boolean,
-    ): void => {
-      this.checkHandler = handler;
-    },
-  };
 
   on(event: string, listener: NavigateListener | WebviewListener): unknown {
     if (event === 'will-navigate') this.navigate.push(listener as NavigateListener);
@@ -74,6 +62,65 @@ class FakeWebContents implements HardenedWebContents {
     for (const handler of this.attachWebview) handler(event);
     return didPrevent;
   }
+}
+
+/** A recording double for the exact Session surface the policy drives. */
+class FakeSession implements HardenedSession {
+  requestFilter: { readonly urls: readonly string[] } | undefined;
+  beforeRequest:
+    | ((
+        details: { readonly url: string; readonly resourceType?: string },
+        callback: (response: { readonly cancel: boolean }) => void,
+      ) => void)
+    | undefined;
+  requestHandler:
+    | ((c: unknown, p: string, cb: (g: boolean) => void, d: PermissionDetails) => void)
+    | undefined;
+  checkHandler: ((c: unknown, p: string, origin: string, d: PermissionDetails) => boolean) | undefined;
+  deviceHandler: ((details: { readonly deviceType: string }) => boolean) | undefined;
+  displayHandler: ((request: unknown, callback: (streams: unknown) => void) => void) | undefined;
+  cleared = false;
+
+  readonly webRequest = {
+    onBeforeRequest: (
+      filter: { readonly urls: readonly string[] },
+      listener: (
+        details: { readonly url: string; readonly resourceType?: string },
+        callback: (response: { readonly cancel: boolean }) => void,
+      ) => void,
+    ): void => {
+      this.requestFilter = filter;
+      this.beforeRequest = listener;
+    },
+  };
+
+  setPermissionRequestHandler(
+    handler: (c: unknown, p: string, cb: (g: boolean) => void, d: PermissionDetails) => void,
+  ): void {
+    this.requestHandler = handler;
+  }
+
+  setPermissionCheckHandler(
+    handler: (c: unknown, p: string, origin: string, d: PermissionDetails) => boolean,
+  ): void {
+    this.checkHandler = handler;
+  }
+
+  setDevicePermissionHandler(handler: unknown): void {
+    this.deviceHandler = handler as (details: { readonly deviceType: string }) => boolean;
+  }
+
+  setDisplayMediaRequestHandler(handler: unknown): void {
+    this.displayHandler = handler as (
+      request: unknown,
+      callback: (streams: unknown) => void,
+    ) => void;
+  }
+
+  clearStorageData(): Promise<void> {
+    this.cleared = true;
+    return Promise.resolve();
+  }
 
   requestGranted(permission: string, details: PermissionDetails): boolean {
     let granted = false;
@@ -84,12 +131,26 @@ class FakeWebContents implements HardenedWebContents {
   checkGranted(permission: string, origin: string): boolean {
     return this.checkHandler?.({}, permission, origin, {}) ?? false;
   }
+
+  requestCancelled(url: string): boolean {
+    let cancelled = false;
+    this.beforeRequest?.({ url }, (response) => {
+      cancelled = response.cancel;
+    });
+    return cancelled;
+  }
 }
 
 function hardened(): FakeWebContents {
   const contents = new FakeWebContents();
   applyWebContentsHardening(contents);
   return contents;
+}
+
+function hardenedSession(): FakeSession {
+  const session = new FakeSession();
+  applySessionHardening(session);
+  return session;
 }
 
 describe('renderer web preferences', () => {
@@ -178,29 +239,66 @@ describe('navigation and popups', () => {
 
 describe('permission handlers', () => {
   it('grants the microphone only to a main frame on an app page', () => {
-    const contents = hardened();
+    const session = hardenedSession();
     expect(
-      contents.requestGranted('media', { isMainFrame: true, requestingUrl: 'file:///app/chat.html' }),
+      session.requestGranted('media', { isMainFrame: true, requestingUrl: 'file:///app/chat.html' }),
     ).toBe(true);
     expect(
-      contents.requestGranted('media', { isMainFrame: true, requestingUrl: 'https://evil.example/' }),
+      session.requestGranted('media', { isMainFrame: true, requestingUrl: 'https://evil.example/' }),
     ).toBe(false);
     expect(
-      contents.requestGranted('media', { isMainFrame: false, requestingUrl: 'file:///app/chat.html' }),
+      session.requestGranted('media', { isMainFrame: false, requestingUrl: 'file:///app/chat.html' }),
     ).toBe(false);
   });
 
   it('denies every non-microphone permission request', () => {
-    const contents = hardened();
-    expect(contents.requestGranted('notifications', { isMainFrame: true })).toBe(false);
-    expect(contents.requestGranted('geolocation', { isMainFrame: true })).toBe(false);
-    expect(contents.requestGranted('clipboard-read', { isMainFrame: true })).toBe(false);
+    const session = hardenedSession();
+    expect(session.requestGranted('notifications', { isMainFrame: true })).toBe(false);
+    expect(session.requestGranted('geolocation', { isMainFrame: true })).toBe(false);
+    expect(session.requestGranted('clipboard-read', { isMainFrame: true })).toBe(false);
   });
 
   it('denies a microphone check from a non-app origin', () => {
-    const contents = hardened();
-    expect(contents.checkGranted('media', 'file:///app/orb.html')).toBe(true);
-    expect(contents.checkGranted('media', 'https://evil.example')).toBe(false);
-    expect(contents.checkGranted('geolocation', 'file:///app/orb.html')).toBe(false);
+    const session = hardenedSession();
+    expect(session.checkGranted('media', 'file:///app/orb.html')).toBe(true);
+    expect(session.checkGranted('media', 'https://evil.example')).toBe(false);
+    expect(session.checkGranted('geolocation', 'file:///app/orb.html')).toBe(false);
+  });
+
+  it('denies device and screen-capture access outright', () => {
+    const session = hardenedSession();
+    expect(session.deviceHandler?.({ deviceType: 'hid' })).toBe(false);
+    expect(session.deviceHandler?.({ deviceType: 'usb' })).toBe(false);
+    let streams: unknown = 'unset';
+    session.displayHandler?.({}, (value) => (streams = value));
+    expect(streams).toEqual({});
+  });
+});
+
+describe('renderer network lockdown', () => {
+  it('cancels every remote request a renderer makes', () => {
+    const session = hardenedSession();
+    expect(REMOTE_SCHEMES).toContain('https');
+    expect(REMOTE_REQUEST_FILTER.urls).toContain('https://*/*');
+    expect(REMOTE_REQUEST_FILTER.urls).toContain('ws://*/*');
+    expect(session.requestCancelled('https://api.adityamunday.codes/v1/tasks')).toBe(true);
+    expect(session.requestCancelled('ws://evil.example/socket')).toBe(true);
+  });
+
+  it('clears session storage on demand', async () => {
+    const session = hardenedSession();
+    expect(session.cleared).toBe(false);
+    await clearSessionStorage(session);
+    expect(session.cleared).toBe(true);
+  });
+
+  it('tolerates a session without optional handlers', async () => {
+    const minimal: HardenedSession = {
+      webRequest: { onBeforeRequest: () => undefined },
+      setPermissionRequestHandler: () => undefined,
+      setPermissionCheckHandler: () => undefined,
+    };
+    expect(() => applySessionHardening(minimal)).not.toThrow();
+    await expect(clearSessionStorage(minimal)).resolves.toBeUndefined();
   });
 });
