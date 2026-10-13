@@ -10,7 +10,7 @@ import {
   PUSH_TO_TALK_ACCELERATOR,
   type KeyEvent,
 } from './window.js';
-import { ORB_RIGHT_MARGIN } from './placement.js';
+import { ORB_RIGHT_MARGIN, ORB_RIGHT_SHIFT_FRACTION, ORB_VERTICAL_CENTER_FRACTION } from './placement.js';
 import { ORB_WINDOW_SIZE } from '../orb/window-options.js';
 import { planOrbBackdrop } from '../orb/backdrop.js';
 import {
@@ -506,15 +506,15 @@ describe('orb presence', () => {
 
 
 describe('orb window geometry and options', () => {
-  it('places the orb at the right edge, vertically centred', async () => {
+  it('places the orb upper-right, nudged right of the plain margin', async () => {
     const { shell, platform } = build();
     shell.start();
     platform.keys.emit(key('key_down'));
     await shell.whenIdle();
     const orb = platform.windows.handle('orb');
     expect(orb?.bounds).toEqual({
-      x: 1440 - ORB_WINDOW_SIZE - ORB_RIGHT_MARGIN,
-      y: (900 - ORB_WINDOW_SIZE) / 2,
+      x: 1440 - ORB_WINDOW_SIZE - ORB_RIGHT_MARGIN + ORB_WINDOW_SIZE * ORB_RIGHT_SHIFT_FRACTION,
+      y: 900 * ORB_VERTICAL_CENTER_FRACTION - ORB_WINDOW_SIZE / 2,
       width: ORB_WINDOW_SIZE,
       height: ORB_WINDOW_SIZE,
     });
@@ -565,6 +565,23 @@ describe('orb window geometry and options', () => {
   it('ignores interactivity toggles before the orb exists', () => {
     const { shell } = build();
     expect(() => shell.setOrbInteractive(true)).not.toThrow();
+  });
+
+  it('recreates the orb after the window is destroyed instead of acting on it', async () => {
+    const { shell, platform } = build();
+    shell.start();
+    platform.keys.emit(key('key_down'));
+    await shell.whenIdle();
+    const first = platform.windows.handle('orb');
+    first?.destroy();
+    // A settings read after a teardown must not throw on a destroyed window.
+    expect(() => shell.openWindows()).not.toThrow();
+    shell.forgetWindow('orb');
+    expect(shell.isOpen('orb')).toBe(false);
+    shell.setOrbVisible(true);
+    const second = platform.windows.handle('orb');
+    expect(second).not.toBe(first);
+    expect(shell.isOpen('orb')).toBe(true);
   });
 });
 

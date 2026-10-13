@@ -30,6 +30,7 @@ export class FakeWindowHandle implements WindowHandle {
   focused = 0;
   hidden = 0;
   closed = 0;
+  private destroyed = false;
   private launchHiddenConsumed = false;
 
   constructor(kind: WindowKind, options: WindowOptions) {
@@ -42,7 +43,18 @@ export class FakeWindowHandle implements WindowHandle {
     this.alwaysOnTopLevel = options.alwaysOnTopLevel;
   }
 
+  isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
+  /** Simulate the OS destroying the window (as on a user close). */
+  destroy(): void {
+    this.destroyed = true;
+    this.visible = false;
+  }
+
   show(): void {
+    if (this.destroyed) return;
     if (this.options.launchHidden === true && !this.launchHiddenConsumed) {
       this.launchHiddenConsumed = true;
       return;
@@ -51,15 +63,18 @@ export class FakeWindowHandle implements WindowHandle {
     this.shown += 1;
   }
   focus(): void {
+    if (this.destroyed) return;
     this.focused += 1;
   }
   hide(): void {
+    if (this.destroyed) return;
     this.visible = false;
     this.hidden += 1;
   }
   close(): void {
     this.visible = false;
     this.closed += 1;
+    this.destroyed = true;
   }
   setBounds(bounds: Rect): void {
     this.bounds = bounds;

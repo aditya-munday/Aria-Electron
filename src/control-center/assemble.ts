@@ -64,10 +64,12 @@ function voiceView(sources: ControlCenterSources): VoiceView {
       capabilities.outputControls !== undefined
         ? { outputControls: capabilities.outputControls }
         : {};
+    const preview = { previewAvailable: true };
     if (capabilities.voices.length > 0) {
       return {
         ...base,
         ...controls,
+        ...preview,
         catalogState: 'available',
         voices: capabilities.voices.map(toVoiceOption),
         languages,
@@ -77,6 +79,7 @@ function voiceView(sources: ControlCenterSources): VoiceView {
     return {
       ...base,
       ...controls,
+      ...preview,
       catalogState: 'empty',
       voices: [],
       languages,
@@ -87,6 +90,8 @@ function voiceView(sources: ControlCenterSources): VoiceView {
 
   return {
     ...base,
+    previewAvailable: false,
+    previewReason: userFacingMessageForKind(capabilities.error.kind),
     catalogState: 'unknown',
     voices: [],
     languages: [],

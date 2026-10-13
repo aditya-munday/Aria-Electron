@@ -31,6 +31,10 @@ export interface VoiceView {
   readonly voices: readonly VoiceOption[];
   readonly languages: readonly LanguageOption[];
   readonly sttLanguages: readonly string[];
+  /** Whether a voice sample can play now; depends on the Backend, not a chosen voice. */
+  readonly previewAvailable: boolean;
+  /** Why preview is unavailable, when it is. */
+  readonly previewReason?: string;
   /**
    * The synthesis output controls the Backend accepts. Absent when it advertises
    * none, so pitch/volume/style render as unavailable rather than as controls

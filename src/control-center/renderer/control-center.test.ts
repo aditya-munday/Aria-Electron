@@ -12,6 +12,7 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
       catalogState: 'available',
       speakResponses: true,
       speechRate: 1,
+      previewAvailable: true,
       languages: [
         { tag: 'en-US', name: 'English (United States)' },
         { tag: 'en-GB', name: 'English (United Kingdom)' },
@@ -42,7 +43,7 @@ function state(overrides: Partial<ControlCenterState> = {}): ControlCenterState 
         enabled: true,
         mode: 'hold',
         key: 'Hold ?',
-        globalAccelerator: 'Super+Alt+Space',
+        globalAccelerator: 'Super+Alt+T',
         globalRegistered: true,
       },
       wakeWord: { enabled: false, phrase: 'hey aria', available: true },
@@ -351,6 +352,8 @@ describe('control center renderer', () => {
           catalogState: 'unknown',
           speakResponses: true,
           speechRate: 1,
+          previewAvailable: false,
+          previewReason: 'Connection refused.',
           languages: [],
           sttLanguages: [],
           voices: [],
@@ -372,7 +375,7 @@ describe('control center renderer', () => {
         enabled: true,
         mode: 'hold',
         key: 'Hold ?',
-        globalAccelerator: 'Super+Alt+Space',
+        globalAccelerator: 'Super+Alt+T',
         globalRegistered: true,
       },
           wakeWord: {
@@ -531,7 +534,7 @@ describe('control center renderer', () => {
             enabled: true,
             mode: 'hold',
             key: 'Right Ctrl',
-            globalAccelerator: 'Super+Alt+Space',
+            globalAccelerator: 'Super+Alt+T',
             globalRegistered: true,
           },
           wakeWord: { enabled: false, phrase: 'hey aria', available: true },
@@ -572,5 +575,58 @@ describe('control center renderer', () => {
     toggle.checked = true;
     toggle.dispatchEvent(new Event('change'));
     expect(patches).toContainEqual({ startOnLogin: true });
+  });
+});
+
+describe('profile section', () => {
+  it('summarises identity, voice and activation in one place', () => {
+    render(state(), 'profile');
+    const body = document.body.textContent ?? '';
+    expect(body).toContain('Profile');
+    expect(body).toContain('At a glance');
+    expect(body).toContain('System default');
+    expect(body).toContain('Super+Alt+T');
+  });
+
+  it('shows the signed-in identity when there is an account', () => {
+    render(state({ account: { state: 'signed_in', email: 'ada@example.com', userId: 'u1' } }), 'profile');
+    expect(document.body.textContent).toContain('ada@example.com');
+    expect(document.body.textContent).toContain('Connected');
+  });
+
+  it('pins the Orb from the profile quick actions', () => {
+    const { patches } = render(state(), 'profile');
+    const toggle = document.getElementById('profile-show-orb') as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    expect(patches).toContainEqual({ showOrb: true });
+  });
+
+  it('opens chat from the profile quick actions', () => {
+    render(state(), 'profile');
+    const openChat = document.getElementById('profile-open-chat') as HTMLButtonElement;
+    expect(openChat).not.toBeNull();
+    expect(() => openChat.click()).not.toThrow();
+  });
+
+  it('disables the preview button when the Backend cannot synthesize', () => {
+    render(
+      state({
+        voice: {
+          catalogState: 'available',
+          speakResponses: true,
+          speechRate: 1,
+          previewAvailable: false,
+          previewReason: 'The Backend is unreachable.',
+          languages: [],
+          sttLanguages: [],
+          voices: [{ id: 'v1', name: 'Aria', language: 'en-US', styles: [] }],
+        },
+      }),
+      'voice',
+    );
+    const preview = document.getElementById('preview-v1') as HTMLButtonElement;
+    expect(preview.disabled).toBe(true);
+    expect(preview.getAttribute('title')).toContain('unreachable');
   });
 });

@@ -1,6 +1,6 @@
 import { InteractionController } from '../interaction/interaction-controller.js';
 import type { InteractionEnvironment, RoutedResult } from '../interaction/interaction-router.js';
-import { ORB_WINDOW_OPTIONS, ORB_WINDOW_SIZE } from '../orb/window-options.js';
+import { ORB_DIAMETER, ORB_WINDOW_OPTIONS, ORB_WINDOW_SIZE } from '../orb/window-options.js';
 import type { OrbBackdropPlan } from '../orb/backdrop.js';
 import { placeOrb } from './placement.js';
 import {
@@ -353,9 +353,14 @@ export class AriaShell {
   }
 
   open(kind: WindowKind, persist = true): WindowHandle {
-    const handle = this.windows.get(kind) ?? this.createWindow(kind);
+    let handle = this.windows.get(kind);
+    if (handle === undefined || handle.isDestroyed()) {
+      // A closed window leaves a destroyed handle; rebuild rather than act on it.
+      if (handle?.isDestroyed()) this.windows.delete(kind);
+      handle = this.createWindow(kind);
+    }
     if (kind === 'orb') {
-      handle.setBounds(placeOrb(this.platform.screen.primary().workArea, sizeFor(kind)));
+      handle.setBounds(placeOrb(this.platform.screen.primary().workArea, sizeFor(kind), ORB_DIAMETER));
     }
     handle.show();
     // The Orb is a presence: borderless, always-on-top and click-through. It is
@@ -369,8 +374,17 @@ export class AriaShell {
   }
 
   hide(kind: WindowKind): void {
-    this.windows.get(kind)?.hide();
+    const handle = this.windows.get(kind);
+    if (handle !== undefined && !handle.isDestroyed()) handle.hide();
     if (kind === 'orb') this.hideBackdrop();
+    this.persistOpenWindows();
+    this.refreshTray();
+  }
+
+  /** Drop a window handle the platform reports as closed. */
+  forgetWindow(kind: WindowKind): void {
+    this.windows.delete(kind);
+    if (kind === 'orb_backdrop') this.backdropOpen = false;
     this.persistOpenWindows();
     this.refreshTray();
   }
@@ -416,7 +430,7 @@ export class AriaShell {
       (kind === 'orb'
         ? {
             ...ORB_WINDOW_OPTIONS,
-            bounds: placeOrb(this.platform.screen.primary().workArea, sizeFor(kind)),
+            bounds: placeOrb(this.platform.screen.primary().workArea, sizeFor(kind), ORB_DIAMETER),
           }
         : { startHidden: false });
     const handle = this.platform.windows.create(kind, options);

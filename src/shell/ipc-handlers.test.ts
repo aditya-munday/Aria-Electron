@@ -26,6 +26,7 @@ function emptyState(): ControlCenterState {
     voice: {
       catalogState: 'unknown',
       speakResponses: true,
+      previewAvailable: false,
       voices: [],
     },
     activation: {
@@ -33,7 +34,7 @@ function emptyState(): ControlCenterState {
         enabled: true,
         mode: 'hold',
         key: 'Hold ?',
-        globalAccelerator: 'Super+Alt+Space',
+        globalAccelerator: 'Super+Alt+T',
         globalRegistered: true,
       },
       wakeWord: { enabled: false, phrase: 'hey aria', available: true },

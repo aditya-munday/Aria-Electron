@@ -578,29 +578,106 @@ function generalPanel(
   return panel;
 }
 
-function profilePanel(doc: Document, state: ControlCenterState): El {
+function profilePanel(
+  doc: Document,
+  state: ControlCenterState,
+  bridge: ControlCenterBridge,
+  refresh: () => void,
+): El {
   const panel = h(doc, 'div', 'panel');
   panel.setAttribute('role', 'tabpanel');
   panel.id = 'panel-profile';
 
-  const identity = card(doc, 'Identity', 'span-2');
-  const signedIn = state.account.state === 'signed_in';
-  identity.append(
-    row(doc, 'Display name', signedIn ? state.account.email ?? state.account.userId ?? '—' : 'Not signed in'),
-    row(doc, 'Account', signedIn ? 'Connected' : 'Not connected', state.account.reason),
-    row(doc, 'Assistant', 'Aria', 'Your local-first voice assistant.'),
+  const account = state.account;
+  const signedIn = account.state === 'signed_in';
+  const displayName = signedIn
+    ? account.email ?? account.userId ?? 'Signed in'
+    : 'Not signed in';
+
+  const identity = card(doc, 'Profile', 'span-2');
+  const head = h(doc, 'div', 'identity');
+  const avatar = h(doc, 'div', 'avatar');
+  avatar.setAttribute('aria-hidden', 'true');
+  text(avatar, initials(signedIn ? account.email ?? account.userId ?? 'Aria' : 'Aria'));
+  const who = h(doc, 'div', 'who');
+  text(who, displayName);
+  const mail = h(doc, 'div', 'mail');
+  text(
+    mail,
+    signedIn
+      ? [account.userId, account.roles?.length ? `roles: ${account.roles.join(', ')}` : '']
+          .filter((part) => part !== '' && part !== undefined)
+          .join(' · ')
+      : 'Sign in under Account to use Aria.',
+  );
+  const status = h(doc, 'div', 'identity-status');
+  status.append(badge(doc, signedIn ? 'Connected' : 'Offline', signedIn ? 'ok' : 'neutral'));
+  who.append(status);
+  head.append(avatar, who, mail);
+  identity.append(head, row(doc, 'Assistant', 'Aria', 'Your local-first voice assistant.'));
+
+  const glance = card(doc, 'At a glance', 'span-2');
+  const selectedVoice = state.voice.voices.find((entry) => entry.id === state.voice.configured);
+  glance.append(
+    row(doc, 'Voice', selectedVoice?.name ?? 'System default', describeVoice(selectedVoice) || undefined),
+    row(doc, 'Spoken language', state.voice.language ?? 'Automatic (follow the voice)'),
+    row(doc, 'Speech', state.voice.speakResponses ? `On · ${rateLabel(state.voice.speechRate)}` : 'Off'),
+    row(
+      doc,
+      'Wake word',
+      state.activation.wakeWord.enabled
+        ? `Listening for “${state.activation.wakeWord.phrase}”`
+        : 'Off',
+      state.activation.wakeWord.available ? undefined : state.activation.wakeWord.reason,
+    ),
+    row(
+      doc,
+      'Push to talk',
+      `${state.activation.pushToTalk.mode === 'hold' ? 'Hold' : 'Toggle'} · ${state.activation.pushToTalk.globalAccelerator}`,
+    ),
+    row(doc, 'Accent', accentLabel(state.appearance.accent)),
   );
 
-  const personalization = card(doc, 'Personalization', 'span-2');
-  personalization.append(
-    hint(
+  const actions = card(doc, 'Quick actions', 'span-2');
+  actions.append(
+    toggle(
       doc,
-      'Aria does not store personalization profiles in this release. Voice and appearance are set in their own sections.',
+      'profile-show-orb',
+      'Pin the Orb on screen',
+      state.appearance.showOrb,
+      true,
+      'When off, the Orb appears for a voice turn and dismisses itself afterwards.',
+      (next) => {
+        void bridge.updateSettings({ showOrb: next }).then(refresh);
+      },
+    ),
+    toggle(
+      doc,
+      'profile-start-on-login',
+      'Start Aria at login',
+      state.appearance.startOnLogin,
+      signedIn,
+      signedIn ? undefined : 'Sign in to change this.',
+      (next) => {
+        void bridge.updateSettings({ startOnLogin: next }).then(refresh);
+      },
     ),
   );
+  const openChat = h(doc, 'div', 'control');
+  openChat.append(
+    button(doc, 'profile-open-chat', 'Open chat', 'primary small', true, () => {
+      void bridge.openChat();
+    }),
+  );
+  actions.append(openChat);
 
-  panel.append(identity, personalization);
+  panel.append(identity, glance, actions);
   return panel;
+}
+
+function accentLabel(accent: ControlCenterState['appearance']['accent']): string {
+  const option = ACCENT_OPTIONS.find((entry) => entry.value === accent);
+  return option?.label ?? accent;
 }
 
 function ariaConfigPanel(doc: Document, state: ControlCenterState): El {
@@ -848,22 +925,33 @@ function voiceCard(
   if (tags.childElementCount > 0) node.append(tags);
 
   const actions = h(doc, 'div', 'voice-card-actions');
-  const preview = button(doc, `preview-${entry.id}`, 'Preview', 'ghost small', true, () => {
-    preview.setAttribute('data-busy', 'true');
-    text(preview, 'Playing…');
-    void bridge
-      .previewVoice({
-        text: `Hi, I'm ${entry.name}. This is how I sound.`,
-        voice: entry.id,
-        ...(state.voice.language !== undefined ? { language: state.voice.language } : {}),
-        speed: state.voice.speechRate,
-      })
-      .then((result) => {
-        preview.removeAttribute('data-busy');
-        text(preview, result.ok ? 'Preview' : 'Unavailable');
-        if (!result.ok) preview.setAttribute('title', result.reason ?? 'Preview failed.');
-      });
-  });
+  const canPreview = state.voice.previewAvailable;
+  const preview = button(
+    doc,
+    `preview-${entry.id}`,
+    'Preview',
+    'ghost small',
+    canPreview,
+    () => {
+      preview.setAttribute('data-busy', 'true');
+      text(preview, 'Playing…');
+      void bridge
+        .previewVoice({
+          text: `Hi, I'm ${entry.name}. This is how I sound.`,
+          voice: entry.id,
+          ...(state.voice.language !== undefined ? { language: state.voice.language } : {}),
+          speed: state.voice.speechRate,
+        })
+        .then((result) => {
+          preview.removeAttribute('data-busy');
+          text(preview, 'Preview');
+          if (!result.ok) preview.setAttribute('title', result.reason ?? 'Preview failed.');
+        });
+    },
+  );
+  if (!canPreview) {
+    preview.setAttribute('title', state.voice.previewReason ?? 'Voice preview is unavailable.');
+  }
   const use = button(
     doc,
     `use-${entry.id}`,
@@ -1422,7 +1510,7 @@ export function renderControlCenter(
   topbar.replaceChildren(titleWrap, actions);
 
   const panelsToRender: Record<TabId, El> = {
-    profile: profilePanel(doc, state),
+    profile: profilePanel(doc, state, bridge, refresh),
     account: accountPanel(doc, state, bridge, refresh),
     voice: voicePanel(doc, state, bridge, refresh),
     activation: activationPanel(doc, state, bridge, refresh),

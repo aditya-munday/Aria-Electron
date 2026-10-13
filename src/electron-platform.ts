@@ -29,6 +29,8 @@ import type {
 
 export interface ElectronPlatformOptions {
   readonly onRendererError?: (source: string, error: unknown) => void;
+  /** Called when a window closes, so the shell can drop its dead handle. */
+  readonly onWindowClosed?: (kind: WindowKind) => void;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +71,7 @@ class ElectronWindowHandle implements WindowHandle {
   private readonly onError: ((source: string, error: unknown) => void) | undefined;
   private loaded = false;
   private launchHidden: boolean;
+  private destroyed = false;
 
   constructor(
     kind: WindowKind,
@@ -83,10 +86,17 @@ class ElectronWindowHandle implements WindowHandle {
   }
 
   get visible(): boolean {
-    return this.window.isVisible();
+    // Reading a destroyed window throws, so a teardown that races a settings
+    // read must report not-visible rather than crash the shell.
+    return !this.isDestroyed() && this.window.isVisible();
+  }
+
+  isDestroyed(): boolean {
+    return this.destroyed || this.window.isDestroyed();
   }
 
   show(): void {
+    if (this.isDestroyed()) return;
     if (!this.loaded) {
       this.window
         .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
@@ -102,15 +112,19 @@ class ElectronWindowHandle implements WindowHandle {
     this.window.showInactive();
   }
   focus(): void {
+    if (this.isDestroyed()) return;
     this.window.focus();
   }
   hide(): void {
+    if (this.isDestroyed()) return;
     this.window.hide();
   }
   close(): void {
+    if (this.isDestroyed()) return;
     this.window.close();
   }
   setBounds(bounds: Rect): void {
+    if (this.isDestroyed()) return;
     this.window.setBounds({
       x: Math.round(bounds.x),
       y: Math.round(bounds.y),
@@ -119,6 +133,7 @@ class ElectronWindowHandle implements WindowHandle {
     });
   }
   setIgnoreMouseEvents(ignore: boolean, options?: { readonly forward?: boolean }): void {
+    if (this.isDestroyed()) return;
     if (options?.forward === true) {
       this.window.setIgnoreMouseEvents(ignore, { forward: true });
       return;
@@ -126,10 +141,16 @@ class ElectronWindowHandle implements WindowHandle {
     this.window.setIgnoreMouseEvents(ignore);
   }
   setVisibleOnAllWorkspaces(visible: boolean): void {
+    if (this.isDestroyed()) return;
     this.window.setVisibleOnAllWorkspaces(visible);
   }
   setAlwaysOnTop(alwaysOnTop: boolean, level?: string): void {
+    if (this.isDestroyed()) return;
     this.window.setAlwaysOnTop(alwaysOnTop, level as never);
+  }
+  /** Called by the factory when the window closes, so the shell drops it. */
+  markDestroyed(): void {
+    this.destroyed = true;
   }
 }
 
@@ -152,13 +173,16 @@ class ElectronScreenProvider implements ScreenProvider {
 class ElectronWindowFactory implements WindowFactory {
   private readonly keys: ElectronKeyListener;
   private readonly onError: ((source: string, error: unknown) => void) | undefined;
+  private readonly onClosed: ((kind: WindowKind) => void) | undefined;
 
   constructor(
     keys: ElectronKeyListener,
     onError?: (source: string, error: unknown) => void,
+    onClosed?: (kind: WindowKind) => void,
   ) {
     this.keys = keys;
     this.onError = onError;
+    this.onClosed = onClosed;
   }
 
   create(kind: WindowKind, options: WindowOptions): WindowHandle {
@@ -221,7 +245,19 @@ class ElectronWindowFactory implements WindowFactory {
     window.webContents.on('render-process-gone', (_event, details) => {
       this.onError?.(`render-process:${kind}`, details.reason);
     });
-    return new ElectronWindowHandle(kind, window, this.onError, options.launchHidden === true);
+    const handle = new ElectronWindowHandle(
+      kind,
+      window,
+      this.onError,
+      options.launchHidden === true,
+    );
+    // A closed window leaves a dead handle behind; mark it destroyed and tell
+    // the shell to drop it so nothing acts on a destroyed BrowserWindow.
+    window.on('closed', () => {
+      handle.markDestroyed();
+      this.onClosed?.(kind);
+    });
+    return handle;
   }
 }
 
@@ -298,7 +334,7 @@ class ElectronShortcuts implements ShortcutRegistration {
 export function createElectronPlatform(options: ElectronPlatformOptions = {}): Platform {
   const keys = new ElectronKeyListener();
   return {
-    windows: new ElectronWindowFactory(keys, options.onRendererError),
+    windows: new ElectronWindowFactory(keys, options.onRendererError, options.onWindowClosed),
     keys,
     shortcuts: new ElectronShortcuts(),
     screen: new ElectronScreenProvider(),

@@ -20,6 +20,8 @@ export const DEFAULT_KEY_REPERTOIRE: KeyRepertoire = {
 export interface WindowHandle {
   readonly kind: WindowKind;
   readonly visible: boolean;
+  /** Whether the window is gone; acting on a destroyed window throws. */
+  isDestroyed(): boolean;
   show(): void;
   focus(): void;
   hide(): void;
@@ -126,4 +128,4 @@ export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';
  * release so capture cannot run forever. True hold-to-talk remains available
  * through the focused `?` key.
  */
-export const PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+Space';
+export const PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T';

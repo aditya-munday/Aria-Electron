@@ -171,6 +171,7 @@ function main(): void {
   const shell = new AriaShell({
     platform: createElectronPlatform({
       onRendererError: (source, error) => errors.report(source, error),
+      onWindowClosed: (kind) => shell.forgetWindow(kind),
     }),
     runtime,
     interaction,
@@ -324,8 +325,10 @@ function main(): void {
 
   void runtime.startVoice().catch(() => undefined);
 
-  // Keeping a handler here prevents Electron's default quit-on-last-window-close.
+  // A tray owns quit when it exists; without one, closing every window must end
+  // the process rather than strand it windowless.
   app.on('window-all-closed', () => {
+    if (!shell.trayActive()) app.quit();
   });
   app.on('will-quit', () => {
     orbDismissal?.stop();

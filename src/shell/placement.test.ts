@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { clamp, contains } from './geometry.js';
 import {
   ORB_RIGHT_MARGIN,
+  ORB_RIGHT_SHIFT_FRACTION,
+  ORB_VERTICAL_CENTER_FRACTION,
   orbCircle,
   placeOrb,
   type ScreenInfo,
@@ -16,15 +18,15 @@ const WORK: ScreenInfo = {
 const SIZE = { width: 120, height: 120 };
 
 describe('orb placement', () => {
-  it('anchors to the right edge with the configured margin', () => {
+  it('anchors near the right edge, nudged right by the configured shift', () => {
     const placed = placeOrb(WORK.workArea, SIZE);
-    expect(placed.x).toBe(1440 - 120 - ORB_RIGHT_MARGIN);
-    expect(placed.x + placed.width + ORB_RIGHT_MARGIN).toBe(1440);
+    expect(placed.x).toBe(1440 - 120 - ORB_RIGHT_MARGIN + 120 * ORB_RIGHT_SHIFT_FRACTION);
   });
 
-  it('is vertically centred in the work area', () => {
+  it('sits in the upper part of the work area, not centred', () => {
     const placed = placeOrb(WORK.workArea, SIZE);
-    expect(placed.y).toBe((900 - SIZE.height) / 2);
+    expect(placed.y).toBe(900 * ORB_VERTICAL_CENTER_FRACTION - SIZE.height / 2);
+    expect(placed.y).toBeLessThan((900 - SIZE.height) / 2);
   });
 
   it('keeps the window size exactly, never the screen size', () => {
@@ -35,8 +37,8 @@ describe('orb placement', () => {
 
   it('respects a work area with a non-zero origin', () => {
     const placed = placeOrb({ x: 100, y: 40, width: 800, height: 600 }, SIZE);
-    expect(placed.x).toBe(100 + 800 - 120 - ORB_RIGHT_MARGIN);
-    expect(placed.y).toBe(40 + (600 - SIZE.height) / 2);
+    expect(placed.x).toBe(100 + 800 - 120 - ORB_RIGHT_MARGIN + 120 * ORB_RIGHT_SHIFT_FRACTION);
+    expect(placed.y).toBe(40 + 600 * ORB_VERTICAL_CENTER_FRACTION - SIZE.height / 2);
   });
 
   it('clamps back onto a work area too small for the window', () => {

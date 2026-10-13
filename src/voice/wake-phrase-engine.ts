@@ -140,12 +140,12 @@ export class WakePhraseEngine implements WakeWordEngine {
   process(frame: Float64Array): WakeWordDetection | undefined {
     if (!this.initialized) return undefined;
     const features = this.featurize(frame);
+    this.adaptNoiseFloor(features.logRms);
     if (features.logRms > this.noiseFloorDb + this.config.activityMarginDb) {
       this.segment.push(features);
       this.gap = 0;
       return undefined;
     }
-    this.noiseFloorDb = Math.max(-80, this.noiseFloorDb + (features.logRms - this.noiseFloorDb) * 0.02);
     if (this.segment.length === 0) return undefined;
     this.gap += 1;
     if (this.gap < this.gapFrames) return undefined;
@@ -156,6 +156,17 @@ export class WakePhraseEngine implements WakeWordEngine {
     const match = this.matchSegment(segment);
     if (!match.matched) return undefined;
     return { phrase: this.config.phrase.toLowerCase().trim(), confidence: match.confidence };
+  }
+
+  /**
+   * Track the ambient level so activity is judged against the room, not a fixed
+   * floor; a loud room would otherwise read as permanent activity and the segment
+   * would never close, which is the case where the wake phrase is never detected.
+   */
+  private adaptNoiseFloor(levelDb: number): void {
+    const rate = levelDb < this.noiseFloorDb ? 0.3 : 0.01;
+    const next = this.noiseFloorDb + (levelDb - this.noiseFloorDb) * rate;
+    this.noiseFloorDb = Math.max(-90, Math.min(-25, next));
   }
 
   /**
@@ -172,12 +183,12 @@ export class WakePhraseEngine implements WakeWordEngine {
     let bestFrames = 0;
     for (const frame of frames) {
       const features = this.featurize(frame);
+      this.adaptNoiseFloor(features.logRms);
       if (features.logRms > this.noiseFloorDb + this.config.activityMarginDb) {
         this.segment.push(features);
         this.gap = 0;
         continue;
       }
-      this.noiseFloorDb = Math.max(-80, this.noiseFloorDb + (features.logRms - this.noiseFloorDb) * 0.02);
       if (this.segment.length === 0) continue;
       this.gap += 1;
       if (this.gap < this.gapFrames) continue;
@@ -422,7 +433,7 @@ const FEATURE_WEIGHTS: readonly number[] = [
 function dtw(a: readonly number[][], b: readonly number[][]): number {
   const n = a.length;
   const m = b.length;
-  const band = Math.max(1, Math.ceil(0.15 * Math.max(n, m)));
+  const band = Math.max(1, Math.ceil(0.2 * Math.max(n, m)));
   let previous = new Float64Array(m + 1).fill(Infinity);
   let current = new Float64Array(m + 1);
   previous[0] = 0;

@@ -104,7 +104,12 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   `formant-synth.ts` and the engine's own featurizer, so template and audio
   share one feature space. A segment must be the right length, voiced-dominant
   and spectrally varied, then match a speaking-rate template (ensemble
-  0.6–1.4x) below `matchThreshold`. It replaces the old porcupine stub;
+  0.6–1.4x) below `matchThreshold`. The segmenter tracks the ambient level
+  adaptively (`adaptNoiseFloor`): it falls quickly toward a quieter frame and
+  rises slowly, so a loud room does not read as permanent activity and the
+  segment still closes — a fixed floor never closed in a noisy room, which is
+  the case where "hey aria" was never detected. It replaces the old porcupine
+  stub;
   `wake-word.ts` wraps it in `EngineWakeWordDetector`. `DEFAULT_WAKE_WORD.enabled`
   stays `false` at the runtime layer because product-level activation comes from
   shell settings (`DEFAULT_SETTINGS.wakeWordEnabled`). `formant-synth.ts` is the
@@ -213,7 +218,10 @@ Rules the router enforces, all with tests:
 - App launch → Control Center, `input: 'none'`, no capture/STT/orchestration.
 - Push-to-talk (hold the `?` key) → Orb, capture starts immediately; never
   consults wake-word detection, so it works with the detector disabled. Needs
-  microphone permission.
+  microphone permission. The global accelerator is `Win + Alt + T`
+  (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell, the
+  tray and the Control Center all read; a global grab reports key-down only, so
+  the shell treats each press per the mode (`hold` pairs it with a release).
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
 - `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
@@ -295,12 +303,22 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   `accountSignIn`, `accountSignOut`, `previewVoice`; no token, capability or
   raw-`ipcRenderer` accessor crosses it. Renderer windows are context-isolated,
   `nodeIntegration: false`, web-security on, and deny external navigation and
-  `window.open`. The main process registers a `window-all-closed` handler on
-  purpose so Electron does not quit when the last window closes.
+  `window.open`. The main process keeps a `window-all-closed` handler so Electron
+  does not quit while a tray still owns quit, but the handler quits when there is
+  no tray, so a desktop without a status area is never stranded as a windowless
+  process.
   `registerIpcHandlers` strips the leading `IpcMainInvokeEvent` from every
   `ipcMain.handle` callback (`(_event, ...args)`), so a handler reads its real
   payload, not the event object. `RecordingRegistrar` in the test mirrors that
   `(event, ...args)` arity so a mis-read argument cannot pass.
+- Destroyed-window safety: a window the OS closed leaves a dead handle behind, and
+  acting on it throws `Object has been destroyed`. `WindowHandle.isDestroyed()`
+  reports it (`ElectronWindowHandle` also guards `visible`); the factory's
+  `window.on('closed')` marks the handle destroyed and calls
+  `ElectronPlatformOptions.onWindowClosed`, which `main.ts` wires to
+  `AriaShell.forgetWindow(kind)`. `AriaShell.open()` drops a destroyed handle and
+  rebuilds rather than touching it, so a teardown that races a settings read or a
+  re-open never crashes the shell or leaves the Orb stuck on screen.
 - `control-center/sign-in.ts` — `verifySignIn` resolves a pasted session token
   against the Backend before treating the user as signed in, and rolls the token
   back when the identity read fails, so a rejected credential never leaves a
@@ -336,8 +354,13 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   current output, a searchable/filterable voice grid (accent/language facets)
   with per-voice selection and inline audition, a speed slider, STT-language
   chips, a push-to-talk mode control and spoken-response toggle. Audition goes
-  through `previewVoice` → the voice runtime; nothing is enabled unless the
-  Backend actually advertises it. Bundled by `scripts/bundle-renderer.mjs` with
+  through `previewVoice` → the voice runtime; `state.voice.previewAvailable`
+  (derived from `capabilities.ok`, not from a chosen voice) keeps Preview enabled
+  whenever the Backend can synthesize, and the reason is surfaced when it cannot,
+  so the control is never dead while a sample is actually servable. The Profile
+  tab is a real summary (identity, voice/language/speech, wake word, push-to-talk,
+  accent) with quick actions that patch settings. Bundled by
+  `scripts/bundle-renderer.mjs` with
   esbuild into a deferred classic script, because Chromium refuses `file://`
   ES-module imports.
 - Typography: `src/renderer/theme.css` self-hosts two variable fonts — `Space
@@ -349,8 +372,13 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   import `electron`; everything under `src/shell/` is dependency-free.
 - `orb/` — the floating presence. `window-options.ts` holds the frameless /
   transparent / non-activating-panel options; `placement` (in `src/shell/`)
-  anchors it to the right edge at 2/6 of the work area against an injected
-  `ScreenProvider`. The renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`)
+  anchors it to the upper-right of the work area (centre at
+  `ORB_VERTICAL_CENTER_FRACTION = 0.25`, nudged right by
+  `ORB_RIGHT_SHIFT_FRACTION` past `ORB_RIGHT_MARGIN`) against an injected
+  `ScreenProvider`. The window is larger than the painted circle so the glow can
+  fall off; the clamp is against the circle, not the window, so the transparent
+  padding may overhang the edge while the visible Orb stays on screen. The
+  renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`)
   draws exactly one circle — core, halo, glow — and keeps the window
   click-through except inside that circle via the `orbSetInteractive` channel
   and the pure `orb/hit-test.ts`. `orb/backdrop.ts` plans a full-screen material
