@@ -418,7 +418,101 @@ describe('chat renderer', () => {
       turns: [{ id: 'turn-1', role: 'user', text: 'ship it', at: NOW, state: 'complete' }],
       tasks: [],
     });
-    expect(document.querySelector('.turn-user .text')?.textContent).toBe('ship it');
+    expect(document.querySelector('.turn-user .rich')?.textContent).toContain('ship it');
+  });
+
+  it('renders the empty state with quick-start prompts', () => {
+    const rec = render(emptyState());
+    expect(document.querySelector('.hero-title')?.textContent).toContain('How can I help');
+    const chip = [...document.querySelectorAll('.chip')].find(
+      (c) => c.textContent === 'Summarize my tasks',
+    ) as HTMLButtonElement;
+    expect(chip).toBeTruthy();
+    chip.click();
+    expect(rec.texts).toEqual(['Summarize my tasks']);
+  });
+
+  it('renders assistant replies with rich formatting (code, lists, bold)', () => {
+    render({
+      generatedAt: NOW,
+      turns: [
+        {
+          id: 'turn-1',
+          role: 'assistant',
+          text: 'Try:\n- **one**\n- two\n\n```ts\nconst x = 1;\n```',
+          at: NOW,
+          state: 'complete',
+        },
+      ],
+      tasks: [],
+    });
+    expect(document.querySelector('.rich-list li strong')?.textContent).toBe('one');
+    expect(document.querySelector('.code-block code')?.textContent).toContain('const x = 1;');
+  });
+
+  it('shows a thinking indicator for a pending assistant turn', () => {
+    render({
+      generatedAt: NOW,
+      turns: [{ id: 'turn-1', role: 'assistant', text: '', at: NOW, state: 'pending' }],
+      tasks: [],
+    });
+    expect(document.querySelector('.typing')).not.toBeNull();
+  });
+
+  it('offers copy and regenerate actions on assistant turns', () => {
+    const rec = render({
+      generatedAt: NOW,
+      turns: [
+        { id: 'turn-1', role: 'user', text: 'hi', at: NOW, state: 'complete' },
+        { id: 'turn-2', role: 'assistant', text: 'hello', at: NOW, state: 'complete' },
+      ],
+      tasks: [],
+    });
+    const actions = [...document.querySelectorAll('.turn-assistant .msg-action')];
+    expect(actions.length).toBeGreaterThanOrEqual(3);
+    const retry = actions.find((a) => a.getAttribute('aria-label') === 'Regenerate reply');
+    (retry as HTMLButtonElement).click();
+    expect(rec.texts).toEqual(['hi']);
+  });
+
+  it('renders a textarea composer and sends on submit', () => {
+    const rec = render(emptyState());
+    const input = document.querySelector('[data-testid="composer-input"]') as HTMLTextAreaElement;
+    expect(input.tagName).toBe('TEXTAREA');
+    input.value = 'ping';
+    (document.querySelector('[data-testid="composer-send"]') as HTMLButtonElement).click();
+    expect(rec.texts).toEqual(['ping']);
+  });
+
+  it('paints the user turn and a pending reply optimistically on submit', () => {
+    render(emptyState());
+    const input = document.querySelector('[data-testid="composer-input"]') as HTMLTextAreaElement;
+    input.value = 'optimistic hello';
+    (document.querySelector('[data-testid="composer-send"]') as HTMLButtonElement).click();
+    expect(document.querySelector('.turn-user .rich')?.textContent).toContain('optimistic hello');
+    expect(document.querySelector('.turn[data-state="pending"]')).not.toBeNull();
+  });
+
+  it('offers a stop control only while a reply is pending', () => {
+    render(emptyState());
+    expect(document.querySelector('[data-testid="composer-stop"]')).toBeNull();
+    const rec = render({
+      generatedAt: NOW,
+      turns: [{ id: 'turn-1', role: 'assistant', text: '', at: NOW, state: 'pending' }],
+      tasks: [],
+    });
+    const stop = document.querySelector('[data-testid="composer-stop"]') as HTMLButtonElement;
+    expect(stop).not.toBeNull();
+    stop.click();
+    expect(rec.interrupts).toBe(1);
+  });
+
+  it('clears the composer on Escape', () => {
+    render(emptyState());
+    const input = document.querySelector('[data-testid="composer-input"]') as HTMLTextAreaElement;
+    input.value = 'discard me';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(input.value).toBe('');
   });
 
   it('keeps the caret in the composer across a repaint', () => {

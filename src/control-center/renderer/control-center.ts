@@ -1148,15 +1148,20 @@ function activationPanel(
   const globalLabel = h(doc, 'span', 'row-label');
   text(globalLabel, 'Global toggle');
   globalRow.append(globalLabel, keys(doc, activation.pushToTalk.globalAccelerator));
+  voiceCard.append(globalRow);
   if (!activation.pushToTalk.globalRegistered) {
+    // Every candidate was refused; point at the tray control and the re-grab.
     const warn = h(doc, 'p', 'muted reason');
     text(
       warn,
-      `Another application holds ${activation.pushToTalk.globalAccelerator}; the global toggle is unavailable.`,
+      `No global push-to-talk shortcut could be grabbed (tried ${activation.pushToTalk.globalAccelerator} first); another application holds the combination. Use “Push to talk” in the tray, or “Retry push-to-talk shortcut” once it is free.`,
     );
-    globalRow.append(warn);
+    voiceCard.append(warn);
+  } else {
+    const ok = h(doc, 'p', 'muted');
+    text(ok, `Registered globally as ${activation.pushToTalk.globalAccelerator}.`);
+    voiceCard.append(ok);
   }
-  voiceCard.append(globalRow);
   voiceCard.append(
     select(
       doc,
@@ -1544,6 +1549,19 @@ function restoreFocus(doc: Document, id: string): void {
 }
 
 export function bootstrapControlCenter(doc: Document, bridge: ControlCenterBridge): void {
+  const root = doc.getElementById('control-center');
+  // A skeleton, not a blank window, while the first state is fetched.
+  if (root !== null) {
+    const panels = root.querySelector('.panels');
+    if (panels !== null) {
+      const skeletons = [0, 1, 2].map(() => {
+        const node = doc.createElement('div');
+        node.className = 'skeleton block';
+        return node;
+      });
+      panels.replaceChildren(...skeletons);
+    }
+  }
   void bridge.controlCenterState().then((state) => renderControlCenter(doc, state, bridge));
 }
 

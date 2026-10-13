@@ -161,6 +161,39 @@ describe('ControlCenterService.buildState', () => {
     });
   });
 
+  it('reads activation from a getter, so live shortcut status is not stale', async () => {
+    let registered = false;
+    const runtime: ControlCenterRuntime = {
+      identity: async () => ok({ userId: 'u', roles: [], providers: [], anonymous: false }),
+      capabilities: async () => ok({ voices: [] }),
+      records: () => [],
+      settings: () => ({ ...DEFAULT_SETTINGS }),
+      saveSettings: () => undefined,
+      incidents: () => [],
+      setOrbVisible: () => undefined,
+      voiceDiagnostics: () => undefined,
+      voice: undefined,
+    };
+    const service = new ControlCenterService({
+      runtime,
+      config: CONFIG,
+      activation: () => ({
+        ...ACTIVATION,
+        pushToTalkRegistered: registered,
+        pushToTalkAccelerator: registered ? 'Control+Alt+T' : 'Super+Alt+T',
+      }),
+      microphonePermission: () => 'granted',
+      voiceEngine: () => ({ kind: 'unavailable' }),
+      now: () => '2026-01-01T00:00:00.000Z',
+    });
+    const before = await service.buildState();
+    expect(before.activation.pushToTalk.globalRegistered).toBe(false);
+    registered = true;
+    const after = await service.buildState();
+    expect(after.activation.pushToTalk.globalRegistered).toBe(true);
+    expect(after.activation.pushToTalk.globalAccelerator).toBe('Control+Alt+T');
+  });
+
   it('reports signed out when the Backend returns no token', async () => {
     const { service } = harness({
       identityError: { kind: 'no_token', message: 'Sign in to reach the Directioner backend.' },

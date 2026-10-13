@@ -116,7 +116,19 @@ export interface TrayHost {
   isActive(): boolean;
 }
 
-export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';
+export const CHAT_SHORTCUT_ACCELERATORS = [
+  'Super+Alt+A',
+  'Control+Alt+A',
+  'Super+Shift+A',
+  'Control+Shift+A',
+] as const;
+
+/**
+ * The chat accelerator the app prefers. Desktop environments grab many
+ * Super/Alt combinations, so registration walks the candidate list and uses the
+ * first the OS actually accepts rather than assuming the preferred one is free.
+ */
+export const CHAT_SHORTCUT_ACCELERATOR = CHAT_SHORTCUT_ACCELERATORS[0];
 
 /**
  * A true global push-to-talk accelerator. Unlike the focused `?` key, this is
@@ -127,5 +139,18 @@ export const CHAT_SHORTCUT_ACCELERATOR = 'Super+Alt+A';
  * mode: `toggle` finalizes on the next tap, while `hold` pairs each tap with a
  * release so capture cannot run forever. True hold-to-talk remains available
  * through the focused `?` key.
+ *
+ * `Super+Alt+T` is the preferred grab, but a desktop environment often holds it
+ * (GNOME binds Super-based combinations freely). Registration tries each
+ * candidate in order and keeps the first the OS accepts, so push-to-talk works
+ * on a desktop that has taken the preferred combination.
  */
-export const PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T';
+export const PUSH_TO_TALK_ACCELERATORS = [
+  'Super+Alt+T',
+  'Super+Alt+Space',
+  'Control+Alt+T',
+  'Control+Alt+Space',
+  'Super+Shift+T',
+] as const;
+
+export const PUSH_TO_TALK_ACCELERATOR = PUSH_TO_TALK_ACCELERATORS[0];

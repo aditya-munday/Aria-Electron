@@ -110,8 +110,22 @@ describe('orb renderer', () => {
   it('exposes an accessible label combining the presence and detail', () => {
     const root = render(state({ presence: 'thinking', cue: 'pulse', label: 'Thinking' }));
     const orb = root.querySelector('.orb') as HTMLElement;
-    expect(orb.getAttribute('role')).toBe('img');
+    expect(orb.getAttribute('role')).toBe('button');
+    expect(orb.getAttribute('tabindex')).toBe('0');
     expect(orb.getAttribute('aria-label')).toContain('Thinking');
+  });
+
+  it('shows an action hint when the presence carries no detail', () => {
+    const root = render(state({ presence: 'idle', cue: 'dot', label: 'Idle' }));
+    expect(root.querySelector('[data-testid="orb-detail"]')?.textContent).toBe('Tap to open chat');
+  });
+
+  it('renders the status ring, core, sheen and orbiting motes', () => {
+    const root = render(state());
+    expect(root.querySelectorAll('.ring')).toHaveLength(1);
+    expect(root.querySelectorAll('.core')).toHaveLength(1);
+    expect(root.querySelectorAll('.sheen')).toHaveLength(1);
+    expect(root.querySelectorAll('.orbit .mote')).toHaveLength(3);
   });
 });
 
@@ -145,6 +159,39 @@ describe('orb pointer interactivity', () => {
     move(center, center);
     document.dispatchEvent(new MouseEvent('mouseleave'));
     expect(b.interactivity).toEqual([true, false]);
+  });
+
+  it('opens the chat when the circle is clicked, but not when the glow is', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    let opened = 0;
+    const b: OrbBridge = {
+      orbState: async () => state(),
+      orbSetInteractive: async () => undefined,
+      openChat: async () => {
+        opened += 1;
+      },
+    };
+    wirePointerInteractivity(document, b);
+    const center = ORB_WINDOW_SIZE / 2;
+    document.dispatchEvent(new MouseEvent('click', { clientX: 4, clientY: 4 }));
+    expect(opened).toBe(0);
+    document.dispatchEvent(new MouseEvent('click', { clientX: center, clientY: center }));
+    expect(opened).toBe(1);
+  });
+
+  it('opens the chat on Enter for a keyboard user', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    let opened = 0;
+    const b: OrbBridge = {
+      orbState: async () => state(),
+      orbSetInteractive: async () => undefined,
+      openChat: async () => {
+        opened += 1;
+      },
+    };
+    wirePointerInteractivity(document, b);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(opened).toBe(1);
   });
 });
 

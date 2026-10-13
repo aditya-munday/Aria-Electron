@@ -1,10 +1,12 @@
-import type { OrbState, OrbCue } from '../state.js';
+import type { OrbState, OrbCue, OrbPresence } from '../state.js';
 import { orbHitTest } from '../hit-test.js';
 import { ORB_WINDOW_SIZE } from '../window-options.js';
 
 export interface OrbBridge {
   orbState(): Promise<OrbState>;
   orbSetInteractive(interactive: boolean): Promise<void>;
+  /** Optional: the Orb opens the chat window when tapped. */
+  openChat?: () => Promise<void>;
 }
 
 /** The accent hue (degrees) each cue tints the glass and glow with. */
@@ -23,6 +25,22 @@ const CUE_HUE: Readonly<Record<OrbCue, number>> = {
   slash: 220,
 };
 
+/** A short, human hint shown under the label for each presence. */
+const PRESENCE_HINT: Readonly<Record<OrbPresence, string>> = {
+  hidden: '',
+  idle: 'Tap to open chat',
+  listening: 'Speak now',
+  thinking: 'Working on it',
+  speaking: 'Tap to interrupt',
+  interrupted: 'Tap to continue',
+  awaiting_approval: 'Tap to review',
+  awaiting_input: 'Tap to answer',
+  task_running: 'Tap to watch',
+  recovering: 'Reconciling',
+  error: 'Tap for details',
+  muted: 'Tap to unmute',
+};
+
 function h<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,
@@ -39,16 +57,20 @@ export function renderOrb(doc: Document, state: OrbState): void {
   const presence = state.presence;
   const hue = CUE_HUE[presence.cue];
 
-  const orb = doc.createElement('div');
-  orb.className = `orb orb-${presence.presence}`;
+  const orb = h(doc, 'div', `orb orb-${presence.presence}`);
   orb.setAttribute('data-presence', presence.presence);
   orb.setAttribute('data-cue', presence.cue);
-  orb.setAttribute('role', 'img');
+  orb.setAttribute('role', 'button');
+  orb.setAttribute('tabindex', '0');
   orb.setAttribute('aria-label', `${presence.label}. ${presence.detail ?? ''}`.trim());
   orb.style.setProperty('--cue-hue', String(hue));
 
   const glow = h(doc, 'div', 'glow');
   glow.setAttribute('aria-hidden', 'true');
+
+  // A conic status ring: its sweep encodes liveness without text.
+  const ring = h(doc, 'div', 'ring');
+  ring.setAttribute('aria-hidden', 'true');
 
   const sphere = h(doc, 'div', 'sphere');
   sphere.setAttribute('aria-hidden', 'true');
@@ -61,28 +83,31 @@ export function renderOrb(doc: Document, state: OrbState): void {
   // Without a canvas context (jsdom, a blocked GPU) the CSS glass still paints,
   // so the Orb is never a blank circle.
   const ctx = canvasContext(canvas);
-  if (ctx !== null) {
-    paintGlass(ctx, canvas, presence.cue);
-  } else {
-    sphere.classList.add('glass-fallback');
-  }
+  if (ctx !== null) paintGlass(ctx, canvas, presence.cue);
+  else sphere.classList.add('glass-fallback');
 
+  const core = h(doc, 'span', 'core');
+  core.setAttribute('aria-hidden', 'true');
   const specular = h(doc, 'span', 'specular');
   specular.setAttribute('aria-hidden', 'true');
-  sphere.append(specular);
+  const sheen = h(doc, 'span', 'sheen');
+  sheen.setAttribute('aria-hidden', 'true');
+  sphere.append(core, specular, sheen);
+
+  const orbit = h(doc, 'span', 'orbit');
+  orbit.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 3; i += 1) orbit.append(h(doc, 'i', 'mote'));
 
   const label = h(doc, 'p', 'label');
   label.textContent = presence.label;
   label.setAttribute('data-testid', 'orb-label');
 
-  orb.append(glow, sphere, label);
+  orb.append(glow, ring, orbit, sphere, label);
 
-  if (presence.detail !== undefined) {
-    const detail = h(doc, 'p', 'detail');
-    detail.textContent = presence.detail;
-    detail.setAttribute('data-testid', 'orb-detail');
-    orb.append(detail);
-  }
+  const detail = h(doc, 'p', 'detail');
+  detail.textContent = presence.detail ?? PRESENCE_HINT[presence.presence];
+  detail.setAttribute('data-testid', 'orb-detail');
+  orb.append(detail);
 
   root.replaceChildren(orb);
 }
@@ -104,16 +129,12 @@ function canvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | nu
 }
 
 /**
- * Paint the glass: a dark refracting sphere with a bright prism ribbon sweeping
- * a full spectrum across it, red riding above the ribbon and blue below, plus a
+ * Paint the glass: a dark refracting sphere with bright prism ribbons sweeping a
+ * full spectrum across it, red riding above each ribbon and blue below, plus a
  * specular highlight offset toward the light. Drawn once per render; the motion
  * is CSS.
  */
-function paintGlass(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  cue: OrbCue,
-): void {
+function paintGlass(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, cue: OrbCue): void {
   canvas.width = GLASS_PX;
   canvas.height = GLASS_PX;
   const r = GLASS_PX / 2;
@@ -128,23 +149,38 @@ function paintGlass(
 
   // The smoked glass body: darker at the rim, lit through the middle.
   const body = ctx.createRadialGradient(cx * 0.62, cy * 0.56, r * 0.1, cx, cy, r);
-  body.addColorStop(0, 'rgba(38,44,68,0.92)');
+  body.addColorStop(0, 'rgba(40,46,72,0.94)');
   body.addColorStop(0.55, 'rgba(20,24,40,0.9)');
   body.addColorStop(1, 'rgba(6,8,16,0.98)');
   ctx.fillStyle = body;
   ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
 
+  // A cool refraction bloom behind the ribbons gives the glass depth.
+  const bloom = ctx.createRadialGradient(cx * 0.4, cy * 0.7, 0, cx * 0.4, cy * 0.7, r);
+  bloom.addColorStop(0, 'rgba(90,120,220,0.22)');
+  bloom.addColorStop(1, 'rgba(90,120,220,0)');
+  ctx.fillStyle = bloom;
+  ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
+
   const drift = cue === 'gear' ? 0.5 : 0;
   paintRibbon(ctx, cx, cy, r, -0.34 + drift, 1);
   paintRibbon(ctx, cx, cy, r, -0.5 + drift, GLASS_PX / 150);
+  paintRibbon(ctx, cx, cy, r, -0.16 + drift, GLASS_PX / 220);
 
   // Specular highlight toward the light source.
   const spec = ctx.createRadialGradient(cx * 0.66, cy * 0.6, 0, cx * 0.66, cy * 0.6, r * 0.5);
-  spec.addColorStop(0, 'rgba(255,255,255,0.55)');
+  spec.addColorStop(0, 'rgba(255,255,255,0.58)');
   spec.addColorStop(0.35, 'rgba(255,255,255,0.06)');
   spec.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = spec;
   ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
+
+  // A thin rim light keeps the silhouette crisp against a dark desktop.
+  ctx.strokeStyle = 'rgba(200,214,255,0.28)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 3, 0, Math.PI * 2);
+  ctx.stroke();
 
   ctx.restore();
 }
@@ -173,9 +209,9 @@ function paintRibbon(
     const hue = t * 300;
     const grad = ctx.createLinearGradient(0, -half, 0, half);
     grad.addColorStop(0, `hsla(${hue} 90% 60% / 0)`);
-    grad.addColorStop(0.24, `hsl(0 95% 62%)`);
+    grad.addColorStop(0.24, 'hsl(0 95% 62%)');
     grad.addColorStop(0.5, `hsl(${hue} 96% 72%)`);
-    grad.addColorStop(0.76, `hsl(220 95% 60%)`);
+    grad.addColorStop(0.76, 'hsl(220 95% 60%)');
     grad.addColorStop(1, `hsla(240 90% 55% / 0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(x, -half, band + 2, half * 2);
@@ -188,7 +224,8 @@ function paintRibbon(
  * Click-through except on the circle. The host keeps the window ignoring the
  * mouse and forwarding events; on every forwarded move we re-evaluate whether
  * the pointer is inside the painted circle and flip interactivity only when it
- * changes. Without a circle the Orb stays fully click-through.
+ * changes. A tap on the circle opens the chat window, so the Orb is a usable
+ * entry point rather than a decoration.
  */
 export function wirePointerInteractivity(
   doc: Document,
@@ -204,16 +241,23 @@ export function wirePointerInteractivity(
   doc.addEventListener('mousemove', (event) => {
     apply(orbHitTest(event.clientX, event.clientY, { windowSize }));
   });
-  doc.addEventListener('mouseleave', () => {
-    apply(false);
+  doc.addEventListener('mouseleave', () => apply(false));
+
+  const openChat = (): void => {
+    void bridge.openChat?.();
+  };
+  doc.addEventListener('click', (event) => {
+    if (orbHitTest(event.clientX, event.clientY, { windowSize })) openChat();
+  });
+  doc.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openChat();
+    }
   });
 }
 
-export function bootstrapOrb(
-  doc: Document,
-  bridge: OrbBridge,
-  intervalMs = 600,
-): () => void {
+export function bootstrapOrb(doc: Document, bridge: OrbBridge, intervalMs = 600): () => void {
   const root = doc.getElementById('orb');
   if (root !== null) {
     const loading = h(doc, 'p', 'label');
@@ -222,9 +266,7 @@ export function bootstrapOrb(
   }
 
   const refresh = (): void => {
-    void bridge.orbState().then((state) => {
-      renderOrb(doc, state);
-    });
+    void bridge.orbState().then((state) => renderOrb(doc, state));
   };
 
   // The Orb is a live presence: it must follow the voice runtime without the

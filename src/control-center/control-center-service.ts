@@ -79,7 +79,8 @@ export interface ControlCenterRuntime {
 export interface ControlCenterDeps {
   readonly runtime: ControlCenterRuntime;
   readonly config: AriaConfig;
-  readonly activation: ActivationInputs;
+  /** Static inputs, or a getter so live shortcut/registration status is fresh. */
+  readonly activation: ActivationInputs | (() => ActivationInputs);
   readonly microphonePermission: () => PermissionState;
   readonly voiceEngine: () => { readonly kind: 'native' | 'unavailable'; readonly reason?: string };
   readonly now?: () => string;
@@ -144,7 +145,10 @@ export class ControlCenterService {
       voiceEngine: this.deps.voiceEngine(),
       integrations: this.integrationView(capabilities, account.ok),
       tasks: this.taskHistory(),
-      activation: this.deps.activation,
+      activation:
+        typeof this.deps.activation === 'function'
+          ? this.deps.activation()
+          : this.deps.activation,
       incidents: this.deps.runtime.incidents(),
       now: this.now(),
     });

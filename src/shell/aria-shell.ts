@@ -4,9 +4,9 @@ import { ORB_DIAMETER, ORB_WINDOW_OPTIONS, ORB_WINDOW_SIZE } from '../orb/window
 import type { OrbBackdropPlan } from '../orb/backdrop.js';
 import { placeOrb } from './placement.js';
 import {
-  CHAT_SHORTCUT_ACCELERATOR,
+  CHAT_SHORTCUT_ACCELERATORS,
   DEFAULT_KEY_REPERTOIRE,
-  PUSH_TO_TALK_ACCELERATOR,
+  PUSH_TO_TALK_ACCELERATORS,
   type KeyEvent,
   type KeyRepertoire,
   type Platform,
@@ -71,6 +71,8 @@ export class AriaShell {
   private pttAcceleratorMode: PushToTalkMode | undefined;
   private chatShortcutRegistered = false;
   private pushToTalkRegistered = false;
+  private chatAccelerator: string | undefined;
+  private pttAccelerator: string | undefined;
   private chatShortcutRequested: boolean | undefined;
   private pushToTalkRequested: boolean | undefined;
   private started = false;
@@ -110,8 +112,18 @@ export class AriaShell {
   }
 
   /** Whether the OS accepted each accelerator grab. Reported, never assumed. */
-  shortcutStatus(): { readonly chat: boolean; readonly pushToTalk: boolean } {
-    return { chat: this.chatShortcutRegistered, pushToTalk: this.pushToTalkRegistered };
+  shortcutStatus(): {
+    readonly chat: boolean;
+    readonly pushToTalk: boolean;
+    readonly chatAccelerator?: string;
+    readonly pushToTalkAccelerator?: string;
+  } {
+    return {
+      chat: this.chatShortcutRegistered,
+      pushToTalk: this.pushToTalkRegistered,
+      ...(this.chatAccelerator !== undefined ? { chatAccelerator: this.chatAccelerator } : {}),
+      ...(this.pttAccelerator !== undefined ? { pushToTalkAccelerator: this.pttAccelerator } : {}),
+    };
   }
 
   /**
@@ -151,17 +163,25 @@ export class AriaShell {
    * Reconcile the requested shortcuts with what the OS currently holds. The
    * requested state is persisted settings; the held state is the last grab the
    * OS accepted. Only a change is applied, so a repeated sync is inert.
+   *
+   * Each shortcut walks its candidate accelerators and keeps the first the OS
+   * accepts: a desktop environment that has already taken the preferred grab
+   * would otherwise leave push-to-talk silently dead.
    */
   private syncShortcuts(): void {
     const shortcuts = this.platform.shortcuts;
+
     if (this.chatShortcutRequested) {
-      if (!shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)) {
-        this.chatShortcutRegistered = shortcuts.register(CHAT_SHORTCUT_ACCELERATOR, () => {
-          this.enqueue(() => this.handleShortcut());
-        });
+      if (this.chatAccelerator === undefined) {
+        this.chatAccelerator = this.registerFirst(
+          CHAT_SHORTCUT_ACCELERATORS,
+          () => this.enqueue(() => this.handleShortcut()),
+        );
+        this.chatShortcutRegistered = this.chatAccelerator !== undefined;
       }
-    } else if (shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)) {
-      shortcuts.unregister(CHAT_SHORTCUT_ACCELERATOR);
+    } else if (this.chatAccelerator !== undefined) {
+      shortcuts.unregister(this.chatAccelerator);
+      this.chatAccelerator = undefined;
       this.chatShortcutRegistered = false;
     }
 
@@ -169,15 +189,29 @@ export class AriaShell {
     // focus. The OS only reports the key-down, so each tap is a press and the
     // shell decides whether to pair it with a release based on the mode.
     if (this.pushToTalkRequested) {
-      if (!shortcuts.isRegistered(PUSH_TO_TALK_ACCELERATOR)) {
-        this.pushToTalkRegistered = shortcuts.register(PUSH_TO_TALK_ACCELERATOR, () => {
-          this.enqueue(() => this.activatePushToTalk());
-        });
+      if (this.pttAccelerator === undefined) {
+        this.pttAccelerator = this.registerFirst(
+          PUSH_TO_TALK_ACCELERATORS,
+          () => this.enqueue(() => this.activatePushToTalk()),
+        );
+        this.pushToTalkRegistered = this.pttAccelerator !== undefined;
       }
-    } else if (shortcuts.isRegistered(PUSH_TO_TALK_ACCELERATOR)) {
-      shortcuts.unregister(PUSH_TO_TALK_ACCELERATOR);
+    } else if (this.pttAccelerator !== undefined) {
+      shortcuts.unregister(this.pttAccelerator);
+      this.pttAccelerator = undefined;
       this.pushToTalkRegistered = false;
     }
+  }
+
+  /** Register the first accelerator the OS accepts; `undefined` if none is free. */
+  private registerFirst(
+    candidates: readonly string[],
+    handler: () => void,
+  ): string | undefined {
+    for (const accelerator of candidates) {
+      if (this.platform.shortcuts.register(accelerator, handler)) return accelerator;
+    }
+    return undefined;
   }
 
   /** Whether a tray icon is actually present (the desktop may not support one). */
@@ -212,10 +246,66 @@ export class AriaShell {
         onClick: () => this.setOrbVisible(!orbVisible),
       },
     ];
+    if (this.pushToTalkRequested) {
+      // A working microphone control even when every global grab was refused.
+      items.push({
+        id: 'ptt-now',
+        label: this.pttToggled ? 'Stop listening' : 'Push to talk',
+        onClick: () => this.enqueue(() => this.manualPushToTalk()),
+      });
+    }
+    if (this.pushToTalkRequested && !this.pushToTalkRegistered) {
+      // The OS refused every candidate; another app may since have freed one.
+      items.push({
+        id: 'ptt-retry',
+        label: 'Retry push-to-talk shortcut',
+        onClick: () => this.retryShortcuts(),
+      });
+    }
     if (this.onQuit !== undefined) {
       items.push({ id: 'quit', label: 'Quit Aria', onClick: () => this.onQuit?.() });
     }
     return items;
+  }
+
+  /** Release both grabs and take them again, e.g. after another app freed one. */
+  retryShortcuts(): void {
+    if (this.chatAccelerator !== undefined) {
+      this.platform.shortcuts.unregister(this.chatAccelerator);
+      this.chatAccelerator = undefined;
+      this.chatShortcutRegistered = false;
+    }
+    if (this.pttAccelerator !== undefined) {
+      this.platform.shortcuts.unregister(this.pttAccelerator);
+      this.pttAccelerator = undefined;
+      this.pushToTalkRegistered = false;
+    }
+    this.syncShortcuts();
+    this.refreshTray();
+  }
+
+  /**
+   * The tray's push-to-talk control. It mirrors the accelerator's tap semantics
+   * so the two paths behave identically.
+   */
+  private async manualPushToTalk(): Promise<void> {
+    if (!this.pushToTalkEnabled()) return;
+    this.open('orb');
+    const mode = this.settings.load().pushToTalkMode;
+    if (mode === 'toggle') {
+      if (this.pttToggled) {
+        this.pttToggled = false;
+        this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_release' }));
+      } else {
+        this.pttToggled = true;
+        this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
+      }
+      this.refreshTray();
+      return;
+    }
+    // A tray tap is a single press, so pair it with a release to avoid stranding capture.
+    this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_press' }));
+    this.applyRouting(await this.interaction.handle({ kind: 'push_to_talk_release' }));
   }
 
   whenIdle(): Promise<void> {
@@ -240,8 +330,10 @@ export class AriaShell {
   stop(): void {
     this.unsubscribeKeys?.();
     this.unsubscribeKeys = undefined;
-    this.platform.shortcuts.unregister(CHAT_SHORTCUT_ACCELERATOR);
-    this.platform.shortcuts.unregister(PUSH_TO_TALK_ACCELERATOR);
+    if (this.chatAccelerator !== undefined) this.platform.shortcuts.unregister(this.chatAccelerator);
+    if (this.pttAccelerator !== undefined) this.platform.shortcuts.unregister(this.pttAccelerator);
+    this.chatAccelerator = undefined;
+    this.pttAccelerator = undefined;
     this.chatShortcutRegistered = false;
     this.pushToTalkRegistered = false;
     this.platform.keys.stop();

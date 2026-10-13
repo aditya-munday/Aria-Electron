@@ -190,17 +190,24 @@ function main(): void {
   const controlCenter = new ControlCenterService({
     runtime: createControlCenterRuntime(runtime, shell, errors),
     config,
-    activation: {
-      request: 'Hold ?',
-      wakeWordPhrase: voiceConfig.wakeWord.phrase,
-      chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
-      pushToTalkAccelerator: PUSH_TO_TALK_ACCELERATOR,
-      chatShortcutRegistered: shell.shortcutStatus().chat,
-      pushToTalkRegistered: shell.shortcutStatus().pushToTalk,
-      wakeWordAvailable: voice !== undefined,
-      ...(voice !== undefined
-        ? {}
-        : { wakeWordReason: 'The wake-word engine is unavailable on this build.' }),
+    // A getter, so a shortcut that registers, falls back or is refused after
+    // launch is reported from the live shell state rather than a stale snapshot.
+    activation: () => {
+      const status = shell.shortcutStatus();
+      return {
+        request: 'Hold ?',
+        wakeWordPhrase: voiceConfig.wakeWord.phrase,
+        // Report the accelerator the OS actually accepted, so the UI never
+        // claims a shortcut that fell back to a different combination.
+        chatAccelerator: status.chatAccelerator ?? CHAT_SHORTCUT_ACCELERATOR,
+        pushToTalkAccelerator: status.pushToTalkAccelerator ?? PUSH_TO_TALK_ACCELERATOR,
+        chatShortcutRegistered: status.chat,
+        pushToTalkRegistered: status.pushToTalk,
+        wakeWordAvailable: voice !== undefined,
+        ...(voice !== undefined
+          ? {}
+          : { wakeWordReason: 'The wake-word engine is unavailable on this build.' }),
+      };
     },
     microphonePermission,
     voiceEngine: () =>

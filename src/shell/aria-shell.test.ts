@@ -8,6 +8,7 @@ import {
   CHAT_SHORTCUT_ACCELERATOR,
   DEFAULT_KEY_REPERTOIRE,
   PUSH_TO_TALK_ACCELERATOR,
+  PUSH_TO_TALK_ACCELERATORS,
   type KeyEvent,
 } from './window.js';
 import { ORB_RIGHT_MARGIN, ORB_RIGHT_SHIFT_FRACTION, ORB_VERTICAL_CENTER_FRACTION } from './placement.js';
@@ -98,14 +99,32 @@ describe('shell launch', () => {
       PUSH_TO_TALK_ACCELERATOR,
     ]);
     expect(platform.keys.started).toBe(1);
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus()).toEqual({
+      chat: true,
+      pushToTalk: true,
+      chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
+      pushToTalkAccelerator: PUSH_TO_TALK_ACCELERATOR,
+    });
+  });
+
+  it('falls back to the next candidate when the OS refuses the preferred accelerator', () => {
+    const { shell, platform } = build();
+    platform.shortcuts.refused.push(PUSH_TO_TALK_ACCELERATOR);
+    shell.start();
+    expect(shell.shortcutStatus()).toEqual({
+      chat: true,
+      pushToTalk: true,
+      chatAccelerator: CHAT_SHORTCUT_ACCELERATOR,
+      pushToTalkAccelerator: PUSH_TO_TALK_ACCELERATORS[1],
+    });
   });
 
   it('reports an accelerator the OS refused instead of pretending it works', () => {
     const { shell, platform } = build();
-    platform.shortcuts.refused.push(PUSH_TO_TALK_ACCELERATOR);
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
     shell.start();
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: false });
+    expect(shell.shortcutStatus().pushToTalk).toBe(false);
+    expect(shell.shortcutStatus().pushToTalkAccelerator).toBeUndefined();
   });
 
   it('does not start a capture on launch', () => {
@@ -209,7 +228,8 @@ describe('global push-to-talk accelerator', () => {
     expect(shell.shortcutStatus()).toEqual({ chat: false, pushToTalk: false });
     settings.save({ ...DEFAULT_SETTINGS, showOrb: true });
     shell.setShortcuts({ chat: true, pushToTalk: true });
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus().chat).toBe(true);
+    expect(shell.shortcutStatus().pushToTalk).toBe(true);
     platform.shortcuts.fire(CHAT_SHORTCUT_ACCELERATOR);
     await shell.whenIdle();
     platform.shortcuts.fire(PUSH_TO_TALK_ACCELERATOR);
@@ -220,12 +240,14 @@ describe('global push-to-talk accelerator', () => {
   it('releases a shortcut that was turned off after launch, then takes it back', () => {
     const { shell, platform } = build();
     shell.start();
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus().chat).toBe(true);
+    expect(shell.shortcutStatus().pushToTalk).toBe(true);
     shell.setShortcuts({ chat: false, pushToTalk: false });
     expect(shell.shortcutStatus()).toEqual({ chat: false, pushToTalk: false });
     expect(platform.shortcuts.isRegistered(CHAT_SHORTCUT_ACCELERATOR)).toBe(false);
     shell.setShortcuts({ chat: true, pushToTalk: true });
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: true });
+    expect(shell.shortcutStatus().chat).toBe(true);
+    expect(shell.shortcutStatus().pushToTalk).toBe(true);
     expect(platform.shortcuts.accelerators).toEqual([
       CHAT_SHORTCUT_ACCELERATOR,
       PUSH_TO_TALK_ACCELERATOR,
@@ -239,10 +261,11 @@ describe('global push-to-talk accelerator', () => {
       ...DEFAULT_SETTINGS,
       pushToTalkEnabled: false,
     });
-    platform.shortcuts.refused.push(PUSH_TO_TALK_ACCELERATOR);
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
     shell.start();
     shell.setShortcuts({ pushToTalk: true });
-    expect(shell.shortcutStatus()).toEqual({ chat: true, pushToTalk: false });
+    expect(shell.shortcutStatus().chat).toBe(true);
+    expect(shell.shortcutStatus().pushToTalk).toBe(false);
   });
 
   it('releases the global shortcuts when the shell stops', () => {
@@ -698,6 +721,33 @@ describe('tray', () => {
     platform.tray.active = false;
     shell.start();
     expect(shell.trayActive()).toBe(false);
+  });
+
+  it('offers a tray push-to-talk control that captures without any global grab', async () => {
+    const { shell, platform, interactionRuntime } = build({
+      ...DEFAULT_SETTINGS,
+      pushToTalkMode: 'toggle',
+    });
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    expect(shell.shortcutStatus().pushToTalk).toBe(false);
+    platform.tray.item('ptt-now')?.onClick();
+    await shell.whenIdle();
+    expect(interactionRuntime.captureStarts()).toBe(1);
+    expect(shell.isOpen('orb')).toBe(true);
+  });
+
+  it('offers a retry action when every accelerator was refused, and recovers', async () => {
+    const { shell, platform } = build();
+    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
+    shell.start();
+    expect(platform.tray.item('ptt-retry')).toBeDefined();
+    // The desktop frees the combination, then the user retries.
+    platform.shortcuts.refused.length = 0;
+    platform.tray.item('ptt-retry')?.onClick();
+    await shell.whenIdle();
+    expect(shell.shortcutStatus().pushToTalk).toBe(true);
+    expect(platform.tray.item('ptt-retry')).toBeUndefined();
   });
 
   it('offers a Quit action only when the shell is given a way to quit', () => {

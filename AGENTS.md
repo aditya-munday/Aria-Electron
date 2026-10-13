@@ -229,6 +229,13 @@ Rules the router enforces, all with tests:
   (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell, the
   tray and the Control Center all read; a global grab reports key-down only, so
   the shell treats each press per the mode (`hold` pairs it with a release).
+  `window.ts` also exports candidate lists (`CHAT_SHORTCUT_ACCELERATORS`,
+  `PUSH_TO_TALK_ACCELERATORS`) because a desktop environment may already hold the
+  first choice — GNOME grabs `Super+Alt+T` itself — so the shell walks the list
+  and registers the first accelerator the OS accepts. `shortcutStatus()` reports
+  the accelerator that is actually active (or the first tried when none is), and
+  the tray offers a manual push-to-talk trigger and a re-grab action, so a
+  refused grab leaves the feature reachable rather than silently dead.
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
 - `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
@@ -386,9 +393,13 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   fall off; the clamp is against the circle, not the window, so the transparent
   padding may overhang the edge while the visible Orb stays on screen. The
   renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`)
-  draws exactly one circle — core, halo, glow — and keeps the window
+  draws exactly one circle — glass sphere, glow, a conic status ring, a
+  breathing core, a moving sheen and orbiting motes — and keeps the window
   click-through except inside that circle via the `orbSetInteractive` channel
-  and the pure `orb/hit-test.ts`. `orb/backdrop.ts` plans a full-screen material
+  and the pure `orb/hit-test.ts`. The circle is a real control: a click or
+  `Enter`/Space on it opens the chat window (`aria.openChat`), hover lifts and
+  presses the sphere, and the animations stand down under
+  `prefers-reduced-motion`. `orb/backdrop.ts` plans a full-screen material
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle. `state.ts` defines
   `OrbPresence` — the All-Knowledge §7.3 conceptual states, reusing the repo's
@@ -402,7 +413,7 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 619 tests / 63 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 669 tests / 63 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
@@ -429,6 +440,15 @@ The typed/chat turn pipeline above the voice runtime and the supervisor.
   back the opened approval; `rememberApproval` is async and must be awaited
   before `approvalScope` will resolve.
 - `state.ts` / `assemble.ts` — the `ChatState` the renderer consumes.
+- `renderer/chat.ts` (`renderChat`, `bootstrapChat`) — the chat UI, styled by
+  `src/renderer/chat.css`. It renders conversation turns (user/assistant, with
+  rich text: headings, lists, code, links), permission and approval/result
+  blocks, and a composer. Submitting paints the user turn and a pending reply
+  optimistically before the round-trip; while a reply is pending the composer
+  also offers a stop control wired to `interruptSpeech` (barge-in, never a task
+  cancellation). Enter sends, Shift+Enter inserts a newline, Escape clears. The
+  renderer keeps the caret and scroll position across repaints so a live update
+  does not yank the user out of the box.
 
 ## Stop, cancellation, and recovery (`src/control/`, `src/backend/`)
 

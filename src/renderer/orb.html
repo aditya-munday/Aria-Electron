@@ -35,14 +35,22 @@
         place-items: center;
         width: 208px;
         height: 208px;
+        cursor: pointer;
+        outline: none;
         --cue-hue: 262;
         --cue: hsl(var(--cue-hue) 88% 66%);
         --cue-soft: hsl(var(--cue-hue) 85% 60% / 0.34);
       }
 
       .glow,
+      .ring,
+      .orbit,
       .sphere,
-      .specular {
+      .core,
+      .specular,
+      .sheen,
+      .label,
+      .detail {
         pointer-events: none;
       }
 
@@ -54,6 +62,25 @@
         background: radial-gradient(circle, var(--cue-soft) 0%, rgba(0, 0, 0, 0) 66%);
         filter: blur(26px);
         animation: halo-breathe 5.5s ease-in-out infinite;
+      }
+
+      /* A conic sweep ring around the sphere: a quiet liveness cue. */
+      .ring {
+        position: absolute;
+        width: 190px;
+        height: 190px;
+        border-radius: 50%;
+        background: conic-gradient(
+          from 0deg,
+          rgba(0, 0, 0, 0) 0deg,
+          var(--cue-soft) 90deg,
+          rgba(0, 0, 0, 0) 220deg,
+          rgba(0, 0, 0, 0) 360deg
+        );
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+        animation: ring-spin 7s linear infinite;
+        opacity: 0.85;
       }
 
       .sphere {
@@ -71,6 +98,21 @@
           inset 0 0 0 1px rgba(190, 205, 255, 0.16),
           inset 0 0 34px -6px var(--cue-soft),
           0 30px 64px -26px rgba(0, 0, 0, 0.95);
+        transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      /* The hot centre: a soft light that pulses with the voice. */
+      .core {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 44px;
+        height: 44px;
+        margin: -22px 0 0 -22px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0%, var(--cue-soft) 40%, rgba(0, 0, 0, 0) 72%);
+        mix-blend-mode: screen;
+        animation: core-breathe 2.6s ease-in-out infinite;
       }
 
       .glass {
@@ -106,6 +148,49 @@
         mix-blend-mode: screen;
       }
 
+      /* A slow-moving sheen across the upper hemisphere reads as polished glass. */
+      .sheen {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: linear-gradient(115deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0) 58%);
+        mix-blend-mode: screen;
+        animation: sheen-sweep 6s ease-in-out infinite;
+      }
+
+      .orbit {
+        position: absolute;
+        inset: 0;
+        animation: ring-spin 16s linear infinite;
+      }
+
+      .mote {
+        position: absolute;
+        left: 50%;
+        top: 4px;
+        width: 4px;
+        height: 4px;
+        margin-left: -2px;
+        border-radius: 50%;
+        background: var(--cue);
+        box-shadow: 0 0 8px var(--cue);
+        opacity: 0.85;
+      }
+
+      .mote:nth-child(2) {
+        top: auto;
+        bottom: 4px;
+        left: 22%;
+        opacity: 0.5;
+      }
+
+      .mote:nth-child(3) {
+        top: 34%;
+        left: auto;
+        right: 2px;
+        opacity: 0.7;
+      }
+
       .label,
       .detail {
         position: absolute;
@@ -129,20 +214,57 @@
 
       .detail {
         top: calc(50% + 116px);
-        max-width: 280px;
+        max-width: 300px;
         font-size: 11px;
         color: #b9c0dd;
         white-space: normal;
       }
 
+      /* --- interaction feedback ---------------------------------------- */
+
+      .orb:hover .sphere,
+      .orb:focus-visible .sphere {
+        transform: scale(1.05);
+      }
+
+      .orb:focus-visible .ring {
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+      }
+
+      .orb:active .sphere {
+        transform: scale(0.97);
+      }
+
+      /* --- presence-driven motion -------------------------------------- */
+
       .orb[data-cue='pulse'] .sphere {
         animation: pulse-soft 1.6s ease-out infinite;
+      }
+      .orb[data-cue='pulse'] .core {
+        animation-duration: 1.1s;
       }
       .orb[data-cue='waveform'] .sphere {
         animation: breathe 1.7s ease-in-out infinite;
       }
+      .orb[data-cue='waveform'] .core {
+        animation-duration: 0.9s;
+      }
+      .orb[data-cue='bars'] .sphere {
+        animation: breathe 0.9s ease-in-out infinite;
+      }
+      .orb[data-cue='bars'] .core {
+        animation-duration: 0.7s;
+      }
       .orb[data-cue='gear'] .sphere {
         animation: breathe 3.6s ease-in-out infinite;
+      }
+      .orb[data-cue='halt'] .ring,
+      .orb[data-cue='slash'] .ring {
+        animation-play-state: paused;
+        opacity: 0.3;
+      }
+      .orb[data-cue='alert'] .glow {
+        animation-duration: 1.4s;
       }
 
       @keyframes pulse-soft {
@@ -183,6 +305,48 @@
         50% {
           opacity: 1;
           transform: scale(1.06);
+        }
+      }
+
+      @keyframes core-breathe {
+        0%,
+        100% {
+          opacity: 0.7;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.18);
+        }
+      }
+
+      @keyframes ring-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes sheen-sweep {
+        0%,
+        100% {
+          transform: translateX(-18%);
+          opacity: 0.5;
+        }
+        50% {
+          transform: translateX(18%);
+          opacity: 0.9;
+        }
+      }
+
+      /* Respect a user who has asked the OS to reduce motion. */
+      @media (prefers-reduced-motion: reduce) {
+        .glow,
+        .ring,
+        .orbit,
+        .core,
+        .sheen,
+        .sphere {
+          animation: none !important;
         }
       }
     </style>

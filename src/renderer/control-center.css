@@ -1066,3 +1066,106 @@ input[type='range'].rate-slider:focus {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+/* --------------------------------------------------- polish & motion (v2) */
+
+/* A gentle accent wash behind the header ties the accent theme to the chrome. */
+.topbar {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
+}
+
+.card {
+  transition: border-color 240ms var(--ease), box-shadow 240ms var(--ease), transform 240ms var(--ease);
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-2);
+}
+
+/* Cards lift a hair on hover, but only where the pointer can actually hover. */
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.tab:active {
+  transform: scale(0.985);
+}
+
+/* The connection dot breathes while the backend is reachable, so a healthy
+   link reads as alive rather than frozen. */
+.conn[data-state='ok'] .dot {
+  animation: conn-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes conn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(61, 220, 151, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(61, 220, 151, 0);
+  }
+}
+
+/* Skeleton placeholder while a panel's state is still loading. */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(100deg, var(--ink-200) 30%, var(--ink-250) 50%, var(--ink-200) 70%);
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+  min-height: 14px;
+}
+
+.skeleton.block {
+  min-height: 84px;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
+
+/* A clearer empty state: centred, with a soft glyph halo. */
+.empty .big {
+  filter: drop-shadow(0 12px 30px var(--accent-line));
+}
+
+/* Inputs and selects get the same focus language as buttons. */
+input[type='text']:focus,
+input[type='password']:focus,
+input[type='email']:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Key chips read as physical keys: a subtle bevel and a press. */
+.keys .key,
+.keys kbd {
+  transition: transform 140ms var(--ease), background 140ms var(--ease);
+}
+
+.keys .key:active,
+.keys kbd:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card:hover {
+    transform: none;
+  }
+  .conn[data-state='ok'] .dot,
+  .skeleton {
+    animation: none;
+  }
+}
+
