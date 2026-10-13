@@ -31,6 +31,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run pack:deb
+      - run: npm run verify:package
       - name: Locate package
         id: pkg
         run: |

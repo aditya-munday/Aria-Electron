@@ -66,11 +66,23 @@ child.stdout.on('data', (d) => (stdout += d));
 child.stderr.on('data', (d) => (stderr += d));
 
 let exited = false;
-child.on('exit', () => (exited = true));
+let exitCode = null;
+let exitSignal = null;
+child.on('exit', (code, signal) => {
+  exited = true;
+  exitCode = code;
+  exitSignal = signal;
+});
 
-const started = await waitFor(() => !exited, bootMs);
-if (!started) {
-  fail('the app exited during boot', [stdout, stderr].join('\n'));
+// Liveness must be observed over real time: a crashed process exits on its own
+// before the first timer fires, so polling synchronously would report a boot
+// that never happened.
+const bootDeadline = Date.now() + bootMs;
+while (!exited && Date.now() < bootDeadline) {
+  await delay(200);
+}
+if (exited) {
+  fail(`the app exited during boot (code ${exitCode}, signal ${exitSignal})`, [stdout, stderr].join('\n'));
 }
 
 const cleanExit = await terminate(child, exitMs);
@@ -100,8 +112,13 @@ function waitFor(predicate, timeoutMs) {
       if (Date.now() >= deadline) return resolve(false);
       setTimeout(tick, 200);
     };
-    tick();
+    // Defer the first check so the process has real time to react to a signal.
+    setTimeout(tick, 200);
   });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function terminate(proc, timeoutMs) {

@@ -10,7 +10,7 @@ import {
   Tray as ElectronTray,
 } from 'electron';
 
-import { blockExternalNavigation, RENDERER_WEB_PREFERENCES } from './shell/security.js';
+import { applyWebContentsHardening, hardenedWebPreferences } from './shell/security.js';
 import type { Rect } from './shell/geometry.js';
 import type { ScreenInfo, ScreenProvider } from './shell/placement.js';
 import type {
@@ -33,7 +33,7 @@ export interface ElectronPlatformOptions {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererPath = (file: string): string => join(here, 'renderer', file);
-const preloadPath = join(here, 'preload.js');
+const preloadPath = join(here, 'preload.cjs');
 
 const RENDERER_BY_KIND: Record<WindowKind, { file: string; width: number; height: number }> = {
   control_center: { file: 'control-center.html', width: 900, height: 640 },
@@ -183,13 +183,7 @@ class ElectronWindowFactory implements WindowFactory {
       ...(options.panel === true && process.platform === 'darwin'
         ? { type: 'panel' as const }
         : {}),
-      webPreferences: {
-        contextIsolation: RENDERER_WEB_PREFERENCES.contextIsolation,
-        nodeIntegration: RENDERER_WEB_PREFERENCES.nodeIntegration,
-        sandbox: RENDERER_WEB_PREFERENCES.sandbox,
-        webSecurity: RENDERER_WEB_PREFERENCES.webSecurity,
-        preload: preloadPath,
-      },
+      webPreferences: hardenedWebPreferences(preloadPath),
     });
     if (options.alwaysOnTop === true && options.alwaysOnTopLevel !== undefined) {
       window.setAlwaysOnTop(true, options.alwaysOnTopLevel as never);
@@ -202,11 +196,7 @@ class ElectronWindowFactory implements WindowFactory {
     if (kind === 'orb' || kind === 'orb_backdrop') {
       window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     }
-    blockExternalNavigation({
-      willNavigate: (handler) => window.webContents.on('will-navigate', (event) => handler(event.url)),
-      setWindowOpenHandler: (handler) =>
-        window.webContents.setWindowOpenHandler((details) => handler(details.url)),
-    });
+    applyWebContentsHardening(window.webContents);
     const downKeys = new Set<PhysicalKey>();
     window.webContents.on('before-input-event', (_event, input) => {
       const key = PHYSICAL_BY_CODE[input.code];

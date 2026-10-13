@@ -14,7 +14,8 @@ class RecordingRegistrar implements IpcRegistrar {
     const handler = this.handlers.get(channel);
     if (handler === undefined) throw new Error(`no handler for ${channel}`);
     // Mirror ipcMain.handle's (event, ...args) arity so a mis-read argument fails here.
-    return handler({}, ...args);
+    // The event carries an app frame url: the real handlers refuse any other sender.
+    return handler({ senderFrame: { url: 'file:///app/chat.html' } }, ...args);
   }
 }
 
@@ -232,6 +233,20 @@ describe('main-process IPC handlers', () => {
     registerIpcHandlers(registrar, host());
     for (const forbidden of ['aria:token', 'aria:capabilities', 'aria:fetch']) {
       expect(registrar.handlers.has(forbidden)).toBe(false);
+    }
+  });
+
+  it('refuses every channel when the sender is not an app frame', () => {
+    const registrar = new RecordingRegistrar();
+    registerIpcHandlers(registrar, host());
+    for (const channel of Object.values(IPC_CHANNELS)) {
+      const handler = registrar.handlers.get(channel);
+      expect(handler).toBeDefined();
+      expect(() => handler?.({ senderFrame: { url: 'https://evil.example' } })).toThrow(
+        /untrusted sender/,
+      );
+      expect(() => handler?.({ senderFrame: null })).toThrow(/untrusted sender/);
+      expect(() => handler?.({})).toThrow(/untrusted sender/);
     }
   });
 });

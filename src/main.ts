@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
+import { applyWebContentsHardening } from './shell/security.js';
 import { InteractionController } from './interaction/interaction-controller.js';
 import type { InteractionRuntime } from './interaction/interaction-controller.js';
 import { AriaRuntime } from './runtime.js';
@@ -42,6 +43,9 @@ if (!gotLock) {
   // live process.
   app.quit();
 } else {
+  // A privileged renderer must never run unsandboxed: this default applies to
+  // every window, including one created without explicit webPreferences.
+  app.enableSandbox();
   app.on('second-instance', () => {
     shellRef?.open('control_center');
   });
@@ -61,6 +65,15 @@ function main(): void {
   });
   process.on('uncaughtException', (error) => errors.report('uncaughtException', error));
   process.on('unhandledRejection', (reason) => errors.report('unhandledRejection', reason));
+
+  // A renderer that escapes its own preferences must still be contained. This
+  // runs for every webContents the app ever creates — including one a future
+  // window kind might add — and re-applies the navigation/permission policy at
+  // the process boundary.
+  app.on('web-contents-created', (_event, contents) => {
+    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    applyWebContentsHardening(contents);
+  });
 
   const voiceConfig = loadVoiceConfig();
   const audio = createNativeAudio({

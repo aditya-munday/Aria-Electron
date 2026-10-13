@@ -277,9 +277,18 @@ export {
 export { registerIpcHandlers, type IpcHost } from './shell/ipc-handlers.js';
 export {
   RENDERER_WEB_PREFERENCES,
-  blockExternalNavigation,
+  ALLOWED_PERMISSIONS,
+  applyWebContentsHardening,
+  hardenedWebPreferences,
+  isAppUrl,
+  isPermissionAllowed,
+  isTrustedSender,
+  type HardenedWebContents,
+  type IpcSenderEvent,
+  type NavigationEvent,
+  type PermissionDetails,
+  type RendererWebPreferences,
   type RendererWindowSecurity,
-  type ExternalNavigationGuard,
 } from './shell/security.js';
 export { createFileSettingsStore } from './shell/settings-file.js';
 

@@ -7,13 +7,14 @@
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-renderer.mjs && node scripts/bundle-renderer.mjs",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-renderer.mjs && node scripts/bundle-renderer.mjs",
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run typecheck && npm run test",
+    "ci": "npm run typecheck && npm run test && npm run build",
+    "verify:package": "node scripts/verify-package.mjs",
     "pack:deb": "npm run build && electron-builder --linux deb --x64 --publish never",
-    "smoke:deb": "npm run pack:deb && node scripts/smoke-deb.mjs"
+    "smoke:deb": "npm run pack:deb && node scripts/verify-package.mjs && node scripts/smoke-deb.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -45,8 +46,22 @@
     },
     "files": [
       "dist/**/*",
+      "!dist/**/*.map",
+      "!dist/**/*.d.ts",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.d.ts",
       "package.json"
     ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "linux": {
       "target": [
         {

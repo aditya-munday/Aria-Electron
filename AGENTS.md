@@ -417,3 +417,49 @@ hosts, URLs, bare IPs, bearer/JWT credentials and email addresses before it is
 shown in a diagnostic or incident, so raw backend detail cannot leak through a
 log line the user can read. Callers (`control-center-service.ts`,
 `control-center-runtime.ts`) pass detail through it rather than rendering it.
+
+## Security posture
+
+`shell/security.ts` is the single source of the renderer hardening policy.
+
+- `RENDERER_WEB_PREFERENCES` runs every window with `contextIsolation: true`,
+  `nodeIntegration: false`, `sandbox: true`, `webSecurity: true`, no webview, no
+  devtools and `safeDialogs`. `main.ts` also calls `app.enableSandbox()` so a
+  window created without explicit preferences still cannot run unsandboxed.
+- `applyWebContentsHardening(webContents)` installs, per webContents: navigation
+  and redirect cancelled unless the URL is an app `file://` page, a
+  `setWindowOpenHandler` that denies every popup with no shell fallback, a
+  `will-attach-webview` that denies, and permission handlers that grant only the
+  microphone and only to a main frame on an app page. It is applied in
+  `electron-platform.ts` at window creation and again in `main.ts` from
+  `app.on('web-contents-created')`, so it holds for any window the app ever
+  creates.
+- The preload is bundled by `scripts/bundle-renderer.mjs` to a single
+  `dist/preload.cjs` that only `require`s `electron`, so it runs inside the
+  sandbox without a module loader. The context bridge is fixed at build time;
+  `shell/ipc.ts` exposes only `BRIDGE_METHODS` and never a token or raw
+  `ipcRenderer`.
+- `registerIpcHandlers` (`shell/ipc-handlers.ts`) wraps every channel with
+  `isTrustedSender`: a handler refuses a message whose `senderFrame.url` is not
+  an app page, so a privileged handler never acts on an untrusted frame.
+
+## Packaging integrity
+
+- Electron fuses are set in `package.json` (`build.electronFuses`): `runAsNode`,
+  `enableNodeOptionsEnvironmentVariable`, `enableNodeCliInspectArguments` and
+  `grantFileProtocolExtraPrivileges` are disabled; `enableCookieEncryption`,
+  `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are enabled.
+  `loadBrowserProcessSpecificV8Snapshot` is left off on purpose — Electron's
+  prebuilt Linux binary ships no browser-specific snapshot, so enabling it makes
+  the app abort at boot with "Error loading V8 startup snapshot file".
+- The shipped asar must carry no reverse-engineering surface. `tsconfig.json`
+  builds with `sourceMap: false`; `tsconfig.build.json` excludes tests and the
+  preload; `scripts/clean-dist.mjs` wipes `dist` before every build;
+  `scripts/copy-renderer.mjs` prunes any stray `.ts`/`.map` from the copied
+  renderer; and `build.files` excludes `*.map` and `*.d.ts`. Renderer bundles are
+  minified. `scripts/verify-package.mjs` asserts the packaged asar has no maps,
+  declarations or test sources, and `npm run smoke:deb` runs it before the boot
+  smoke test.
+- `scripts/smoke-deb.mjs` observes boot liveness over real time: a process that
+  crashes on start exits before the first poll, so the old synchronous check
+  could report a boot that never happened.
