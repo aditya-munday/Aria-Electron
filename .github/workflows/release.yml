@@ -45,6 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
           sudo apt-get install -y "./${{ steps.pkg.outputs.file }}"
+          sudo chmod 4755 /opt/Aria/chrome-sandbox
           node scripts/smoke-deb.mjs --no-install "${{ steps.pkg.outputs.file }}"
       - name: Checksum
         run: sha256sum "${{ steps.pkg.outputs.file }}" > "${{ steps.pkg.outputs.file }}.sha256"

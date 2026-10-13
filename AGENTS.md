@@ -21,17 +21,31 @@ the AI-Engineer task executor.
 
 - Node ≥ 20, TypeScript strict ESM (NodeNext, `exactOptionalPropertyTypes`,
   `noUncheckedIndexedAccess`, `verbatimModuleSyntax`).
-- `npm run ci` = `npm run typecheck && npm run test` (vitest).
+- `npm run ci` = `npm run typecheck && npm run test && npm run build && npm run security:check`.
+- `npm run security:check` (`scripts/security-check.mjs`) fails on an Electron
+  downgrade below the supported floor, a high/critical production-dependency
+  advisory, or a weakened renderer CSP. Electron ships inside the `.deb` but is a
+  devDependency, so `npm audit --omit=dev` never sees it and the floor is what
+  guards it. The floor is bumped whenever the runtime is upgraded.
 - `npm run build` = `tsc -p tsconfig.build.json` plus the renderer copy/bundle.
 - `npm run pack:deb` = build, then `electron-builder --linux deb --x64 --publish never`
   into `release/` (`aria-electron_<version>_amd64.deb`). The package installs to
   `/opt/Aria`, provides `/usr/bin/aria-desktop` and an `aria-desktop.desktop`
   launcher. `--publish never` matters: without it electron-builder treats a tag
   build as an implicit publish and aborts when no `GH_TOKEN` is set.
-- `npm run smoke:deb` = `pack:deb`, then `scripts/smoke-deb.mjs`, which installs
-  the `.deb` and boots the app under `xvfb-run`. Install the package with `apt`
-  (not a bare `dpkg -i`) so declared dependencies (`libnotify4`, `libxss1`, …)
-  resolve; pass `--no-install` when it is already installed.
+- `npm run smoke:deb` = `pack:deb`, then `security:check`, `verify:package`, then
+  `scripts/smoke-deb.mjs`, which installs the `.deb` and boots the app sandboxed
+  (no `--no-sandbox`). Install the package with `apt` (not a bare `dpkg -i`) so
+  declared dependencies (`libnotify4`, `libxss1`, …) resolve and its postinst
+  runs; pass `--no-install` when it is already installed.
+- The smoke launches through `xvfb-run` when present, else a real `DISPLAY`, else
+  Ozone headless. Electron's BrowserWindow needs an X server: under Ozone
+  headless in a display-less container it SIGSEGVs (even a trivial window), a
+  hierarchy with no window boots fine. It refuses to run unless the sandbox is
+  usable — `/opt/Aria/chrome-sandbox` root-owned mode 4755, or unprivileged user
+  namespaces work — and `--allow-unconfigured-sandbox` overrides that. On a host
+  where Chromium's user-namespace sandbox is blocked, the SUID helper is what
+  makes the sandbox engage, so it must be 4755.
 - `.github/workflows/release.yml` runs on `aria-v*` tags: a `gate` job runs
   `npm run ci`, then `package` builds the `.deb`, smoke-tests the install, and
   attaches the `.deb` plus its `.sha256` to the GitHub release.
@@ -428,12 +442,18 @@ log line the user can read. Callers (`control-center-service.ts`,
   window created without explicit preferences still cannot run unsandboxed.
 - `applyWebContentsHardening(webContents)` installs, per webContents: navigation
   and redirect cancelled unless the URL is an app `file://` page, a
-  `setWindowOpenHandler` that denies every popup with no shell fallback, a
-  `will-attach-webview` that denies, and permission handlers that grant only the
-  microphone and only to a main frame on an app page. It is applied in
-  `electron-platform.ts` at window creation and again in `main.ts` from
-  `app.on('web-contents-created')`, so it holds for any window the app ever
-  creates.
+  `setWindowOpenHandler` that denies every popup with no shell fallback, and a
+  `will-attach-webview` that denies. It is applied in `electron-platform.ts` at
+  window creation and again in `main.ts` from `app.on('web-contents-created')`,
+  so it holds for any window the app ever creates.
+- `applySessionHardening(session)` installs the session-scoped policy once, in
+  `main.ts`, before any window exists: every remote request a renderer makes
+  (`http`/`https`/`ws`/`wss`/`ftp`) is cancelled by `webRequest.onBeforeRequest`
+  — the renderer has no network business, and the backend is reached only from
+  the main process via `FetchTransport` (`fetch`), which is unaffected. It also
+  grants only the microphone, and only to a main frame on an app page, and
+  denies device (HID/USB/serial) and screen-capture outright. `clearSessionStorage`
+  runs on `will-quit`.
 - The preload is bundled by `scripts/bundle-renderer.mjs` to a single
   `dist/preload.cjs` that only `require`s `electron`, so it runs inside the
   sandbox without a module loader. The context bridge is fixed at build time;
