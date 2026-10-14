@@ -5,6 +5,32 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.0] - 2026-10-14
+
+### Added
+- The Orb is the `exprmntl/orb-ui` radial theme, "ultra strong". The exact
+  upstream GLSL fragment shader, motion recipe and six-state model live in
+  `src/orb/renderer/radial.ts`; `RADIAL_ULTRA` pushes every motion knob past the
+  upstream "expressive" preset so the presence reads as forceful rather than
+  polite. Aria's twelve presences fold onto the six states, and the CSS conic
+  face is the fallback when WebGL is unavailable.
+- Wake word runs on-device through VoxRT (`@voxrt/wake-word-browser`): a
+  WebAssembly runtime plus a trained "Hey Assistant" model, with no network, no
+  API key and no native build. The renderer owns the microphone and reports a
+  detection back to the runtime, which runs the same activation path as the
+  local listener.
+- The brand mark is the shipped logo (`build/icon.png`, `src/renderer/logo.png`)
+  rendered as an image in the Control Center header and the chat empty-state
+  hero, so the logo has one source of truth.
+
+### Changed
+- Aria has no system tray. Closing a window only hides it and the process stays
+  resident; quitting is an explicit Control Center action that warns it stops
+  wake-word listening and the global shortcuts.
+
+### Removed
+- The system tray icon, its menu, and the `tray-icon.ts` embedded PNG.
+
 ## [0.6.1] - 2026-10-14
 
 ### Fixed
@@ -119,3 +145,4 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [0.3.0]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.3.0
 [0.4.0]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.4.0
 [0.6.1]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.6.1
+[0.7.0]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.7.0
