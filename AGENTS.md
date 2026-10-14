@@ -652,3 +652,10 @@ log line the user can read. Callers (`control-center-service.ts`,
 - `scripts/smoke-deb.mjs` observes boot liveness over real time: a process that
   crashes on start exits before the first poll, so the old synchronous check
   could report a boot that never happened.
+- `build.deb.afterInstall` (`build/linux/after-install.sh`) ends any running
+  `aria-desktop` during an in-place upgrade. The app holds a single-instance
+  lock and older releases stayed resident with a system tray, so without this a
+  freshly installed build would only hand focus to the still-running old
+  process: the user would keep seeing the old UI and the old tray until they
+  logged out. Verify a change here by extracting `control.tar.xz` from the built
+  deb and reading `postinst`.
