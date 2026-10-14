@@ -48,7 +48,10 @@ jobs:
           sudo chmod 4755 /opt/Aria/chrome-sandbox
           node scripts/smoke-deb.mjs --no-install "${{ steps.pkg.outputs.file }}"
       - name: Checksum
-        run: sha256sum "${{ steps.pkg.outputs.file }}" > "${{ steps.pkg.outputs.file }}.sha256"
+        run: |
+          cd release
+          sha256sum "$(basename "${{ steps.pkg.outputs.file }}")" \
+            > "$(basename "${{ steps.pkg.outputs.file }}").sha256"
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
