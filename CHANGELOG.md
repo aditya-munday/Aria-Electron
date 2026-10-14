@@ -5,6 +5,17 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.1] - 2026-10-14
+
+### Fixed
+- An in-place upgrade now ends a running Aria before the new files land
+  (`build/linux/after-install.sh`, wired as `build.deb.afterInstall`). The app
+  takes a single-instance lock, and the previous release stayed resident with a
+  system tray, so a freshly installed 0.7.0 handed focus to the still-running
+  0.6.1 process: the user kept seeing the old Control Center and the old tray
+  until they logged out. The post-install step removes that stale instance so
+  the next launch starts the new version.
+
 ## [0.7.0] - 2026-10-14
 
 ### Added

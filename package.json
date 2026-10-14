@@ -1,6 +1,6 @@
 {
   "name": "aria-desktop",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Aria — the local-first voice assistant desktop client (Electron).",
   "type": "module",
@@ -93,7 +93,8 @@
         "libdrm2",
         "libgbm1",
         "libasound2"
-      ]
+      ],
+      "afterInstall": "build/linux/after-install.sh"
     }
   },
   "desktopName": "aria-desktop.desktop"
