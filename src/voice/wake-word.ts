@@ -210,7 +210,7 @@ export interface WakeWordConfig {
 
 export const DEFAULT_WAKE_WORD: WakeWordConfig = {
   enabled: false,
-  phrase: 'hey aria',
+  phrase: 'hey assistant',
   minConfidence: 0.5,
   cooldownMs: 1_500,
 };

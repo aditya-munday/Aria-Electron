@@ -31,13 +31,12 @@ import type { VoiceRuntimeConfig } from './voice-config.js';
 import { validateVoiceConfig } from './voice-config.js';
 import {
   createNativeWakeWordDetector,
-  EngineWakeWordDetector,
   WakeWordController,
   type WakeWordDetector,
   type WakeWordStatus,
 } from './wake-word.js';
 import { WakeWordListener } from './wake-listener.js';
-import { createWakePhraseEngine } from './wake-phrase-engine.js';
+import { createVoxrtDetector } from './voxrt-detector.js';
 import { FarEndReference } from './echo-cancellation.js';
 
 export interface VoiceRuntimeDiagnostics {
@@ -415,6 +414,23 @@ export class VoiceRuntime {
     this.current = undefined;
   }
 
+  /**
+   * A wake-word detection reported from outside the runtime, e.g. the renderer
+   * process, which owns the live microphone stream. It runs the same activation
+   * path as the local listener: begin a wake-word session and start capture.
+   * Detection is gated on the wake-word setting, so a disabled control never
+   * opens the microphone.
+   */
+  async activateWakeWord(input: {
+    readonly phrase: string;
+    readonly confidence: number;
+    readonly detectorId: string;
+  }): Promise<void> {
+    if (!this.wakeWord.isEnabled()) return;
+    if (input.confidence < this.config.wakeWord.minConfidence) return;
+    await this.onWakeActivation(input);
+  }
+
   /** Mute capture for the current session without ending the runtime. */
   async muteCapture(): Promise<void> {
     if (this.current === undefined) return;
@@ -559,9 +575,9 @@ export class VoiceRuntime {
       };
     }
     if (deps.wakeWordDetector !== undefined) return deps.wakeWordDetector;
-    // No injected detector: prefer a configured native engine, but fall back to
-    // the built-in offline phrase spotter so detection works on a stock install
-    // rather than failing with a "model not installed" blocker.
+    // No injected detector: use the VoxRT on-device engine, which ships a
+    // trained "Hey Assistant" model and needs no API key, no model download and
+    // no native build. `ARIA_WAKE_ENGINE` can still point at an alternate engine.
     const engineModule = process.env['ARIA_WAKE_ENGINE']?.trim();
     if (engineModule !== undefined && engineModule !== '') {
       return createNativeWakeWordDetector({
@@ -571,10 +587,7 @@ export class VoiceRuntime {
         sampleRate: deps.config.sampleRate,
       });
     }
-    return new EngineWakeWordDetector(
-      createWakePhraseEngine(deps.config.wakeWord.phrase, deps.config.sampleRate, {
-        frameMs: deps.config.vad.frameMs,
-      }),
-    );
+    const modelPath = process.env['ARIA_WAKE_MODEL']?.trim();
+    return createVoxrtDetector(modelPath === undefined || modelPath === '' ? undefined : modelPath);
   }
 }

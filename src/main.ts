@@ -43,9 +43,8 @@ let shellRef: AriaShell | undefined;
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   // A second launch would fail to grab the global shortcuts anyway (the OS
-  // grants each accelerator once) and would raise a duplicate tray. Hand the
-  // focus to the running instance and exit, so the shortcuts stay owned by the
-  // live process.
+  // grants each accelerator once). Hand the focus to the running instance and
+  // exit, so the shortcuts stay owned by the live process.
   app.quit();
 } else {
   // A privileged renderer must never run unsandboxed: this default applies to
@@ -341,6 +340,18 @@ function main(): void {
     decidePermission: (input: unknown): Promise<ChatActionResult> => chat.decidePermission(input),
     cancelTask: (input: unknown): Promise<ChatActionResult> => chat.cancelTask(input),
     emergencyStop: (): Promise<EmergencyStopView> => chat.emergencyStop(),
+    quit: (): void => shell.quit(),
+    retryShortcuts: (): void => shell.retryShortcuts(),
+    wakeWordDetected: (payload): void => {
+      // The renderer owns the microphone and the VoxRT engine, so the detection
+      // arrives here; run the same activation path as the local listener and
+      // surface the Orb, exactly as an in-process detection would.
+      if (voice === undefined) return;
+      shell.setOrbVisible(true);
+      void voice.activateWakeWord(payload).catch((error: unknown) => {
+        errors.report('wake word', error);
+      });
+    },
   });
 
   shell.start();
@@ -376,10 +387,10 @@ function main(): void {
 
   void runtime.startVoice().catch(() => undefined);
 
-  // A tray owns quit when it exists; without one, closing every window must end
-  // the process rather than strand it windowless.
   app.on('window-all-closed', () => {
-    if (!shell.trayActive()) app.quit();
+    // Aria has no system tray and no windowless exit: closing a window only
+    // hides it, and the process stays resident so wake word and the global
+    // shortcuts keep working. Quitting is an explicit Control Center action.
   });
   app.on('will-quit', () => {
     orbDismissal?.stop();
