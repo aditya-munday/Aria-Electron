@@ -124,16 +124,19 @@ function bridge(stateValue: ControlCenterState): {
   signIns: unknown[];
   awaitCalls: { count: number };
   previews: unknown[];
+  retryCalls: { count: number };
 } {
   const patches: unknown[] = [];
   const signIns: unknown[] = [];
   const previews: unknown[] = [];
   const awaitCalls = { count: 0 };
+  const retryCalls = { count: 0 };
   return {
     patches,
     signIns,
     previews,
     awaitCalls,
+    retryCalls,
     bridge: {
       controlCenterState: async () => stateValue,
       updateSettings: async (patch) => {
@@ -159,6 +162,10 @@ function bridge(stateValue: ControlCenterState): {
       },
       cancelLogin: async () => undefined,
       openChat: async () => undefined,
+      quit: async () => undefined,
+      retryShortcuts: async () => {
+        retryCalls.count += 1;
+      },
     },
   };
 }
@@ -189,9 +196,9 @@ function render(
     | 'general' = 'profile',
 ) {
   mount();
-  const { bridge: b, patches, signIns, previews, awaitCalls } = bridge(value);
+  const { bridge: b, patches, signIns, previews, awaitCalls, retryCalls } = bridge(value);
   renderControlCenter(document, value, b, tab);
-  return { patches, signIns, previews, awaitCalls };
+  return { patches, signIns, previews, awaitCalls, retryCalls };
 }
 
 describe('control center renderer', () => {
@@ -246,11 +253,12 @@ describe('control center renderer', () => {
     }
   });
 
-  it('renders the brand as an inline mark, not a bare circle', () => {
+  it('renders the shipped brand image as the mark, not a bare circle', () => {
     render(state());
-    const glyph = document.querySelector('.brand-mark svg');
+    const glyph = document.querySelector('.brand-mark .brand-glyph');
     expect(glyph).not.toBeNull();
-    expect(glyph?.getAttribute('aria-label')).toBe('Aria');
+    expect(glyph?.getAttribute('alt')).toBe('Aria');
+    expect((glyph as HTMLImageElement).getAttribute('src')).toBe('./logo.png');
   });
 
   it('renders a Beyonders sign-in control when signed out', () => {
@@ -416,6 +424,20 @@ describe('control center renderer', () => {
     toggle.checked = false;
     toggle.dispatchEvent(new Event('change'));
     expect(patches).toContainEqual({ chatShortcutEnabled: false });
+  });
+
+  it('offers a re-grab instead of a dead feature when a shortcut grab was refused', () => {
+    const value = state();
+    value.activation.pushToTalk.globalRegistered = false;
+    value.activation.chatShortcut.registered = false;
+    const { retryCalls } = render(value, 'activation');
+    const ptt = document.getElementById('retry-push-to-talk') as HTMLButtonElement;
+    const chat = document.getElementById('retry-chat-shortcut') as HTMLButtonElement;
+    expect(ptt).not.toBeNull();
+    expect(chat).not.toBeNull();
+    ptt.click();
+    chat.click();
+    expect(retryCalls.count).toBe(2);
   });
 
   it('sends a null to clear the language when automatic is chosen', () => {

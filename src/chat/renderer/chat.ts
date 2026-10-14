@@ -315,7 +315,12 @@ const QUICK_STARTS = [
 function emptyHero(doc: Document, bridge: ChatBridge, refresh: () => void): El {
   const hero = h(doc, 'div', 'hero');
   const mark = h(doc, 'div', 'hero-mark');
-  mark.append(icon(doc, 'spark'));
+  const logo = doc.createElement('img');
+  logo.className = 'hero-logo';
+  logo.src = './logo.png';
+  logo.alt = 'Aria';
+  logo.draggable = false;
+  mark.append(logo);
   const title = h(doc, 'h3', 'hero-title');
   title.textContent = 'How can I help today?';
   const sub = h(doc, 'p', 'hero-sub');

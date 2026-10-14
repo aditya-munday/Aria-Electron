@@ -10,6 +10,8 @@ export interface ControlCenterBridge {
   awaitLogin(): Promise<{ ok: boolean; reason?: string }>;
   cancelLogin(): Promise<void>;
   openChat(): Promise<void>;
+  quit(): Promise<void>;
+  retryShortcuts(): Promise<void>;
 }
 
 type El = HTMLElement;
@@ -115,106 +117,17 @@ function icon(doc: Document, path: string): SVGSVGElement {
 }
 
 /**
- * The Aria mark: a smoked glass sphere with the same prism ribbon the Orb
- * paints, so the logo and the presence read as one identity. Drawn as SVG so it
- * stays crisp at every size and needs no image asset.
+ * The Aria mark: the shipped brand image, scaled by CSS. Drawn as an <img> so
+ * the logo is the single source of truth shared with the desktop icon rather
+ * than a second, hand-drawn approximation.
  */
-function brandMark(doc: Document): SVGSVGElement {
-  const SVG = 'http://www.w3.org/2000/svg';
-  const svg = doc.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 40 40');
-  svg.setAttribute('class', 'brand-glyph');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Aria');
-
-  const defs = doc.createElementNS(SVG, 'defs');
-
-  const body = doc.createElementNS(SVG, 'radialGradient');
-  body.setAttribute('id', 'aria-glass');
-  body.setAttribute('cx', '38%');
-  body.setAttribute('cy', '32%');
-  body.setAttribute('r', '78%');
-  for (const [offset, color] of [
-    ['0%', '#2b3452'],
-    ['55%', '#141828'],
-    ['100%', '#05060d'],
-  ] as const) {
-    const stop = doc.createElementNS(SVG, 'stop');
-    stop.setAttribute('offset', offset);
-    stop.setAttribute('stop-color', color);
-    body.append(stop);
-  }
-
-  const ribbon = doc.createElementNS(SVG, 'linearGradient');
-  ribbon.setAttribute('id', 'aria-ribbon');
-  ribbon.setAttribute('x1', '0%');
-  ribbon.setAttribute('y1', '0%');
-  ribbon.setAttribute('x2', '100%');
-  ribbon.setAttribute('y2', '0%');
-  for (const [offset, color] of [
-    ['0%', '#ff5d5d'],
-    ['22%', '#ffb14d'],
-    ['46%', '#7dff8f'],
-    ['70%', '#4dd2ff'],
-    ['100%', '#7c5cff'],
-  ] as const) {
-    const stop = doc.createElementNS(SVG, 'stop');
-    stop.setAttribute('offset', offset);
-    stop.setAttribute('stop-color', color);
-    ribbon.append(stop);
-  }
-
-  const shine = doc.createElementNS(SVG, 'radialGradient');
-  shine.setAttribute('id', 'aria-shine');
-  shine.setAttribute('cx', '50%');
-  shine.setAttribute('cy', '50%');
-  shine.setAttribute('r', '50%');
-  for (const [offset, color, opacity] of [
-    ['0%', '#ffffff', '0.6'],
-    ['60%', '#ffffff', '0.04'],
-    ['100%', '#ffffff', '0'],
-  ] as const) {
-    const stop = doc.createElementNS(SVG, 'stop');
-    stop.setAttribute('offset', offset);
-    stop.setAttribute('stop-color', color);
-    stop.setAttribute('stop-opacity', opacity);
-    shine.append(stop);
-  }
-
-  defs.append(body, ribbon, shine);
-
-  const sphere = doc.createElementNS(SVG, 'circle');
-  sphere.setAttribute('cx', '20');
-  sphere.setAttribute('cy', '20');
-  sphere.setAttribute('r', '18');
-  sphere.setAttribute('fill', 'url(#aria-glass)');
-  sphere.setAttribute('stroke', 'rgba(190,205,255,0.22)');
-  sphere.setAttribute('stroke-width', '1');
-
-  const band = doc.createElementNS(SVG, 'path');
-  band.setAttribute('d', 'M4 15 C 13 10, 27 10, 36 15 L 36 25 C 27 30, 13 30, 4 25 Z');
-  band.setAttribute('fill', 'url(#aria-ribbon)');
-  band.setAttribute('opacity', '0.85');
-
-  const clip = doc.createElementNS(SVG, 'clipPath');
-  clip.setAttribute('id', 'aria-sphere-clip');
-  const clipCircle = doc.createElementNS(SVG, 'circle');
-  clipCircle.setAttribute('cx', '20');
-  clipCircle.setAttribute('cy', '20');
-  clipCircle.setAttribute('r', '18');
-  clip.append(clipCircle);
-  defs.append(clip);
-  band.setAttribute('clip-path', 'url(#aria-sphere-clip)');
-
-  const highlight = doc.createElementNS(SVG, 'ellipse');
-  highlight.setAttribute('cx', '13.5');
-  highlight.setAttribute('cy', '12');
-  highlight.setAttribute('rx', '7');
-  highlight.setAttribute('ry', '5');
-  highlight.setAttribute('fill', 'url(#aria-shine)');
-
-  svg.append(defs, sphere, band, highlight);
-  return svg;
+function brandMark(doc: Document): HTMLImageElement {
+  const img = doc.createElement('img');
+  img.className = 'brand-glyph';
+  img.src = './logo.png';
+  img.alt = 'Aria';
+  img.draggable = false;
+  return img;
 }
 
 function card(doc: Document, title: string, className = ''): El {
@@ -577,7 +490,18 @@ function generalPanel(
     ),
   );
 
-  panel.append(presence, theme, notifications);
+  const quitCard = card(doc, 'Stopping Aria');
+  quitCard.append(
+    hint(
+      doc,
+      'Aria has no system tray, so nothing else keeps it running. Quitting stops wake-word listening and the global shortcuts: Aria will not be there for help until you launch it again.',
+    ),
+    button(doc, 'quit-aria', 'Quit Aria', 'danger', true, () => {
+      void bridge.quit();
+    }),
+  );
+
+  panel.append(presence, theme, notifications, quitCard);
   return panel;
 }
 
@@ -1153,13 +1077,18 @@ function activationPanel(
   globalRow.append(globalLabel, keys(doc, activation.pushToTalk.globalAccelerator));
   voiceCard.append(globalRow);
   if (!activation.pushToTalk.globalRegistered) {
-    // Every candidate was refused; point at the tray control and the re-grab.
+    // Every candidate was refused; offer a re-grab rather than a dead feature.
     const warn = h(doc, 'p', 'muted reason');
     text(
       warn,
-      `No global push-to-talk shortcut could be grabbed (tried ${activation.pushToTalk.globalAccelerator} first); another application holds the combination. Use “Push to talk” in the tray, or “Retry push-to-talk shortcut” once it is free.`,
+      `No global push-to-talk shortcut could be grabbed (tried ${activation.pushToTalk.globalAccelerator} first); another application holds the combination.`,
     );
-    voiceCard.append(warn);
+    voiceCard.append(
+      warn,
+      button(doc, 'retry-push-to-talk', 'Retry push-to-talk shortcut', 'ghost small', true, () => {
+        void bridge.retryShortcuts().then(refresh);
+      }),
+    );
   } else {
     const ok = h(doc, 'p', 'muted');
     text(ok, `Registered globally as ${activation.pushToTalk.globalAccelerator}.`);
@@ -1213,7 +1142,12 @@ function activationPanel(
       warn,
       `Another application holds ${activation.chatShortcut.accelerator}; the chat shortcut is unavailable.`,
     );
-    shortcuts.append(warn);
+    shortcuts.append(
+      warn,
+      button(doc, 'retry-chat-shortcut', 'Retry chat shortcut', 'ghost small', true, () => {
+        void bridge.retryShortcuts().then(refresh);
+      }),
+    );
   }
 
   panel.append(voiceCard, shortcuts);

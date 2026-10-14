@@ -73,8 +73,11 @@ body::after {
 }
 
 .brand-glyph {
+  display: block;
   width: 38px;
   height: 38px;
+  object-fit: contain;
+  border-radius: 11px;
   filter: drop-shadow(0 6px 16px rgba(60, 40, 140, 0.55));
 }
 
