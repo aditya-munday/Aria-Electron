@@ -54,25 +54,32 @@ describe('orb renderer', () => {
     expect(root.querySelector('[data-testid="orb-label"]')?.textContent).toBe('Idle');
   });
 
-  it('draws a single glass sphere with a glow, no frame elements', () => {
+  it('draws a single radial sphere with a glow, no frame elements', () => {
     const root = render(state());
     expect(root.querySelectorAll('.sphere')).toHaveLength(1);
-    expect(root.querySelectorAll('.glass')).toHaveLength(1);
+    expect(root.querySelectorAll('.radial-surface')).toHaveLength(1);
     expect(root.querySelectorAll('.glow')).toHaveLength(1);
     expect(root.querySelector('.panel')).toBeNull();
     expect(root.querySelector('.frame')).toBeNull();
   });
 
-  it('paints the prism ribbon into a canvas and hides it from assistive tech', () => {
+  it('paints the radial surface into a canvas and hides it from assistive tech', () => {
     const root = render(state());
-    const canvas = root.querySelector('canvas.glass') as HTMLCanvasElement;
+    const canvas = root.querySelector('canvas.radial-surface') as HTMLCanvasElement;
     expect(canvas).not.toBeNull();
     expect(canvas.getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('falls back to the CSS glass when no canvas context is available', () => {
+  it('falls back to the CSS radial face when no WebGL context is available', () => {
     const root = render(state());
-    expect(root.querySelector('.sphere')?.classList.contains('glass-fallback')).toBe(true);
+    expect(root.querySelector('.sphere')?.classList.contains('radial-fallback')).toBe(true);
+  });
+
+  it('maps each presence onto a radial state the shader can animate', () => {
+    const root = render(state({ presence: 'speaking', cue: 'bars', label: 'Speaking' }));
+    const orb = root.querySelector('.orb') as HTMLElement;
+    expect(orb.getAttribute('data-orb-ui-state')).toBe('speaking');
+    expect(orb.getAttribute('data-orb-ui-theme')).toBe('radial-ultra');
   });
 
   it('tints the glass with a cue-specific accent hue', () => {

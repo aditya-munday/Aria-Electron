@@ -1,6 +1,18 @@
 import type { OrbState, OrbCue, OrbPresence } from '../state.js';
 import { orbHitTest } from '../hit-test.js';
 import { ORB_WINDOW_SIZE } from '../window-options.js';
+import {
+  RADIAL_ULTRA,
+  clamp,
+  createRadialRenderer,
+  followDuration,
+  irregularSpeakingTempo,
+  radialMotionFor,
+  radialRotationTarget,
+  type RadialConfig,
+  type RadialRenderer,
+  type RadialState,
+} from './radial.js';
 
 export interface OrbBridge {
   orbState(): Promise<OrbState>;
@@ -41,6 +53,24 @@ const PRESENCE_HINT: Readonly<Record<OrbPresence, string>> = {
   muted: 'Tap to unmute',
 };
 
+// Aria has more presences than the upstream radial theme has states; each one
+// folds into the nearest radial state so the motion never falls back to a blank
+// idle when the app is actually busy.
+const RADIAL_STATE: Readonly<Record<OrbPresence, RadialState>> = {
+  hidden: 'idle',
+  idle: 'idle',
+  listening: 'listening',
+  thinking: 'thinking',
+  speaking: 'speaking',
+  interrupted: 'idle',
+  awaiting_approval: 'thinking',
+  awaiting_input: 'thinking',
+  task_running: 'thinking',
+  recovering: 'connecting',
+  error: 'error',
+  muted: 'idle',
+};
+
 function h<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,
@@ -51,24 +81,44 @@ function h<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-export function renderOrb(doc: Document, state: OrbState): void {
+function conicSurface(appearance: RadialConfig['appearance'], from = 12): string {
+  return `conic-gradient(from ${from}deg, ${appearance.deepColor} 0deg, ${appearance.cobaltColor} 72deg, ${appearance.paleColor} 92deg, ${appearance.aquaColor} 172deg, ${appearance.deepColor} 196deg, ${appearance.cobaltColor} 254deg, ${appearance.paleColor} 278deg, ${appearance.aquaColor} 360deg)`;
+}
+
+let stopMotion: (() => void) | undefined;
+
+function stopActiveMotion(): void {
+  stopMotion?.();
+  stopMotion = undefined;
+}
+
+export function renderOrb(doc: Document, state: OrbState, config: RadialConfig = RADIAL_ULTRA): void {
   const root = doc.getElementById('orb');
   if (root === null) return;
+  stopActiveMotion();
+
   const presence = state.presence;
   const hue = CUE_HUE[presence.cue];
 
   const orb = h(doc, 'div', `orb orb-${presence.presence}`);
   orb.setAttribute('data-presence', presence.presence);
   orb.setAttribute('data-cue', presence.cue);
+  orb.setAttribute('data-orb-ui-theme', config === RADIAL_ULTRA ? 'radial-ultra' : 'radial');
+  orb.setAttribute('data-orb-ui-state', RADIAL_STATE[presence.presence]);
   orb.setAttribute('role', 'button');
   orb.setAttribute('tabindex', '0');
   orb.setAttribute('aria-label', `${presence.label}. ${presence.detail ?? ''}`.trim());
   orb.style.setProperty('--cue-hue', String(hue));
+  orb.style.setProperty('--radial-deep', config.appearance.deepColor);
+  orb.style.setProperty('--radial-cobalt', config.appearance.cobaltColor);
+  orb.style.setProperty('--radial-aqua', config.appearance.aquaColor);
+  orb.style.setProperty('--radial-pale', config.appearance.paleColor);
+  orb.style.setProperty('--radial-seam', config.appearance.seamColor);
+  orb.style.setProperty('--radial-surface', conicSurface(config.appearance));
 
   const glow = h(doc, 'div', 'glow');
   glow.setAttribute('aria-hidden', 'true');
 
-  // A conic status ring: its sweep encodes liveness without text.
   const ring = h(doc, 'div', 'ring');
   ring.setAttribute('aria-hidden', 'true');
 
@@ -76,15 +126,9 @@ export function renderOrb(doc: Document, state: OrbState): void {
   sphere.setAttribute('aria-hidden', 'true');
 
   const canvas = doc.createElement('canvas');
-  canvas.className = 'glass';
+  canvas.className = 'radial-surface';
   canvas.setAttribute('aria-hidden', 'true');
   sphere.append(canvas);
-
-  // Without a canvas context (jsdom, a blocked GPU) the CSS glass still paints,
-  // so the Orb is never a blank circle.
-  const ctx = canvasContext(canvas);
-  if (ctx !== null) paintGlass(ctx, canvas, presence.cue);
-  else sphere.classList.add('glass-fallback');
 
   const core = h(doc, 'span', 'core');
   core.setAttribute('aria-hidden', 'true');
@@ -110,114 +154,174 @@ export function renderOrb(doc: Document, state: OrbState): void {
   orb.append(detail);
 
   root.replaceChildren(orb);
+
+  const renderer = radialRendererFor(canvas, config);
+  if (renderer === undefined) sphere.classList.add('radial-fallback');
+  else stopMotion = startMotion(orb, renderer, RADIAL_STATE[presence.presence], config, currentReducedMotion);
 }
 
-/** The glass is a fixed 256px bitmap scaled to CSS size by the stylesheet. */
+/** Fixed pixel size used only when there is no layout to measure (jsdom). */
 const GLASS_PX = 256;
 
 /**
- * A 2D context, or `null` when the environment has none. `getContext` throws in
- * jsdom without the canvas package, so a failed probe is treated as "no canvas"
- * rather than being allowed to escape a render.
+ * The diameter is read from the rendered sphere so the shader's drawing buffer
+ * matches the CSS size; without a layout (jsdom) it falls back to the fixed
+ * bitmap size. `getContext('webgl')` throws in jsdom without a GL backend, so a
+ * failed probe is treated as "no WebGL" rather than allowed to escape a render.
  */
-function canvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+function radialRendererFor(
+  canvas: HTMLCanvasElement,
+  config: RadialConfig,
+): RadialRenderer | undefined {
+  const diameter = canvas.clientWidth > 0 ? canvas.clientWidth : GLASS_PX;
+  const ratio = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1;
   try {
-    return canvas.getContext('2d');
+    return createRadialRenderer(
+      canvas,
+      diameter * config.geometry.diameterRatio,
+      config.appearance,
+      ratio,
+    );
   } catch {
-    return null;
+    return undefined;
   }
+}
+
+function currentReducedMotion(): boolean {
+  if (typeof globalThis.matchMedia !== 'function') return false;
+  return globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 /**
- * Paint the glass: a dark refracting sphere with bright prism ribbons sweeping a
- * full spectrum across it, red riding above each ribbon and blue below, plus a
- * specular highlight offset toward the light. Drawn once per render; the motion
- * is CSS.
+ * Drive the radial shader from the presence: energy follows the state (listening
+ * and speaking reach full strength, everything else rests), the motion speed and
+ * calm oscillators ease toward their state targets, and a spring carries one
+ * rotation position and velocity across every state change so the trajectory is
+ * reshaped rather than restarted.
  */
-function paintGlass(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, cue: OrbCue): void {
-  canvas.width = GLASS_PX;
-  canvas.height = GLASS_PX;
-  const r = GLASS_PX / 2;
-  const cx = r;
-  const cy = r;
+function startMotion(
+  orb: HTMLElement,
+  renderer: RadialRenderer,
+  state: RadialState,
+  config: RadialConfig,
+  reducedMotion: () => boolean,
+): () => void {
+  const motion = config.motion;
+  let stateRef = state;
+  const observer = new MutationObserver(() => {
+    const next = orb.getAttribute('data-orb-ui-state');
+    if (next !== null) stateRef = next as RadialState;
+  });
+  observer.observe(orb, { attributes: true, attributeFilter: ['data-orb-ui-state'] });
 
-  ctx.clearRect(0, 0, GLASS_PX, GLASS_PX);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 2, 0, Math.PI * 2);
-  ctx.clip();
+  let frame = 0;
+  let previousTime = performance.now();
+  let motionTime = 0;
+  let currentMotionSpeed = motion.idleSpeed;
+  let currentCalmTempo = 0.62;
+  let currentCalmAmplitude = 0.15;
+  let rotation = 0;
+  let rotationVelocity = 0;
+  let calmClock = 0;
+  let speakingClock = 0;
+  let speakingBlend = stateRef === 'speaking' ? 1 : 0;
+  let listenEnergy = stateRef === 'listening' ? 1 : 0;
+  let speakEnergy = stateRef === 'speaking' ? 1 : 0;
 
-  // The smoked glass body: darker at the rim, lit through the middle.
-  const body = ctx.createRadialGradient(cx * 0.62, cy * 0.56, r * 0.1, cx, cy, r);
-  body.addColorStop(0, 'rgba(40,46,72,0.94)');
-  body.addColorStop(0.55, 'rgba(20,24,40,0.9)');
-  body.addColorStop(1, 'rgba(6,8,16,0.98)');
-  ctx.fillStyle = body;
-  ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
+  const render = (now: number): void => {
+    const deltaSeconds = Math.min((now - previousTime) / 1000, 0.05);
+    previousTime = now;
 
-  // A cool refraction bloom behind the ribbons gives the glass depth.
-  const bloom = ctx.createRadialGradient(cx * 0.4, cy * 0.7, 0, cx * 0.4, cy * 0.7, r);
-  bloom.addColorStop(0, 'rgba(90,120,220,0.22)');
-  bloom.addColorStop(1, 'rgba(90,120,220,0)');
-  ctx.fillStyle = bloom;
-  ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
+    const reduced = reducedMotion();
+    const nextState = stateRef;
 
-  const drift = cue === 'gear' ? 0.5 : 0;
-  paintRibbon(ctx, cx, cy, r, -0.34 + drift, 1);
-  paintRibbon(ctx, cx, cy, r, -0.5 + drift, GLASS_PX / 150);
-  paintRibbon(ctx, cx, cy, r, -0.16 + drift, GLASS_PX / 220);
+    const listenTarget = nextState === 'listening' ? 1 : 0;
+    const speakTarget = nextState === 'speaking' ? 1 : 0;
+    listenEnergy = reduced
+      ? 0
+      : followDuration(
+          listenEnergy,
+          listenTarget,
+          motion.activityRiseMs,
+          motion.activityFallMs,
+          deltaSeconds,
+        );
+    speakEnergy = reduced
+      ? 0
+      : followDuration(
+          speakEnergy,
+          speakTarget,
+          motion.activityRiseMs,
+          motion.activityFallMs,
+          deltaSeconds,
+        );
 
-  // Specular highlight toward the light source.
-  const spec = ctx.createRadialGradient(cx * 0.66, cy * 0.6, 0, cx * 0.66, cy * 0.6, r * 0.5);
-  spec.addColorStop(0, 'rgba(255,255,255,0.58)');
-  spec.addColorStop(0.35, 'rgba(255,255,255,0.06)');
-  spec.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = spec;
-  ctx.fillRect(0, 0, GLASS_PX, GLASS_PX);
+    const target = radialMotionFor(nextState, listenEnergy, speakEnergy, motion);
 
-  // A thin rim light keeps the silhouette crisp against a dark desktop.
-  ctx.strokeStyle = 'rgba(200,214,255,0.28)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r - 3, 0, Math.PI * 2);
-  ctx.stroke();
+    if (!reduced) {
+      currentMotionSpeed = followDuration(
+        currentMotionSpeed,
+        target.motionSpeed,
+        motion.stateTransitionMs,
+        motion.stateTransitionMs,
+        deltaSeconds,
+      );
+      currentCalmTempo = followDuration(
+        currentCalmTempo,
+        target.calmTempo,
+        motion.stateTransitionMs,
+        motion.stateTransitionMs,
+        deltaSeconds,
+      );
+      currentCalmAmplitude = followDuration(
+        currentCalmAmplitude,
+        target.calmAmplitude,
+        motion.stateTransitionMs,
+        motion.stateTransitionMs,
+        deltaSeconds,
+      );
+      speakingBlend = followDuration(
+        speakingBlend,
+        nextState === 'speaking' ? 1 : 0,
+        motion.stateTransitionMs,
+        motion.stateTransitionMs,
+        deltaSeconds,
+      );
 
-  ctx.restore();
-}
+      motionTime += deltaSeconds * currentMotionSpeed;
+      calmClock += deltaSeconds * currentCalmTempo;
+      speakingClock +=
+        deltaSeconds * Math.max(0.65, irregularSpeakingTempo(motionTime, speakEnergy));
 
-function paintRibbon(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  r: number,
-  angle: number,
-  thickness: number,
-): void {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(angle);
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.filter = `blur(${Math.round(thickness * 2)}px)`;
+      const rotationTarget = radialRotationTarget({
+        motionTime,
+        calmClock,
+        speakingClock,
+        speakEnergy,
+        calmAmplitude: currentCalmAmplitude,
+        speakingBlend,
+        rotationAmount: motion.rotationAmount,
+      });
 
-  const length = r * 2.3;
-  const half = r * 0.34;
-  const stops = 26;
-  const band = length / stops;
-  for (let i = 0; i <= stops; i += 1) {
-    const t = i / stops;
-    const x = (t - 0.5) * length;
-    const hue = t * 300;
-    const grad = ctx.createLinearGradient(0, -half, 0, half);
-    grad.addColorStop(0, `hsla(${hue} 90% 60% / 0)`);
-    grad.addColorStop(0.24, 'hsl(0 95% 62%)');
-    grad.addColorStop(0.5, `hsl(${hue} 96% 72%)`);
-    grad.addColorStop(0.76, 'hsl(220 95% 60%)');
-    grad.addColorStop(1, `hsla(240 90% 55% / 0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, -half, band + 2, half * 2);
-  }
+      const responsiveness = 4.2 + speakingBlend * 3;
+      const stiffness = responsiveness * responsiveness;
+      const drag = 2 * responsiveness;
+      rotationVelocity +=
+        ((rotationTarget - rotation) * stiffness - rotationVelocity * drag) * deltaSeconds;
+      rotation += rotationVelocity * deltaSeconds;
+    }
 
-  ctx.restore();
+    renderer.draw(motionTime, rotation, clamp(listenEnergy), clamp(speakEnergy));
+    frame = requestAnimationFrame(render);
+  };
+
+  frame = requestAnimationFrame(render);
+
+  return () => {
+    observer.disconnect();
+    cancelAnimationFrame(frame);
+    renderer.destroy();
+  };
 }
 
 /**
@@ -269,7 +373,7 @@ export function bootstrapOrb(doc: Document, bridge: OrbBridge, intervalMs = 600)
   const refresh = (): void => {
     void bridge.orbState().then((state) => {
       // The presence carries everything that is drawn; skip the rebuild when it
-      // has not changed rather than repainting the glass several times a second.
+      // has not changed rather than restarting the shader several times a second.
       const key = JSON.stringify(state.presence);
       if (key === lastPresence) return;
       lastPresence = key;
@@ -284,7 +388,10 @@ export function bootstrapOrb(doc: Document, bridge: OrbBridge, intervalMs = 600)
   const timer = setInterval(refresh, intervalMs);
   wirePointerInteractivity(doc, bridge);
 
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    stopActiveMotion();
+  };
 }
 
 const injected = (globalThis as { aria?: OrbBridge }).aria;

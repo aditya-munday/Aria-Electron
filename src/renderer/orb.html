@@ -122,19 +122,25 @@
         border-radius: 50%;
       }
 
-      /* Without a canvas context the ribbon is painted with a static CSS
-         gradient band, so the sphere is never a flat disc. */
-      .sphere.glass-fallback {
+      .radial-surface {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+      }
+
+      /* Without a WebGL context the radial face is painted with the theme's own
+         conic gradient, so the sphere is never a flat disc. */
+      .sphere.radial-fallback {
         background:
-          linear-gradient(
-            155deg,
-            rgba(0, 0, 0, 0) 30%,
-            hsl(var(--cue-hue) 92% 62% / 0.42) 44%,
-            hsl(calc(var(--cue-hue) + 60) 92% 66% / 0.4) 50%,
-            hsl(calc(var(--cue-hue) + 140) 92% 62% / 0.4) 56%,
-            rgba(0, 0, 0, 0) 70%
-          ),
-          radial-gradient(circle at 50% 50%, rgba(30, 35, 55, 0.9) 0%, rgba(12, 15, 26, 0.96) 62%, rgba(5, 6, 13, 1) 100%);
+          radial-gradient(circle at 68% 82%, rgba(130, 160, 255, 0.24) 0%, rgba(130, 160, 255, 0) 34%),
+          var(--radial-surface, radial-gradient(circle, #011b5e, #05060d));
+        box-shadow:
+          inset 0 -20px 38px rgba(2, 3, 8, 0.9),
+          inset 0 16px 28px rgba(255, 255, 255, 0.1),
+          inset 0 0 0 1px rgba(190, 205, 255, 0.16),
+          inset 0 0 34px -6px var(--cue-soft),
+          0 30px 64px -26px rgba(0, 0, 0, 0.95);
       }
 
       .specular {
@@ -264,6 +270,30 @@
         opacity: 0.3;
       }
       .orb[data-cue='alert'] .glow {
+        animation-duration: 1.4s;
+      }
+
+      /* --- radial state motion ----------------------------------------- */
+
+      /* The shader carries the heavy motion; these rules tune the surrounding
+         ring and halo so the whole presence, not just the face, reads as busy. */
+      .orb[data-orb-ui-state='listening'] .ring {
+        animation-duration: 3.2s;
+        opacity: 1;
+      }
+      .orb[data-orb-ui-state='speaking'] .ring {
+        animation-duration: 2.1s;
+        opacity: 1;
+      }
+      .orb[data-orb-ui-state='thinking'] .ring {
+        animation-duration: 4.6s;
+      }
+      .orb[data-orb-ui-state='connecting'] .ring {
+        animation-duration: 1.6s;
+        opacity: 0.95;
+      }
+      .orb[data-orb-ui-state='connecting'] .glow,
+      .orb[data-orb-ui-state='error'] .glow {
         animation-duration: 1.4s;
       }
 
