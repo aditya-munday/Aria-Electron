@@ -5,6 +5,16 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.6.1] - 2026-10-14
+
+### Fixed
+- The chat surface is text-only. A typed/chat turn no longer opens the live
+  TTS stream: `VoiceSession.runText()` sets `speakEnabled = false`, so `deliver()`
+  returns before `speak()` is reached, and the chat reply is rendered without
+  playback. The Orb is raised only for a voice turn (`source !== 'text'`), so
+  typing a message no longer animates the presence as if Aria were speaking.
+  Voice turns are unchanged: they still synthesize and play.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added
@@ -108,3 +118,4 @@ All notable changes to Aria-Electron are recorded here. The format follows
 
 [0.3.0]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.3.0
 [0.4.0]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.4.0
+[0.6.1]: https://github.com/aditya-munday/Aria-Electron/releases/tag/aria-v0.6.1
