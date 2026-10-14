@@ -103,24 +103,34 @@ flight keeps the output it started with.
 The pipeline is wake-listener -> session -> runtime, all local except speech:
 
 - `wake-listener.ts` + `wake-word.ts` — wake-word detection and activation.
-  `wake-phrase-engine.ts` (`createWakePhraseEngine`) is the real offline spotter:
-  an energy/activity segmenter feeds a spectral DTW match against the wake
-  phrase, so "hey aria" is detected locally with no network and no bundled
-  binary. Each frame is reduced to formant (F1/F2), tonal↔noisy and band-split
-  features; the phrase templates are built by rendering the phrase through
-  `formant-synth.ts` and the engine's own featurizer, so template and audio
-  share one feature space. A segment must be the right length, voiced-dominant
-  and spectrally varied, then match a speaking-rate template (ensemble
-  0.6–1.4x) below `matchThreshold`. The segmenter tracks the ambient level
-  adaptively (`adaptNoiseFloor`): it falls quickly toward a quieter frame and
-  rises slowly, so a loud room does not read as permanent activity and the
-  segment still closes — a fixed floor never closed in a noisy room, which is
-  the case where "hey aria" was never detected. It replaces the old porcupine
-  stub;
-  `wake-word.ts` wraps it in `EngineWakeWordDetector`. `DEFAULT_WAKE_WORD.enabled`
-  stays `false` at the runtime layer because product-level activation comes from
-  shell settings (`DEFAULT_SETTINGS.wakeWordEnabled`). `formant-synth.ts` is the
-  single renderer shared by the engine templates and the test fixture
+  The default detector is the on-device VoxRT engine (`voxrt-detector.ts`,
+  `createVoxrtDetector`): `@voxrt/wake-word-browser` ships a WebAssembly runtime
+  and a trained `voxrt_wake_word.vxrt` model that spots "Hey Assistant" on
+  16 kHz mono audio with no network, no API key and no native build. Both the
+  renderer (which owns the live microphone stream) and the main process (which
+  can drive the command-line recorder) construct the same adapter over the same
+  model bytes, so the two paths detect identically; a detection reported from a
+  renderer re-enters through `VoiceRuntime.activateWakeWord`, gated on the
+  wake-word setting and the confidence floor. `ARIA_WAKE_ENGINE` still points at
+  an alternate native engine module (`createNativeWakeWordDetector`), and
+  `ARIA_WAKE_MODEL` overrides the model path; a missing package or model fails
+  observably (`device_unavailable`), never silently.
+  `wake-phrase-engine.ts` (`createWakePhraseEngine`) remains a self-contained
+  offline spotter, no longer the default: an energy/activity segmenter feeds a
+  spectral DTW match against the wake phrase. Each frame is reduced to formant
+  (F1/F2), tonal↔noisy and band-split features; the phrase templates are built
+  by rendering the phrase through `formant-synth.ts` and the engine's own
+  featurizer, so template and audio share one feature space. A segment must be
+  the right length, voiced-dominant and spectrally varied, then match a
+  speaking-rate template (ensemble 0.6–1.4x) below `matchThreshold`. The
+  segmenter tracks the ambient level adaptively (`adaptNoiseFloor`): it falls
+  quickly toward a quieter frame and rises slowly, so a loud room does not read
+  as permanent activity and the segment still closes.
+  `wake-word.ts` wraps a detector in `EngineWakeWordDetector`.
+  `DEFAULT_WAKE_WORD.enabled` stays `false` at the runtime layer because
+  product-level activation comes from shell settings
+  (`DEFAULT_SETTINGS.wakeWordEnabled`). `formant-synth.ts` is the single renderer
+  shared by the phrase engine's templates and the test fixture
   (`testing/fake-audio.ts` `speakPhrase`), so a fixture and a template cannot
   drift apart.
 - `vad.ts`, `segmenter.ts`, `ring-buffer.ts`, `noise-reduction.ts` — audio
@@ -244,23 +254,25 @@ Rules the router enforces, all with tests:
 - Push-to-talk (hold the `F5` key) → Orb, capture starts immediately; never
   consults wake-word detection, so it works with the detector disabled. Needs
   microphone permission. The global accelerator is `Win + Alt + T`
-  (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell, the
-  tray and the Control Center all read; a global grab reports key-down only, so
+  (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell and
+  the Control Center both read; a global grab reports key-down only, so
   the shell treats each press per the mode (`hold` pairs it with a release).
   `window.ts` also exports candidate lists (`CHAT_SHORTCUT_ACCELERATORS`,
   `PUSH_TO_TALK_ACCELERATORS`) because a desktop environment may already hold the
   first choice — GNOME grabs `Super+Alt+T` itself — so the shell walks the list
   and registers the first accelerator the OS accepts. `shortcutStatus()` reports
   the accelerator that is actually active (or the first tried when none is), and
-  the tray offers a manual push-to-talk trigger and a re-grab action, so a
-  refused grab leaves the feature reachable rather than silently dead. The tray
-  trigger and the accelerator drive the same `activatePushToTalk` path, so a tap
-  means the same thing however it arrives: in `toggle` mode it starts capture and
-  the next tap finalizes it; in `hold` mode a tap starts capture and the next tap
-  releases it. It is never a press paired with an immediate release, which the
-  controller would reject as a zero-length hold. The tray label reflects the
-  runtime's real capture state (`setPushToTalkActive`, fed in `main.ts` from the
-  voice runtime's `session.state`), not the shell's tap bookkeeping, so a capture
+  the Control Center Activation tab offers a "Retry push-to-talk shortcut" /
+  "Retry chat shortcut" control (`retryShortcuts` → `AriaShell.retryShortcuts`),
+  so a refused grab leaves the feature reachable rather than silently dead.
+  The Control Center retry drives the same `activatePushToTalk` path as the
+  accelerator, so a tap means the same thing however it arrives: in `toggle`
+  mode it starts capture and the next tap finalizes it; in `hold` mode a tap
+  starts capture and the next tap releases it. It is never a press paired with
+  an immediate release, which the controller would reject as a zero-length hold.
+  The Control Center push-to-talk status reflects the runtime's real capture
+  state (`setPushToTalkActive`, fed in `main.ts` from the voice runtime's
+  `session.state`), not the shell's tap bookkeeping, so a capture
   that ends on its own (VAD silence, empty/too-short utterance, max-duration,
   failure) stops advertising "Stop listening" and the next tap is a fresh press.
 - Wake word → Orb, capture only after activation, only while detection is
@@ -311,18 +323,19 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   released while the window lost focus never arrives as a `keyUp`.
 - `window.ts` (`WindowKind`, `WindowHandle`, `WindowOptions`, `KeyEvent`,
   `Platform`) — the seam that keeps the shell testable without Electron.
-  `Platform = { windows, keys, shortcuts, tray }`. `WindowOptions.launchHidden`
+  `Platform = { windows, keys, shortcuts }`. `WindowOptions.launchHidden`
   marks the window the shell preloads but leaves off screen on a login launch
-  (`--hidden`); `Platform.tray` (`TrayHost`) is optional so a desktop without a
-  status area is reported, not faked.
-- Always-available presence: `AriaShell` creates a tray (`tray-icon.ts` holds an
-  embedded 32×32 PNG) with Open Control Center / Open Chat / Show-Hide Orb
-  actions, refreshed as visibility changes; `main.ts` passes `launchHidden` from
-  `process.argv.includes('--hidden')`. `shell/autostart.ts`
-  (`createAutostartManager`, `autostartEntry`) writes an XDG autostart desktop
-  entry whose `Exec` carries the same hidden-launch argument and an
-  `X-GNOME-Autostart-Delay`, so a login launch comes up in the background and
-  never steals focus. `main.ts` takes a single-instance lock before
+  (`--hidden`).
+- Resident, tray-free lifecycle: Aria has no system tray. `main.ts` passes
+  `launchHidden` from `process.argv.includes('--hidden')`. Closing a window only
+  hides it; the process stays resident so a global shortcut, a wake word, or an
+  autostart launch can still surface a window. Quit is an explicit user action —
+  the Control Center General tab calls `shellQuit` → `IpcHost.quit()` →
+  `app.quit()` — never an implicit side effect of the last window closing.
+  `shell/autostart.ts` (`createAutostartManager`, `autostartEntry`) writes an XDG
+  autostart desktop entry whose `Exec` carries the same hidden-launch argument
+  and an `X-GNOME-Autostart-Delay`, so a login launch comes up in the background
+  and never steals focus. `main.ts` takes a single-instance lock before
   `app.whenReady()`: a second launch (which could not grab the global shortcuts
   the OS only grants once) hands focus to the live instance and exits, so the
   shortcuts keep working from cold. `startOnLogin` defaults **on**, and the
@@ -346,13 +359,13 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
 - `ipc.ts` / `ipc-handlers.ts` / `security.ts` — the renderer boundary. The
   bridge exposes exactly `status`, `sendText`, `stopPlayback` plus the
   Control Center operations `controlCenterState`, `settingsUpdate`,
-  `accountSignIn`, `accountSignOut`, `previewVoice`; no token, capability or
-  raw-`ipcRenderer` accessor crosses it. Renderer windows are context-isolated,
+  `accountSignIn`, `accountSignOut`, `previewVoice` and the explicit
+  `quit`; no token, capability or raw-`ipcRenderer` accessor crosses it.
+  Renderer windows are context-isolated,
   `nodeIntegration: false`, web-security on, and deny external navigation and
-  `window.open`. The main process keeps a `window-all-closed` handler so Electron
-  does not quit while a tray still owns quit, but the handler quits when there is
-  no tray, so a desktop without a status area is never stranded as a windowless
-  process.
+  `window.open`. The main process keeps a `window-all-closed` handler that does
+  **not** quit: closing every window leaves Aria resident, and only the Control
+  Center Quit control quits.
   `registerIpcHandlers` strips the leading `IpcMainInvokeEvent` from every
   `ipcMain.handle` callback (`(_event, ...args)`), so a handler reads its real
   payload, not the event object. `RecordingRegistrar` in the test mirrors that
@@ -427,14 +440,26 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   `ScreenProvider`. The window is larger than the painted circle so the glow can
   fall off; the clamp is against the circle, not the window, so the transparent
   padding may overhang the edge while the visible Orb stays on screen. The
-  renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`)
-  draws exactly one circle — glass sphere, glow, a conic status ring, a
-  breathing core, a moving sheen and orbiting motes — and keeps the window
-  click-through except inside that circle via the `orbSetInteractive` channel
-  and the pure `orb/hit-test.ts`. The circle is a real control: a click or
-  `Enter`/Space on it opens the chat window (`aria.openChat`), hover lifts and
-  presses the sphere, and the animations stand down under
-  `prefers-reduced-motion`. `orb/backdrop.ts` plans a full-screen material
+  renderer (`orb/renderer/orb.ts`, `src/renderer/orb.html`) draws exactly one
+  circle — a radial shader face, a glow, a conic status ring, a breathing core,
+  a moving sheen and orbiting motes — and keeps the window click-through except
+  inside that circle via the `orbSetInteractive` channel and the pure
+  `orb/hit-test.ts`. The face is the `exprmntl/orb-ui` radial theme: the exact
+  GLSL fragment shader and the upstream motion recipe live in
+  `orb/renderer/radial.ts` (`RADIAL_ULTRA` is that theme with every motion knob
+  pushed past the stock "expressive" preset, hence "ultra strong"). `radial.ts`
+  is pure and DOM-free apart from `createRadialRenderer`, so the motion math
+  (`radialMotionFor`, `radialRotationTarget`, `followDuration`) is unit-tested
+  without a GL context. `orb/renderer/orb.ts` drives the shader from the
+  presence: energy follows the state, speed and the calm oscillators ease toward
+  their per-state targets, and a spring carries one rotation position and
+  velocity across state changes. Aria's twelve presences fold into the radial
+  theme's six states through `RADIAL_STATE`; the CSS `conic-gradient` face is the
+  fallback when WebGL is unavailable (jsdom, a blocked GPU), so the sphere is
+  never a flat disc. The circle is a real control: a click or `Enter`/Space on it
+  opens the chat window (`aria.openChat`), hover lifts and presses the sphere,
+  and the animations stand down under `prefers-reduced-motion`.
+  `orb/backdrop.ts` plans a full-screen material
   (macOS vibrancy, Windows acrylic) and honestly reports unsupported on Linux
   rather than faking a blur with an opaque rectangle. `state.ts` defines
   `OrbPresence` — the All-Knowledge §7.3 conceptual states, reusing the repo's
@@ -448,9 +473,17 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   interrupted — to a state plus a non-color cue; `orb-service.ts`'s
   `summarizeTask` picks the highest-priority phase across supervisor records.
 
-Test baseline: 757 tests / 76 files. `src/shell/testing/doubles.ts` holds
+Brand: `build/icon.png` (the `.deb` icon) and `src/renderer/logo.png` (the
+in-app mark) are the same shipped brand image, generated square from the source
+artwork. The Control Center brand mark (`brandMark` in `control-center.ts`) and
+the chat empty-state hero both render it as an `<img>` (`./logo.png`) rather
+than a second hand-drawn SVG, so the logo has one source of truth. That needs
+`img-src 'self'` in the `control-center.html` / `chat.html` CSP; the orb window
+ships no image and keeps `default-src 'none'` with no `img-src`.
+
+Test baseline: 793 tests / 79 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
-`FakeKeyListener`, `FakeShortcutRegistration`, `FakeTray`, `FakeShellRuntime`,
+`FakeKeyListener`, `FakeShortcutRegistration`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
 
 ## Account and sign-in (`src/auth/`)

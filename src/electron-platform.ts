@@ -4,10 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BrowserWindow,
   globalShortcut,
-  Menu as ElectronMenu,
-  nativeImage,
   screen,
-  Tray as ElectronTray,
 } from 'electron';
 
 import { applyWebContentsHardening, hardenedWebPreferences } from './shell/security.js';
@@ -19,8 +16,6 @@ import type {
   PhysicalKey,
   Platform,
   ShortcutRegistration,
-  TrayHost,
-  TrayMenuItem,
   WindowFactory,
   WindowHandle,
   WindowKind,
@@ -262,53 +257,9 @@ class ElectronWindowFactory implements WindowFactory {
 }
 
 /**
- * The system tray. Creation can fail on a desktop with no status-notifier host;
- * that is reported as "not active" rather than thrown, so the app still runs in
- * the background.
+ * The global shortcuts. A registration that the OS refuses is reported, never
+ * assumed, so the shell can fall back to an in-window control.
  */
-class DesktopTray implements TrayHost {
-  private tray: ElectronTray | undefined;
-
-  create(options: {
-    readonly tooltip: string;
-    readonly iconDataUrl: string;
-    readonly items: readonly TrayMenuItem[];
-  }): void {
-    if (this.tray !== undefined) {
-      this.setMenu(options.items);
-      return;
-    }
-    try {
-      const image = nativeImage.createFromDataURL(options.iconDataUrl);
-      const tray = new ElectronTray(image.isEmpty() ? nativeImage.createEmpty() : image);
-      tray.setToolTip(options.tooltip);
-      tray.setContextMenu(this.buildMenu(options.items));
-      this.tray = tray;
-    } catch {
-      this.tray = undefined;
-    }
-  }
-
-  setMenu(items: readonly TrayMenuItem[]): void {
-    this.tray?.setContextMenu(this.buildMenu(items));
-  }
-
-  destroy(): void {
-    this.tray?.destroy();
-    this.tray = undefined;
-  }
-
-  isActive(): boolean {
-    return this.tray !== undefined;
-  }
-
-  private buildMenu(items: readonly TrayMenuItem[]): ElectronMenu {
-    return ElectronMenu.buildFromTemplate(
-      items.map((item) => ({ label: item.label, click: item.onClick })),
-    );
-  }
-}
-
 class ElectronShortcuts implements ShortcutRegistration {
   register(accelerator: string, handler: () => void): boolean {
     try {
@@ -338,6 +289,5 @@ export function createElectronPlatform(options: ElectronPlatformOptions = {}): P
     keys,
     shortcuts: new ElectronShortcuts(),
     screen: new ElectronScreenProvider(),
-    tray: new DesktopTray(),
   };
 }

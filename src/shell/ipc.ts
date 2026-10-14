@@ -28,6 +28,9 @@ export const IPC_CHANNELS = {
   chatEmergencyStop: 'aria:chat:emergency-stop',
   shellSettings: 'aria:shell:settings',
   openChat: 'aria:shell:open-chat',
+  shellQuit: 'aria:shell:quit',
+  shellRetryShortcuts: 'aria:shell:retry-shortcuts',
+  wakeWordDetected: 'aria:wake-word:detected',
 } as const;
 
 export interface ShellStatus {
@@ -65,6 +68,13 @@ export type AwaitLoginResult =
 
 export type { ApprovalDecisionOutcome, ChatActionResult, EmergencyStopView };
 
+/** A wake-word detection the renderer reports to the main process. */
+export interface WakeWordDetectionPayload {
+  readonly phrase: string;
+  readonly confidence: number;
+  readonly detectorId: string;
+}
+
 export interface AriaBridge {
   status(): Promise<ShellStatus>;
   sendText(text: string): Promise<void>;
@@ -90,6 +100,14 @@ export interface AriaBridge {
   emergencyStop(): Promise<EmergencyStopView>;
   settings(): Promise<ShellSettings>;
   openChat(): Promise<void>;
+  /** Quit Aria on the user's explicit request. */
+  quit(): Promise<void>;
+  /** Re-attempt the global shortcut grabs after another app freed one. */
+  retryShortcuts(): Promise<void>;
+  /** Subscribe to wake-word activations the main process emits back. */
+  onWakeWord(handler: (payload: WakeWordDetectionPayload) => void): () => void;
+  /** Report a local wake-word detection to the main process. */
+  reportWakeWord(payload: WakeWordDetectionPayload): void;
 }
 
 export const BRIDGE_API_KEY = 'aria';
@@ -119,6 +137,10 @@ export const BRIDGE_METHODS = [
   'emergencyStop',
   'settings',
   'openChat',
+  'quit',
+  'retryShortcuts',
+  'onWakeWord',
+  'reportWakeWord',
 ] as const;
 
 export const FORBIDDEN_BRIDGE_METHODS = [
@@ -137,12 +159,17 @@ export const FORBIDDEN_BRIDGE_METHODS = [
 
 export interface IpcInvoker {
   invoke(channel: string, ...args: readonly unknown[]): Promise<unknown>;
+  /** Send a one-way message to the main process. */
+  send(channel: string, ...args: readonly unknown[]): void;
+  /** Subscribe to messages the main process pushes on a channel. */
+  on(channel: string, listener: (...args: readonly unknown[]) => void): () => void;
 }
 
 export type IpcHandler = (...args: readonly unknown[]) => unknown;
 
 export interface IpcRegistrar {
   handle(channel: string, handler: IpcHandler): void;
+  on(channel: string, listener: (event: unknown, ...args: readonly unknown[]) => void): void;
 }
 
 export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
@@ -191,7 +218,29 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
     settings: (): Promise<ShellSettings> =>
       ipc.invoke(IPC_CHANNELS.shellSettings) as Promise<ShellSettings>,
     openChat: (): Promise<void> => ipc.invoke(IPC_CHANNELS.openChat) as Promise<void>,
+    quit: (): Promise<void> => ipc.invoke(IPC_CHANNELS.shellQuit) as Promise<void>,
+    retryShortcuts: (): Promise<void> =>
+      ipc.invoke(IPC_CHANNELS.shellRetryShortcuts) as Promise<void>,
+    onWakeWord: (handler: (payload: WakeWordDetectionPayload) => void): (() => void) =>
+      ipc.on(IPC_CHANNELS.wakeWordDetected, (payload) => {
+        if (isWakeWordPayload(payload)) handler(payload);
+      }),
+    reportWakeWord: (payload: WakeWordDetectionPayload): void => {
+      ipc.send(IPC_CHANNELS.wakeWordDetected, payload);
+    },
   };
+}
+
+/** Validate a wake-word payload arriving over IPC before acting on it. */
+export function isWakeWordPayload(value: unknown): value is WakeWordDetectionPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record['phrase'] === 'string' &&
+    typeof record['confidence'] === 'number' &&
+    Number.isFinite(record['confidence']) &&
+    typeof record['detectorId'] === 'string'
+  );
 }
 
 export function bridgeKeys(bridge: AriaBridge): readonly string[] {

@@ -3,8 +3,6 @@ import type {
   KeyListener,
   Platform,
   ShortcutRegistration,
-  TrayHost,
-  TrayMenuItem,
   WindowFactory,
   WindowHandle,
   WindowKind,
@@ -172,44 +170,11 @@ export class FakeShortcutRegistration implements ShortcutRegistration {
   }
 }
 
-export class FakeTray implements TrayHost {
-  created = 0;
-  destroyed = 0;
-  active = true;
-  tooltip = '';
-  iconDataUrl = '';
-  menu: readonly TrayMenuItem[] = [];
-
-  create(options: {
-    readonly tooltip: string;
-    readonly iconDataUrl: string;
-    readonly items: readonly TrayMenuItem[];
-  }): void {
-    this.created += 1;
-    this.tooltip = options.tooltip;
-    this.iconDataUrl = options.iconDataUrl;
-    this.menu = options.items;
-  }
-  setMenu(items: readonly TrayMenuItem[]): void {
-    this.menu = items;
-  }
-  destroy(): void {
-    this.destroyed += 1;
-  }
-  isActive(): boolean {
-    return this.active;
-  }
-  item(id: string): TrayMenuItem | undefined {
-    return this.menu.find((entry) => entry.id === id);
-  }
-}
-
 export class FakePlatform implements Platform {
   readonly windows = new FakeWindowFactory();
   readonly keys = new FakeKeyListener();
   readonly shortcuts = new FakeShortcutRegistration();
   readonly screen = new FakeScreenProvider();
-  readonly tray = new FakeTray();
 }
 
 export class FakeShellRuntime implements ShellRuntime {

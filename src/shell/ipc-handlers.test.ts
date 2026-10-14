@@ -7,8 +7,12 @@ import type { ControlCenterState } from '../control-center/state.js';
 
 class RecordingRegistrar implements IpcRegistrar {
   readonly handlers = new Map<string, IpcHandler>();
+  readonly listeners = new Map<string, (event: unknown, ...args: readonly unknown[]) => void>();
   handle(channel: string, handler: IpcHandler): void {
     this.handlers.set(channel, handler);
+  }
+  on(channel: string, listener: (event: unknown, ...args: readonly unknown[]) => void): void {
+    this.listeners.set(channel, listener);
   }
   invoke(channel: string, ...args: readonly unknown[]): unknown {
     const handler = this.handlers.get(channel);
@@ -16,6 +20,11 @@ class RecordingRegistrar implements IpcRegistrar {
     // Mirror ipcMain.handle's (event, ...args) arity so a mis-read argument fails here.
     // The event carries an app frame url: the real handlers refuse any other sender.
     return handler({ senderFrame: { url: 'file:///app/chat.html' } }, ...args);
+  }
+  emit(channel: string, ...args: readonly unknown[]): void {
+    const listener = this.listeners.get(channel);
+    if (listener === undefined) throw new Error(`no listener for ${channel}`);
+    listener({ senderFrame: { url: 'file:///app/chat.html' } }, ...args);
   }
 }
 
@@ -91,6 +100,9 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     interruptSpeech: () => ({ ok: true, detail: 'Speech interrupted.' }),
     settings: () => DEFAULT_SETTINGS,
     openChat: () => undefined,
+    quit: () => undefined,
+    retryShortcuts: () => undefined,
+    wakeWordDetected: () => undefined,
     emergencyStop: () => ({
       engaged: true,
       stopped: [],
@@ -132,6 +144,8 @@ describe('main-process IPC handlers', () => {
         IPC_CHANNELS.chatEmergencyStop,
         IPC_CHANNELS.shellSettings,
         IPC_CHANNELS.openChat,
+        IPC_CHANNELS.shellQuit,
+        IPC_CHANNELS.shellRetryShortcuts,
       ].sort(),
     );
   });
@@ -247,6 +261,23 @@ describe('main-process IPC handlers', () => {
     const registrar = new RecordingRegistrar();
     registerIpcHandlers(registrar, host());
     for (const channel of Object.values(IPC_CHANNELS)) {
+      if (channel === IPC_CHANNELS.wakeWordDetected) {
+        const listener = registrar.listeners.get(channel);
+        expect(listener).toBeDefined();
+        let delivered = 0;
+        registerIpcHandlers(
+          registrar,
+          host({
+            wakeWordDetected: () => {
+              delivered += 1;
+            },
+          }),
+        );
+        const guarded = registrar.listeners.get(channel);
+        guarded?.({ senderFrame: { url: 'https://evil.example' } }, { phrase: 'x', confidence: 1 });
+        expect(delivered).toBe(0);
+        continue;
+      }
       const handler = registrar.handlers.get(channel);
       expect(handler).toBeDefined();
       expect(() => handler?.({ senderFrame: { url: 'https://evil.example' } })).toThrow(
@@ -255,5 +286,38 @@ describe('main-process IPC handlers', () => {
       expect(() => handler?.({ senderFrame: null })).toThrow(/untrusted sender/);
       expect(() => handler?.({})).toThrow(/untrusted sender/);
     }
+  });
+
+  it('routes quit, the shortcut re-grab, and a wake word from a trusted renderer', async () => {
+    const registrar = new RecordingRegistrar();
+    let quit = 0;
+    let retries = 0;
+    const detected: unknown[] = [];
+    registerIpcHandlers(
+      registrar,
+      host({
+        quit: () => {
+          quit += 1;
+        },
+        retryShortcuts: () => {
+          retries += 1;
+        },
+        wakeWordDetected: (payload) => {
+          detected.push(payload);
+        },
+      }),
+    );
+    await registrar.invoke(IPC_CHANNELS.shellQuit);
+    expect(quit).toBe(1);
+    await registrar.invoke(IPC_CHANNELS.shellRetryShortcuts);
+    expect(retries).toBe(1);
+    registrar.emit(IPC_CHANNELS.wakeWordDetected, {
+      phrase: 'hey assistant',
+      confidence: 0.97,
+      detectorId: 'voxrt',
+    });
+    expect(detected).toEqual([{ phrase: 'hey assistant', confidence: 0.97, detectorId: 'voxrt' }]);
+    registrar.emit(IPC_CHANNELS.wakeWordDetected, { phrase: 'hey assistant' });
+    expect(detected).toHaveLength(1);
   });
 });

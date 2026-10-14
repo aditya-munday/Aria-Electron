@@ -11,12 +11,10 @@ import {
   type KeyRepertoire,
   type Platform,
   type PushToTalkMode,
-  type TrayMenuItem,
   type WindowHandle,
   type WindowKind,
   type WindowOptions,
 } from './window.js';
-import { TRAY_ICON_DATA_URL } from './tray-icon.js';
 import type { SettingsStore, ShellSettings } from './settings.js';
 
 function sizeFor(kind: WindowKind): { readonly width: number; readonly height: number } {
@@ -49,8 +47,8 @@ export interface ShellDeps {
    */
   readonly launchHidden?: boolean;
   /**
-   * Called when the user asks to quit from the tray. The shell does not own
-   * `app`, so it reports the request and lets the composition root quit.
+   * Called when the user asks to quit from the Control Center. The shell does
+   * not own `app`, so it reports the request and lets the composition root quit.
    */
   readonly onQuit?: () => void;
 }
@@ -77,7 +75,6 @@ export class AriaShell {
   private chatShortcutRequested: boolean | undefined;
   private pushToTalkRequested: boolean | undefined;
   private started = false;
-  private trayCreated = false;
   private readonly pttAllowed: (() => boolean) | undefined;
   private readonly onQuit: (() => void) | undefined;
   private pending: Promise<void> = Promise.resolve();
@@ -102,7 +99,6 @@ export class AriaShell {
     this.chatShortcutRequested = settings.chatShortcutEnabled;
     this.pushToTalkRequested = settings.pushToTalkEnabled;
     this.runtime.start();
-    this.createTray();
     this.createWindow('control_center', { startHidden: false, launchHidden: this.launchHidden });
     this.open('control_center');
     this.syncShortcuts();
@@ -148,9 +144,6 @@ export class AriaShell {
       }
     }
     this.syncShortcuts();
-    // The tray's push-to-talk item follows the requested state, so disabling the
-    // control must drop it rather than leave a stale entry behind.
-    this.refreshTray();
   }
 
   /** Release a push-to-talk capture that no further key event can finalize. */
@@ -164,21 +157,17 @@ export class AriaShell {
   }
 
   /**
-   * Track the runtime's real capture state so the tray cannot disagree with it.
+   * Track the runtime's real capture state so no control can disagree with it.
    *
-   * The tray label is driven by `pttActive`, which only the runtime can settle:
-   * a VAD silence, an empty/short utterance, a max-duration cut-off or an error
-   * all end the session without a second tap. Without this the tray would keep
-   * offering "Stop listening" for a capture that already ended, and a tap on it
-   * would toggle the shell's stale state into a release for nothing.
+   * `pttActive` is settled only by the runtime: a VAD silence, an empty/short
+   * utterance, a max-duration cut-off or an error all end the session without a
+   * second tap. The next tap in hold mode is therefore a press, not a release
+   * for a capture that already finished.
    */
   setPushToTalkActive(active: boolean): void {
     if (this.pttActive === active) return;
     this.pttActive = active;
-    // Keep the shell's local pairing state consistent with the runtime so the
-    // next tap in hold mode is a press, not a release for a finished capture.
     if (!active) this.pttToggled = false;
-    this.refreshTray();
   }
 
   /**
@@ -236,62 +225,15 @@ export class AriaShell {
     return undefined;
   }
 
-  /** Whether a tray icon is actually present (the desktop may not support one). */
-  trayActive(): boolean {
-    return this.trayCreated;
-  }
-
-  private createTray(): void {
-    const tray = this.platform.tray;
-    if (tray === undefined) return;
-    tray.create({
-      tooltip: 'Aria',
-      iconDataUrl: TRAY_ICON_DATA_URL,
-      items: this.trayItems(),
-    });
-    this.trayCreated = tray.isActive();
-  }
-
-  /** Keep the tray menu in step with what is actually on screen. */
-  private refreshTray(): void {
-    this.platform.tray?.setMenu(this.trayItems());
-  }
-
-  private trayItems(): readonly TrayMenuItem[] {
-    const orbVisible = this.isOpen('orb');
-    const items: TrayMenuItem[] = [
-      { id: 'control-center', label: 'Open Control Center', onClick: () => this.open('control_center') },
-      { id: 'chat', label: 'Open Chat', onClick: () => this.open('chat') },
-      {
-        id: 'orb',
-        label: orbVisible ? 'Hide Orb' : 'Show Orb',
-        onClick: () => this.setOrbVisible(!orbVisible),
-      },
-    ];
-    if (this.pushToTalkRequested) {
-      // A working microphone control even when every global grab was refused.
-      // It drives the same tap semantics as the accelerator, so the two paths
-      // cannot diverge, and its label reports the runtime's real capture state
-      // rather than the shell's tap bookkeeping, which goes stale the moment a
-      // session ends on its own.
-      items.push({
-        id: 'ptt-now',
-        label: this.pttActive ? 'Stop listening' : 'Push to talk',
-        onClick: () => this.enqueue(() => this.activatePushToTalk()),
-      });
-    }
-    if (this.pushToTalkRequested && !this.pushToTalkRegistered) {
-      // The OS refused every candidate; another app may since have freed one.
-      items.push({
-        id: 'ptt-retry',
-        label: 'Retry push-to-talk shortcut',
-        onClick: () => this.retryShortcuts(),
-      });
-    }
-    if (this.onQuit !== undefined) {
-      items.push({ id: 'quit', label: 'Quit Aria', onClick: () => this.onQuit?.() });
-    }
-    return items;
+  /**
+   * End the process on the user's explicit request. Aria deliberately has no
+   * system tray: the only way to stop it is this Control Center control, which
+   * warns that Aria will stop listening and will not be available for help
+   * until it is launched again. Closing a window never quits; Aria stays
+   * resident so it is still there when help is needed.
+   */
+  quit(): void {
+    this.onQuit?.();
   }
 
   /** Release both grabs and take them again, e.g. after another app freed one. */
@@ -307,13 +249,9 @@ export class AriaShell {
       this.pushToTalkRegistered = false;
     }
     this.syncShortcuts();
-    this.refreshTray();
   }
 
-  /**
-   * The tray's push-to-talk control shares the accelerator's tap semantics, so
-   * a tray tap and a shortcut tap cannot behave differently.
-   */
+  /** Wait for every queued interaction to settle. */
   whenIdle(): Promise<void> {
     return this.pending;
   }
@@ -343,8 +281,6 @@ export class AriaShell {
     this.chatShortcutRegistered = false;
     this.pushToTalkRegistered = false;
     this.platform.keys.stop();
-    this.platform.tray?.destroy();
-    this.trayCreated = false;
     this.started = false;
   }
 
@@ -458,7 +394,6 @@ export class AriaShell {
     if (kind !== 'orb' && handle.visible) handle.focus();
     if (kind === 'orb') this.showBackdrop();
     if (persist) this.persistOpenWindows();
-    this.refreshTray();
     return handle;
   }
 
@@ -467,7 +402,6 @@ export class AriaShell {
     if (handle !== undefined && !handle.isDestroyed()) handle.hide();
     if (kind === 'orb') this.hideBackdrop();
     this.persistOpenWindows();
-    this.refreshTray();
   }
 
   /** Drop a window handle the platform reports as closed. */
@@ -475,7 +409,6 @@ export class AriaShell {
     this.windows.delete(kind);
     if (kind === 'orb_backdrop') this.backdropOpen = false;
     this.persistOpenWindows();
-    this.refreshTray();
   }
 
   /**

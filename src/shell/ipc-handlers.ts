@@ -5,6 +5,7 @@ import type { ShellSettings } from './settings.js';
 import { isTrustedSender, type IpcSenderEvent } from './security.js';
 import {
   IPC_CHANNELS,
+  isWakeWordPayload,
   type AwaitLoginResult,
   type BeginLoginResult,
   type IpcRegistrar,
@@ -12,6 +13,7 @@ import {
   type SettingsUpdateResult,
   type ShellStatus,
   type SignInResult,
+  type WakeWordDetectionPayload,
 } from './ipc.js';
 
 export interface IpcHost {
@@ -39,6 +41,12 @@ export interface IpcHost {
   emergencyStop(): EmergencyStopView | Promise<EmergencyStopView>;
   settings(): ShellSettings | Promise<ShellSettings>;
   openChat(): void | Promise<void>;
+  /** Quit Aria on the user's explicit request. */
+  quit(): void | Promise<void>;
+  /** Re-attempt the global shortcut grabs after another app freed one. */
+  retryShortcuts(): void | Promise<void>;
+  /** A wake-word detection reported by a renderer. */
+  wakeWordDetected(payload: WakeWordDetectionPayload): void | Promise<void>;
 }
 
 export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
@@ -146,4 +154,12 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     (): ShellSettings | Promise<ShellSettings> => host.settings(),
   );
   handle(IPC_CHANNELS.openChat, (): void | Promise<void> => host.openChat());
+  handle(IPC_CHANNELS.shellQuit, (): void | Promise<void> => host.quit());
+  handle(IPC_CHANNELS.shellRetryShortcuts, (): void | Promise<void> => host.retryShortcuts());
+  ipc.on(IPC_CHANNELS.wakeWordDetected, (event: unknown, ...args: readonly unknown[]): void => {
+    if (!isTrustedSender(event as IpcSenderEvent)) return;
+    const payload = args[0];
+    if (!isWakeWordPayload(payload)) return;
+    void host.wakeWordDetected(payload);
+  });
 }

@@ -694,36 +694,30 @@ describe('background launch', () => {
   });
 });
 
-describe('tray', () => {
-  it('creates a tray with the three presence actions', () => {
-    const { shell, platform } = build();
-    shell.start();
-    expect(platform.tray.created).toBe(1);
-    expect(platform.tray.item('control-center')).toBeDefined();
-    expect(platform.tray.item('chat')).toBeDefined();
-    expect(platform.tray.item('orb')).toBeDefined();
-    expect(shell.trayActive()).toBe(true);
+describe('resident, tray-free lifecycle', () => {
+  it('creates no tray at all', () => {
+    const { platform } = build();
+    expect('tray' in platform).toBe(false);
   });
 
-  it('opens and hides the Orb from the tray', async () => {
-    const { shell, platform } = build();
+  it('quits only on an explicit request, and never on its own', () => {
+    let quit = 0;
+    const { shell } = build(DEFAULT_SETTINGS, undefined, false, undefined, () => {
+      quit += 1;
+    });
     shell.start();
-    platform.tray.item('orb')?.onClick();
-    await shell.whenIdle();
-    expect(shell.isOpen('orb')).toBe(true);
-    platform.tray.item('orb')?.onClick();
-    await shell.whenIdle();
-    expect(shell.isOpen('orb')).toBe(false);
+    expect(quit).toBe(0);
+    shell.quit();
+    expect(quit).toBe(1);
   });
 
-  it('reports no tray when the desktop does not provide one', () => {
-    const { shell, platform } = build();
-    platform.tray.active = false;
+  it('ignores a quit request when the shell was given no way to quit', () => {
+    const { shell } = build();
     shell.start();
-    expect(shell.trayActive()).toBe(false);
+    expect(() => shell.quit()).not.toThrow();
   });
 
-  it('offers a tray push-to-talk control that captures without any global grab', async () => {
+  it('keeps push-to-talk working without a tray control', async () => {
     const { shell, platform, interactionRuntime } = build({
       ...DEFAULT_SETTINGS,
       pushToTalkMode: 'toggle',
@@ -731,131 +725,36 @@ describe('tray', () => {
     platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
     shell.start();
     expect(shell.shortcutStatus().pushToTalk).toBe(false);
-    platform.tray.item('ptt-now')?.onClick();
+    platform.keys.emit(key('key_down'));
     await shell.whenIdle();
     expect(interactionRuntime.captureStarts()).toBe(1);
     expect(shell.isOpen('orb')).toBe(true);
   });
 
-  it('starts a real capture from the tray in hold mode instead of an instant cancel', async () => {
-    const { shell, platform, interactionRuntime, voice } = build({
-      ...DEFAULT_SETTINGS,
-      pushToTalkMode: 'hold',
-    });
-    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
-    shell.start();
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    // A press paired with an immediate release would be a zero-length hold the
-    // controller cancels; the tray must start capture and wait for a stop.
-    expect(interactionRuntime.captureStarts()).toBe(1);
-    expect(voice.presses).toBe(1);
-    expect(voice.releases).toBe(0);
-    expect(shell.isOpen('orb')).toBe(true);
-  });
-
-  it('stops the tray capture on the next tap and reflects it in the label', async () => {
-    const { shell, platform, interactionRuntime, voice } = build({
-      ...DEFAULT_SETTINGS,
-      pushToTalkMode: 'hold',
-    });
-    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
-    shell.start();
-    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    // The runtime reports the real capture; main forwards it to the shell.
-    shell.setPushToTalkActive(true);
-    expect(platform.tray.item('ptt-now')?.label).toBe('Stop listening');
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    expect(voice.releases).toBe(1);
-    expect(interactionRuntime.captureStarts()).toBe(1);
-    shell.setPushToTalkActive(false);
-    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
-  });
-
-  it('clears the tray label when a capture ends on its own (VAD silence or error)', async () => {
-    const { shell, platform } = build({ ...DEFAULT_SETTINGS, pushToTalkMode: 'toggle' });
-    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
-    shell.start();
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    shell.setPushToTalkActive(true);
-    expect(platform.tray.item('ptt-now')?.label).toBe('Stop listening');
-    // A session that ended without a second tap must not keep advertising a
-    // stop that no longer has a capture behind it.
-    shell.setPushToTalkActive(false);
-    expect(platform.tray.item('ptt-now')?.label).toBe('Push to talk');
-  });
-
-  it('treats the next tap as a fresh press after a capture ended on its own', async () => {
-    const { shell, platform, interactionRuntime, voice } = build({
-      ...DEFAULT_SETTINGS,
-      pushToTalkMode: 'hold',
-    });
-    platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
-    shell.start();
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    shell.setPushToTalkActive(true);
-    // The runtime ends the capture on its own, then the user taps again.
-    shell.setPushToTalkActive(false);
-    platform.tray.item('ptt-now')?.onClick();
-    await shell.whenIdle();
-    expect(interactionRuntime.captureStarts()).toBe(2);
-    expect(voice.releases).toBe(0);
-  });
-
-  it('releases a tray-held capture when push-to-talk is disabled mid-capture', async () => {
+  it('releases a held capture when push-to-talk is disabled mid-capture', async () => {
     const { shell, platform, voice, settings } = build({
       ...DEFAULT_SETTINGS,
       pushToTalkMode: 'hold',
     });
     platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
     shell.start();
-    platform.tray.item('ptt-now')?.onClick();
+    platform.keys.emit(key('key_down'));
     await shell.whenIdle();
     expect(voice.presses).toBe(1);
     settings.save({ ...settings.load(), pushToTalkEnabled: false });
     shell.setShortcuts({ pushToTalk: false });
     await shell.whenIdle();
-    // The tray-held capture must not outlive the control that started it.
     expect(voice.releases).toBe(1);
-    expect(platform.tray.item('ptt-now')).toBeUndefined();
   });
 
-  it('offers a retry action when every accelerator was refused, and recovers', async () => {
+  it('recovers a refused accelerator on retry', async () => {
     const { shell, platform } = build();
     platform.shortcuts.refused.push(...PUSH_TO_TALK_ACCELERATORS);
     shell.start();
-    expect(platform.tray.item('ptt-retry')).toBeDefined();
-    // The desktop frees the combination, then the user retries.
+    expect(shell.shortcutStatus().pushToTalk).toBe(false);
     platform.shortcuts.refused.length = 0;
-    platform.tray.item('ptt-retry')?.onClick();
+    shell.retryShortcuts();
     await shell.whenIdle();
     expect(shell.shortcutStatus().pushToTalk).toBe(true);
-    expect(platform.tray.item('ptt-retry')).toBeUndefined();
-  });
-
-  it('offers a Quit action only when the shell is given a way to quit', () => {
-    const absent = build();
-    absent.shell.start();
-    expect(absent.platform.tray.item('quit')).toBeUndefined();
-
-    let quit = 0;
-    const { shell, platform } = build(DEFAULT_SETTINGS, undefined, false, undefined, () => {
-      quit += 1;
-    });
-    shell.start();
-    platform.tray.item('quit')?.onClick();
-    expect(quit).toBe(1);
-  });
-
-  it('destroys the tray on stop', () => {
-    const { shell, platform } = build();
-    shell.start();
-    shell.stop();
-    expect(platform.tray.destroyed).toBe(1);
   });
 });
