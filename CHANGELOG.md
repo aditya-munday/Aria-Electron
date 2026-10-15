@@ -5,6 +5,20 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.4] - 2026-10-15
+
+### Fixed
+- Installing the `.deb` now creates the `aria-desktop` launcher. Setting a
+  custom `afterInstall` replaces electron-builder's default postinst wholesale,
+  and the script had dropped the default template's `update-alternatives` step,
+  so the package installed `/opt/Aria/aria-desktop` but never put it on `PATH`.
+  The shell reported `aria-desktop: command not found`, and launching from the
+  desktop icon would also have failed. The script now reproduces every default
+  step: the launcher link, the desktop/MIME caches and the AppArmor profile.
+- Added a matching `afterRemove` (`build/linux/after-remove.sh`) so uninstalling
+  removes the launcher link and the AppArmor profile instead of leaving them
+  behind.
+
 ## [0.7.3] - 2026-10-15
 
 ### Fixed

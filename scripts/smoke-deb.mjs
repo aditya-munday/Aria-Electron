@@ -58,6 +58,15 @@ if (!skipInstall) {
 const bin = resolveBinary();
 if (bin === undefined) fail('installed binary not found on PATH and not at /opt/Aria/aria-desktop');
 
+// The binary living at /opt/Aria is not enough: the postinst must put it on
+// PATH. A custom afterInstall that replaced electron-builder's default template
+// and dropped its update-alternatives step installed the app but left the
+// launcher missing, so `aria-desktop` printed "command not found". resolveBinary
+// falls back to the /opt path, which would hide that, so require PATH explicitly.
+if (!args.includes('--allow-missing-launcher') && spawnSync('which', ['aria-desktop'], { encoding: 'utf8' }).status !== 0) {
+  fail('aria-desktop is not on PATH; the postinst did not create /usr/bin/aria-desktop');
+}
+
 // The smoke runs the real, sandboxed launch: no `--no-sandbox`. The SUID helper
 // the package ships must be usable (root-owned 4755) or the kernel must allow
 // unprivileged user namespaces, otherwise Chromium would either abort or — worse

@@ -706,18 +706,18 @@ log line the user can read. Callers (`control-center-service.ts`,
 - `scripts/smoke-deb.mjs` observes boot liveness over real time: a process that
   crashes on start exits before the first poll, so the old synchronous check
   could report a boot that never happened.
-- `build.deb.afterInstall` (`build/linux/after-install.sh`) ends any running
-  `aria-desktop` during an in-place upgrade. The app holds a single-instance
-  lock and older releases stayed resident with a system tray, so without this a
-  freshly installed build would only hand focus to the still-running old
-  process: the user would keep seeing the old UI and the old tray until they
-  logged out. Verify a change here by extracting `control.tar.xz` from the built
-  deb and reading `postinst`.
-- The same `after-install.sh` also sets the `chrome-sandbox` mode, which the
-  default electron-builder template does but a custom `afterInstall` replaces
-  wholesale. Omitting it left the helper mode 0755; on a host whose kernel will
-  not grant an unprivileged user namespace (Debian 13, Ubuntu 24+ with the
-  AppArmor userns restriction) Chromium then aborts with "The SUID sandbox
-  helper binary was found, but is not configured correctly" and the app never
-  starts — so wake word could never run there. The script now mirrors the
-  template: `chmod 4755` when `unshare --user` fails, `chmod 0755` otherwise.
+- `build.deb.afterInstall` (`build/linux/after-install.sh`) and
+  `build.deb.afterRemove` (`build/linux/after-remove.sh`) **replace**
+  electron-builder's default maintainer scripts wholesale, so each must
+  reproduce every step the default template performs. Dropping a step ships a
+  broken package that no unit test sees. Two such omissions reached users:
+  without `update-alternatives` the package installed `/opt/Aria/aria-desktop`
+  but never put it on `PATH` (`aria-desktop: command not found`), and without
+  the sandbox step Chromium aborted at launch on hosts with no unprivileged user
+  namespace. The scripts now carry the launcher link, the sandbox mode
+  (`chmod 4755` when `unshare --user` fails), the desktop/MIME cache refresh and
+  the AppArmor profile; `after-remove.sh` undoes the link and profile.
+  `src/packaging/deb-scripts.test.ts` guards the steps, and the release workflow
+  installs the deb with `apt` and asserts `/usr/bin/aria-desktop` exists before
+  booting it. Verify a change here by extracting `control.tar.xz` from the built
+  deb and reading `postinst`/`postrm`.

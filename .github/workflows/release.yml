@@ -44,8 +44,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
+          # Install exactly as a user would: `apt` runs the postinst, which is
+          # where the launcher link and the sandbox helper mode are set. Do not
+          # pre-fix the helper here — that masked a postinst that shipped no
+          # `aria-desktop` launcher at all.
           sudo apt-get install -y "./${{ steps.pkg.outputs.file }}"
-          sudo chmod 4755 /opt/Aria/chrome-sandbox
+          test -x /usr/bin/aria-desktop || { echo "postinst did not create the aria-desktop launcher"; exit 1; }
           node scripts/smoke-deb.mjs --no-install "${{ steps.pkg.outputs.file }}"
       - name: Checksum
         run: |
