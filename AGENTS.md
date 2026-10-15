@@ -60,6 +60,40 @@ the AI-Engineer task executor.
   the object with a spread guard instead
   (`...(x !== undefined ? { x } : {})`).
 
+## Renderer surfaces (Control Center, Chat, Orb)
+
+- The three renderer surfaces (`src/control-center/renderer/`,
+  `src/chat/renderer/`, `src/orb/renderer/`) are plain DOM builders bundled to
+  `dist/renderer/*.js` by `scripts/bundle-renderer.mjs`. They import shared
+  browser modules by relative path (e.g. `../../renderer/sfx.js`); esbuild
+  inlines those into each surface bundle, so a shared module never needs its own
+  `<script>`.
+- A surface that polls its state on an interval must key its "did anything
+  change" check on the *drawn* fields only. `ChatState.generatedAt` and
+  `OrbPresenceView.updatedAt` are fresh ISO timestamps on every read, so
+  including them makes the key never match and the surface repaints on every
+  tick. Chat strips `generatedAt` (`stateKey`); the Orb strips `updatedAt`.
+- The Orb must never rebuild its DOM per poll. `renderOrb` updates an existing
+  sphere in place when the theme is unchanged; `bootstrapOrb` calls it only when
+  the presence actually changes. Rebuilding allocates a new WebGL context each
+  time (`canvas.getContext('webgl')` on a fresh canvas) and never releases the
+  old one, so the app stutters and then crashes when the browser's context
+  budget (~16) is exhausted. A hidden presence paints nothing and stops the
+  shader.
+- The palette and motion live in `src/renderer/theme.css`, which every surface
+  imports via `@import url('./theme.css')`. It is aligned with the Beyonders
+  design system (violet `#a78bfa`, basalt surfaces, Inter). Keep the token names
+  (`--ink-*`, `--text-*`, `--accent*`, `--font-*`, `--radius*`, `--ease*`);
+  the surface CSS and `theme.test.ts` depend on them. Decorative motion must
+  animate only `transform`/`opacity`/`box-shadow` and stay disabled under
+  `prefers-reduced-motion` and `html[data-motion='reduced']`.
+- Sound is `src/renderer/sfx.ts`: Web Audio synthesis, no audio assets and no
+  CSP change (`media-src`/`default-src 'none'` stay intact). `attachCues(doc)`
+  wires ambient button/key cues; surfaces emit semantic cues with
+  `emitCue(doc, cue)` or call `playCue`. It is inert without an `AudioContext`,
+  silent when muted (`aria.sfx.muted`) or under reduced motion, and throttles
+  repeats.
+
 ## Backend and configuration (`src/config.ts`, `src/runtime.ts`)
 
 The backend base URL is `https://api.adityamunday.codes` by default. Config is

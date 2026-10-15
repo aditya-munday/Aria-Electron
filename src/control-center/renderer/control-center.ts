@@ -1,4 +1,5 @@
 import type { ControlCenterState, VoiceOption } from '../state.js';
+import { attachCues, playCue } from '../../renderer/sfx.js';
 
 export interface ControlCenterBridge {
   controlCenterState(): Promise<ControlCenterState>;
@@ -1250,25 +1251,30 @@ function accountPanel(
         beyondersButton.disabled = false;
         note.setAttribute('data-tone', 'bad');
         text(note, result.reason ?? 'Could not start sign-in.');
+        playCue('error');
         return;
       }
+      playCue('start');
       text(note, 'Waiting for you to finish in the browser…');
       const waiting = button(doc, 'account-cancel-sign-in', 'Cancel', 'ghost', true, () => {
         void bridge.cancelLogin().then(() => {
           beyondersButton.disabled = false;
           text(note, 'Sign-in cancelled.');
+          playCue('stop');
         });
       });
       actions.append(waiting);
       void bridge.awaitLogin().then((awaited) => {
         waiting.remove();
         if (awaited.ok) {
+          playCue('confirm');
           refresh();
           return;
         }
         beyondersButton.disabled = false;
         note.setAttribute('data-tone', 'bad');
         text(note, awaited.reason ?? 'Sign-in failed.');
+        playCue('error');
       });
     });
   });
@@ -1485,6 +1491,8 @@ export function bootstrapControlCenter(doc: Document, bridge: ControlCenterBridg
       panels.replaceChildren(...skeletons);
     }
   }
+  const detachCues = attachCues(doc);
+  doc.defaultView?.addEventListener('pagehide', detachCues);
   void bridge.controlCenterState().then((state) => renderControlCenter(doc, state, bridge));
 }
 

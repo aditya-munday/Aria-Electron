@@ -5,6 +5,38 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.2] - 2026-10-14
+
+### Fixed
+- The Orb no longer rebuilds its DOM and creates a fresh WebGL context on every
+  presence poll. `bootstrapOrb` keyed its "did anything change" check on
+  `JSON.stringify(state.presence)`, but `presence.updatedAt` is a new timestamp
+  on every read, so the key never matched: the shader was torn down and a new
+  context allocated about twice a second, which is what made the app stutter and
+  eventually crash once the browser's context budget ran out. The key now
+  excludes `updatedAt` (the same reason the chat surface strips `generatedAt`),
+  and a presence change updates the existing sphere in place instead of
+  rebuilding it. A hidden presence now paints nothing and stops the shader.
+
+### Changed
+- The interface adopts the Beyonders scheme: violet accent (`#a78bfa`), basalt
+  surfaces (`#0f0f0f` … `#202020`) and the Inter typeface, replacing the previous
+  indigo/Space Grotesk theme. Every token name is preserved, so the Control
+  Center and Chat render against the new palette without markup changes.
+- An additive motion layer (animated accents, glass, gradient text, hover lift,
+  sheen) is available to both surfaces. It animates only
+  `transform`/`opacity`/`box-shadow`, so the compositor carries it, and it is
+  fully disabled under `prefers-reduced-motion` or `html[data-motion='reduced']`.
+
+### Added
+- The app has sound. Cues are synthesised with the Web Audio API (no audio
+  assets, no network, no CSP change) and fire on send, receive, notify, start,
+  stop, error, toggle and confirm. The chat surface diffs consecutive states so
+  a new reply, a new task, a task that finishes and an emergency stop each read
+  as a distinct sound; the Control Center sounds sign-in start/success/failure.
+  The layer is silent when muted, inert without an `AudioContext`, and throttles
+  repeated cues.
+
 ## [0.7.1] - 2026-10-14
 
 ### Fixed

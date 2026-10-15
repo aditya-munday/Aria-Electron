@@ -1,5 +1,6 @@
 import type { ApprovalDecisionOutcome, ChatActionResult, ChatState, ChatTaskView } from '../state.js';
 import type { EmergencyStopView } from '../state.js';
+import { attachCues, emitCue, playCue } from '../../renderer/sfx.js';
 
 export interface ChatBridge {
   chatState(): Promise<ChatState>;
@@ -751,6 +752,7 @@ function composer(doc: Document, state: ChatState, bridge: ChatBridge, refresh: 
     if (value.trim() === '') return;
     input.value = '';
     autoGrow();
+    emitCue(doc, 'send');
     // Paint the user turn and a thinking placeholder at once, so the reply never
     // appears to arrive out of nowhere.
     const optimistic: ChatState = {
@@ -866,6 +868,8 @@ export function bootstrapChat(doc: Document, bridge: ChatBridge): void {
     loader.append(typingDots(doc));
     root.replaceChildren(loader);
   }
+  const detachCues = attachCues(doc);
+  let previous: ChatState | undefined;
   let lastKey: string | undefined;
   let pending = false;
   const refresh = (): void => {
@@ -879,6 +883,8 @@ export function bootstrapChat(doc: Document, bridge: ChatBridge): void {
         const key = stateKey(state);
         if (key === lastKey) return;
         lastKey = key;
+        announceChanges(doc, previous, state);
+        previous = state;
         renderChat(doc, state, bridge);
       },
       () => {
@@ -892,7 +898,63 @@ export function bootstrapChat(doc: Document, bridge: ChatBridge): void {
   // rendering once and freezing. The poll is cheap; the render is skipped
   // whenever the state is unchanged, so an idle chat costs nothing.
   const timer = setInterval(refresh, 2000);
-  doc.defaultView?.addEventListener('pagehide', () => clearInterval(timer));
+  doc.defaultView?.addEventListener('pagehide', () => {
+    clearInterval(timer);
+    detachCues();
+  });
+}
+
+/**
+ * Turn the difference between two states into a sound: a new assistant turn is
+ * a receive, a new task is a start, a task that leaves the active set is a
+ * stop, an emergency stop is a hard stop, and a newly-visible error is an
+ * error. Only transitions make noise, so the 2s poll stays silent at rest.
+ */
+function announceChanges(doc: Document, before: ChatState | undefined, after: ChatState): void {
+  if (before === undefined) return;
+
+  const hadAssistant = before.turns.some((turn) => turn.role === 'assistant' && turn.text.trim() !== '');
+  const hasAssistant = after.turns.some((turn) => turn.role === 'assistant' && turn.text.trim() !== '');
+  if (hasAssistant && !hadAssistant) playCue('receive');
+
+  const beforeTasks = new Map(before.tasks.map((task) => [task.taskId, task]));
+  const afterTasks = new Map(after.tasks.map((task) => [task.taskId, task]));
+
+  let started = false;
+  let finished = false;
+  let needsYou = false;
+  for (const [id, task] of afterTasks) {
+    const prior = beforeTasks.get(id);
+    if (prior === undefined) {
+      started = true;
+      continue;
+    }
+    const wasActive = prior.phase === 'accepted' || prior.phase === 'running';
+    const isActive = task.phase === 'accepted' || task.phase === 'running';
+    if (wasActive && !isActive) finished = true;
+    if (
+      prior.approval === undefined &&
+      (task.approval !== undefined || task.questions.length > 0 || task.plans.length > 0 || task.permissions.length > 0)
+    ) {
+      needsYou = true;
+    }
+  }
+
+  const beforeStopped = before.emergencyStop?.engaged === true;
+  const nowStopped = after.emergencyStop?.engaged === true;
+  if (nowStopped && !beforeStopped) {
+    playCue('stop');
+    return;
+  }
+  if (needsYou) {
+    playCue('notify');
+    return;
+  }
+  if (started) {
+    playCue('start');
+    return;
+  }
+  if (finished) playCue('confirm');
 }
 
 const injected = (globalThis as { aria?: ChatBridge }).aria;

@@ -1,111 +1,122 @@
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 300 700;
-  font-display: swap;
-  src: url('./fonts/SpaceGrotesk-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
-}
+/**
+ * Aria's visual foundation, aligned with the Beyonders design system.
+ *
+ * The scheme is the one the product surfaces use: violet accent (`#a78bfa`),
+ * basalt/near-black surfaces (`#0f0f0f` … `#202020`) and the Inter type
+ * family. Every token name the app already consumed is preserved, so the
+ * swap is a palette change rather than a markup change — the Control Center
+ * and Chat keep referencing `--ink-*`, `--text-*`, `--accent*` and the font
+ * tokens exactly as before.
+ *
+ * The motion and depth layer at the foot is additive: it only decorates
+ * (animated accents, glass, gradient text) and is fully disabled under
+ * `prefers-reduced-motion` or `html[data-motion='reduced']`.
+ */
+
+/* --------------------------------------------------------------- typeface */
 
 @font-face {
-  font-family: 'Space Grotesk';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: 300 700;
+  font-weight: 400;
   font-display: swap;
-  src: url('./fonts/SpaceGrotesk-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
-    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
-    U+2113, U+2C60-2C7F, U+A720-A7FF;
+  src: url('./fonts/Inter-Regular.woff2') format('woff2');
 }
-
 @font-face {
-  font-family: 'Public Sans';
-  font-style: normal;
-  font-weight: 100 900;
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 400;
   font-display: swap;
-  src: url('./fonts/PublicSans-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
-    U+FEFF, U+FFFD;
+  src: url('./fonts/Inter-Italic.woff2') format('woff2');
 }
-
 @font-face {
-  font-family: 'Public Sans';
+  font-family: 'Inter';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 500;
   font-display: swap;
-  src: url('./fonts/PublicSans-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
-    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
-    U+2113, U+2C60-2C7F, U+A720-A7FF;
+  src: url('./fonts/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/Inter-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/Inter-Bold.woff2') format('woff2');
 }
 
 :root {
   color-scheme: dark;
 
-  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
 
-  --ink-000: #070910;
-  --ink-050: #0b0e17;
-  --ink-100: #11151f;
-  --ink-150: #171c28;
-  --ink-200: #1e2431;
-  --ink-250: #262d3d;
-  --ink-300: #333c50;
+  /* Surfaces: basalt (the Beyonders near-black stack). */
+  --ink-000: #0a0a0c;
+  --ink-050: #0f0f0f;
+  --ink-100: #141414;
+  --ink-150: #161616;
+  --ink-200: #1c1c1c;
+  --ink-250: #202020;
+  --ink-300: #2a2a2a;
 
-  --line-soft: rgba(148, 163, 208, 0.1);
-  --line: rgba(148, 163, 208, 0.16);
-  --line-strong: rgba(148, 163, 208, 0.28);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.18);
 
-  --text-hi: #f2f4fb;
-  --text: #dfe3ef;
-  --text-mid: #a7aec4;
-  --text-lo: #767e95;
+  --text-hi: #f5f5f7;
+  --text: #e4e4e7;
+  --text-mid: #a1a1aa;
+  --text-lo: #71717a;
+  --muted: #a1a1aa;
 
-  --aurora-1: #7c5cff;
-  --aurora-2: #4d7cff;
-  --aurora-3: #34d3ee;
-  --mint: #3ddc97;
-  --amber: #ffb454;
-  --rose: #ff6b6b;
+  /* Brand spectrum: violet lead, cyan support (Beyonders accent + cyan). */
+  --aurora-1: #a78bfa;
+  --aurora-2: #8b5cf6;
+  --aurora-3: #53dfdd;
+  --mint: #6ee7b7;
+  --amber: #fcd34d;
+  --rose: #fb7185;
 
   --accent: var(--aurora-1);
-  --accent-soft: rgba(124, 92, 255, 0.16);
-  --accent-line: rgba(124, 92, 255, 0.42);
-  --accent-glow: rgba(124, 92, 255, 0.9);
-  --accent-line-solid: rgba(124, 92, 255, 0.6);
+  --accent-soft: rgba(167, 139, 250, 0.16);
+  --accent-line: rgba(167, 139, 250, 0.42);
+  --accent-glow: rgba(139, 92, 246, 0.9);
+  --accent-line-solid: rgba(167, 139, 250, 0.6);
 }
 
 :root[data-accent='mint'] {
   --accent: var(--mint);
-  --accent-soft: rgba(61, 220, 151, 0.16);
-  --accent-line: rgba(61, 220, 151, 0.42);
-  --accent-glow: rgba(61, 220, 151, 0.9);
-  --accent-line-solid: rgba(61, 220, 151, 0.6);
+  --accent-soft: rgba(110, 231, 183, 0.16);
+  --accent-line: rgba(110, 231, 183, 0.42);
+  --accent-glow: rgba(110, 231, 183, 0.9);
+  --accent-line-solid: rgba(110, 231, 183, 0.6);
 }
 
 :root[data-accent='amber'] {
   --accent: var(--amber);
-  --accent-soft: rgba(255, 180, 84, 0.16);
-  --accent-line: rgba(255, 180, 84, 0.42);
-  --accent-glow: rgba(255, 180, 84, 0.9);
-  --accent-line-solid: rgba(255, 180, 84, 0.6);
+  --accent-soft: rgba(252, 211, 77, 0.16);
+  --accent-line: rgba(252, 211, 77, 0.42);
+  --accent-glow: rgba(252, 211, 77, 0.9);
+  --accent-line-solid: rgba(252, 211, 77, 0.6);
 }
 
 :root[data-accent='rose'] {
   --accent: var(--rose);
-  --accent-soft: rgba(255, 107, 107, 0.16);
-  --accent-line: rgba(255, 107, 107, 0.42);
-  --accent-glow: rgba(255, 107, 107, 0.9);
-  --accent-line-solid: rgba(255, 107, 107, 0.6);
+  --accent-soft: rgba(251, 113, 133, 0.16);
+  --accent-line: rgba(251, 113, 133, 0.42);
+  --accent-glow: rgba(251, 113, 133, 0.9);
+  --accent-line-solid: rgba(251, 113, 133, 0.6);
 }
 
 :root {
-
   --radius-xs: 8px;
   --radius-sm: 12px;
   --radius: 18px;
@@ -134,6 +145,185 @@
   border-radius: 6px;
 }
 
+/* ------------------------------------------------------- motion and depth */
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(-4%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(-4%, -2%, 0) scale(1);
+  }
+}
+
+@keyframes float-orb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -22px, 0);
+  }
+}
+
+@keyframes spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sheen {
+  0% {
+    background-position: -120% 0;
+  }
+  100% {
+    background-position: 220% 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(139, 92, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+/* A drifting colour field for hero and auth backgrounds. Decorative only. */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.aurora::before,
+.aurora::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+}
+.aurora::before {
+  width: 48rem;
+  height: 48rem;
+  top: -22rem;
+  left: -12rem;
+  background: radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.55), transparent 65%);
+  animation: aurora-drift 22s ease-in-out infinite;
+}
+.aurora::after {
+  width: 40rem;
+  height: 40rem;
+  top: -14rem;
+  right: -14rem;
+  background: radial-gradient(circle at 70% 30%, rgba(167, 139, 250, 0.42), transparent 65%);
+  animation: aurora-drift 28s ease-in-out infinite reverse;
+}
+
+/* A glass surface: translucent, blurred, ringed. */
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 30px 60px -40px rgba(0, 0, 0, 0.9);
+}
+
+/* A card whose edge is a slowly rotating accent sweep. */
+.glow-border {
+  position: relative;
+  border-radius: 1rem;
+  isolation: isolate;
+}
+.glow-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(167, 139, 250, 0.8) 60deg,
+    transparent 140deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: spin-ring 8s linear infinite;
+  opacity: 0.75;
+}
+
+/* An animated sheen for primary buttons and key headlines. */
+.sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.22) 40%,
+    rgba(255, 255, 255, 0.22) 46%,
+    transparent 66%
+  );
+  background-size: 220% 100%;
+  animation: sheen 5.5s ease-in-out infinite;
+}
+
+.text-gradient {
+  background: linear-gradient(120deg, #ffffff 10%, #c4b5fd 55%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.pulse {
+  animation: pulse-ring 2.4s ease-out infinite;
+}
+
+.rise-in {
+  animation: rise-in 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* A dashed animated rule that reads as "in progress". */
+.flow-line {
+  height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(167, 139, 250, 0.7) 0 8px, transparent 8px 16px);
+  background-size: 200% 100%;
+  animation: sheen 3s linear infinite;
+}
+
+/* A decorative floating accent orb; place inside a positioned box. */
+.orb-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(28px);
+  opacity: 0.35;
+  pointer-events: none;
+  animation: float-orb 9s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -142,4 +332,26 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* An in-app motion switch (`html[data-motion='reduced']`) mirrors the OS
+   setting; `html[data-animations='off']` turns the decorative layer off
+   entirely without touching layout. */
+html[data-motion='reduced'] .aurora::before,
+html[data-motion='reduced'] .aurora::after,
+html[data-motion='reduced'] .glow-border::before,
+html[data-motion='reduced'] .sheen,
+html[data-motion='reduced'] .pulse,
+html[data-motion='reduced'] .rise-in,
+html[data-motion='reduced'] .flow-line,
+html[data-motion='reduced'] .orb-glow,
+html[data-animations='off'] .aurora::before,
+html[data-animations='off'] .aurora::after,
+html[data-animations='off'] .glow-border::before,
+html[data-animations='off'] .sheen,
+html[data-animations='off'] .pulse,
+html[data-animations='off'] .rise-in,
+html[data-animations='off'] .flow-line,
+html[data-animations='off'] .orb-glow {
+  animation: none !important;
 }

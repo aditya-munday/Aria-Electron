@@ -92,18 +92,71 @@ function stopActiveMotion(): void {
   stopMotion = undefined;
 }
 
+function themeName(config: RadialConfig): string {
+  return config === RADIAL_ULTRA ? 'radial-ultra' : 'radial';
+}
+
+/**
+ * Paint a new presence onto an existing Orb without rebuilding it. The canvas
+ * and its WebGL context stay alive for the window's lifetime; the motion loop
+ * reads the new `data-orb-ui-state` through its MutationObserver and reshapes
+ * the trajectory in place. Rebuilding here would strand the old WebGL context
+ * and burn a fresh one on every state change, which is what made the presence
+ * stutter and eventually crash once the browser's context budget ran out.
+ */
+function applyPresence(
+  orb: HTMLElement,
+  presence: OrbState['presence'],
+  config: RadialConfig,
+): void {
+  const hue = CUE_HUE[presence.cue];
+  orb.className = `orb orb-${presence.presence}`;
+  orb.setAttribute('data-presence', presence.presence);
+  orb.setAttribute('data-cue', presence.cue);
+  orb.setAttribute('data-orb-ui-state', RADIAL_STATE[presence.presence]);
+  orb.setAttribute('aria-label', `${presence.label}. ${presence.detail ?? ''}`.trim());
+  orb.style.setProperty('--cue-hue', String(hue));
+  orb.style.setProperty('--radial-deep', config.appearance.deepColor);
+  orb.style.setProperty('--radial-cobalt', config.appearance.cobaltColor);
+  orb.style.setProperty('--radial-aqua', config.appearance.aquaColor);
+  orb.style.setProperty('--radial-pale', config.appearance.paleColor);
+  orb.style.setProperty('--radial-seam', config.appearance.seamColor);
+  orb.style.setProperty('--radial-surface', conicSurface(config.appearance));
+  const label = orb.querySelector('[data-testid="orb-label"]');
+  if (label !== null) label.textContent = presence.label;
+  const detail = orb.querySelector('[data-testid="orb-detail"]');
+  if (detail !== null) detail.textContent = presence.detail ?? PRESENCE_HINT[presence.presence];
+}
+
 export function renderOrb(doc: Document, state: OrbState, config: RadialConfig = RADIAL_ULTRA): void {
   const root = doc.getElementById('orb');
   if (root === null) return;
-  stopActiveMotion();
 
   const presence = state.presence;
+
+  // A hidden presence paints nothing and stops the shader, so a dismissed Orb
+  // costs no frames and holds no GPU context.
+  if (presence.presence === 'hidden') {
+    stopActiveMotion();
+    if (root.childElementCount > 0) root.replaceChildren();
+    return;
+  }
+
+  // A presence change on an Orb of the same theme updates it in place.
+  const existing = root.querySelector('.orb');
+  if (existing instanceof HTMLElement && existing.getAttribute('data-orb-ui-theme') === themeName(config)) {
+    applyPresence(existing, presence, config);
+    return;
+  }
+
+  stopActiveMotion();
+
   const hue = CUE_HUE[presence.cue];
 
   const orb = h(doc, 'div', `orb orb-${presence.presence}`);
   orb.setAttribute('data-presence', presence.presence);
   orb.setAttribute('data-cue', presence.cue);
-  orb.setAttribute('data-orb-ui-theme', config === RADIAL_ULTRA ? 'radial-ultra' : 'radial');
+  orb.setAttribute('data-orb-ui-theme', themeName(config));
   orb.setAttribute('data-orb-ui-state', RADIAL_STATE[presence.presence]);
   orb.setAttribute('role', 'button');
   orb.setAttribute('tabindex', '0');
@@ -374,7 +427,11 @@ export function bootstrapOrb(doc: Document, bridge: OrbBridge, intervalMs = 600)
     void bridge.orbState().then((state) => {
       // The presence carries everything that is drawn; skip the rebuild when it
       // has not changed rather than restarting the shader several times a second.
-      const key = JSON.stringify(state.presence);
+      // `updatedAt` is a fresh timestamp on every poll, so it must be excluded or
+      // the key never matches and the Orb repaints — and leaks a WebGL context —
+      // on every tick. This is the same reason the chat surface strips its
+      // `generatedAt`.
+      const key = JSON.stringify({ ...state.presence, updatedAt: undefined });
       if (key === lastPresence) return;
       lastPresence = key;
       renderOrb(doc, state);

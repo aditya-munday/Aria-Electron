@@ -229,4 +229,59 @@ describe('orb live presence', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not rebuild the Orb while only the timestamp advances', async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<main id="orb"></main>';
+      let tick = 0;
+      const b: OrbBridge = {
+        orbState: async () => ({
+          generatedAt: `t${tick}`,
+          presence: { presence: 'idle', cue: 'dot', label: 'Idle', updatedAt: `t${tick++}` },
+        }),
+        orbSetInteractive: async () => undefined,
+      };
+      const stop = bootstrapOrb(document, b, 100);
+      await vi.advanceTimersByTimeAsync(0);
+      const first = document.querySelector('.orb');
+      expect(first).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(500);
+      // Five more polls with a fresh `updatedAt` each: the node must survive.
+      expect(document.querySelector('.orb')).toBe(first);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reuses the sphere and its single WebGL context across presence changes', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    const original = HTMLCanvasElement.prototype.getContext;
+    const contexts: number[] = [];
+    HTMLCanvasElement.prototype.getContext = (() => {
+      contexts.push(1);
+      return null;
+    }) as typeof HTMLCanvasElement.prototype.getContext;
+    try {
+      renderOrb(document, state({ presence: 'idle', cue: 'dot', label: 'Idle' }));
+      const sphere = document.querySelector('.sphere');
+      renderOrb(document, state({ presence: 'speaking', cue: 'bars', label: 'Speaking' }));
+      renderOrb(document, state({ presence: 'error', cue: 'alert', label: 'Error' }));
+
+      expect(document.querySelectorAll('.sphere')).toHaveLength(1);
+      expect(document.querySelector('.sphere')).toBe(sphere);
+      expect(document.querySelector('.orb')?.getAttribute('data-presence')).toBe('error');
+      expect(contexts.length).toBe(1);
+    } finally {
+      HTMLCanvasElement.prototype.getContext = original;
+    }
+  });
+
+  it('paints nothing while the presence is hidden', () => {
+    document.body.innerHTML = '<main id="orb"></main>';
+    renderOrb(document, state({ presence: 'hidden', cue: 'none', label: 'Hidden' }));
+    expect(document.querySelector('.orb')).toBeNull();
+    expect(document.querySelectorAll('canvas')).toHaveLength(0);
+  });
 });

@@ -64,7 +64,7 @@ body {
   gap: 12px;
   margin: 0 -22px;
   padding: 18px 24px 14px;
-  background: linear-gradient(180deg, rgba(7, 9, 16, 0.92), rgba(7, 9, 16, 0));
+  background: linear-gradient(180deg, rgba(8, 8, 10, 0.92), rgba(8, 8, 10, 0));
   backdrop-filter: blur(10px);
 }
 
@@ -109,7 +109,7 @@ body {
 .card {
   border-radius: var(--radius);
   padding: 18px 20px;
-  background: linear-gradient(180deg, rgba(30, 36, 49, 0.66), rgba(17, 21, 31, 0.72));
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.66), rgba(16, 16, 16, 0.72));
   border: 1px solid var(--line);
   box-shadow: var(--shadow-1);
   backdrop-filter: blur(16px);
@@ -603,7 +603,7 @@ body {
 
 .controls {
   border-color: rgba(255, 107, 107, 0.28);
-  background: linear-gradient(180deg, rgba(42, 20, 26, 0.5), rgba(17, 21, 31, 0.7));
+  background: linear-gradient(180deg, rgba(42, 20, 26, 0.5), rgba(16, 16, 16, 0.7));
 }
 
 .stop-report {
@@ -704,7 +704,7 @@ progress::-webkit-progress-value {
   gap: 10px;
   padding: 12px 12px 10px;
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(30, 36, 49, 0.92), rgba(17, 21, 31, 0.96));
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.92), rgba(16, 16, 16, 0.96));
   border: 1px solid var(--line);
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(20px);
@@ -885,3 +885,41 @@ progress::-webkit-progress-value {
     padding: 14px 16px 10px;
   }
 }
+
+/* ------------------------------------------------------------ motion layer */
+
+/*
+ * Additive polish for the chat surface. As in the Control Center, only
+ * `transform`/`opacity`/`box-shadow` move, so the compositor carries the work,
+ * and the shared reduced-motion rules in `theme.css` switch it off.
+ */
+
+/* The hero mark floats and carries a soft accent halo. */
+.hero-mark {
+  box-shadow: 0 24px 60px -20px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* A new assistant reply eases in; the base rule already rises every child, so
+   this only softens the bubble itself. */
+.turn-assistant .bubble {
+  animation: rise 420ms var(--ease-out) both;
+}
+
+/* Cards and chips lift on hover, echoing the Control Center tiles. */
+.card {
+  transition: transform 200ms var(--ease), box-shadow 240ms var(--ease), border-color 240ms var(--ease);
+}
+.card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-2);
+}
+.chip:active {
+  transform: translateY(0) scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-assistant .bubble {
+    animation: none;
+  }
+}
+
