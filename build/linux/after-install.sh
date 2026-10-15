@@ -11,3 +11,17 @@ if command -v pkill >/dev/null 2>&1; then
   pkill -x aria-desktop 2>/dev/null || true
   pkill -f '/opt/Aria/aria-desktop' 2>/dev/null || true
 fi
+
+# Set the SUID bit on chrome-sandbox where the kernel will not hand the sandbox
+# an unprivileged user namespace. This replicates electron-builder's default
+# after-install template: a custom `afterInstall` replaces that template
+# wholesale, so omitting this leaves the helper mode 0755 and Chromium aborts
+# with "The SUID sandbox helper binary was found, but is not configured
+# correctly" on hosts whose userns probe fails (Debian 13, Ubuntu 24+ with the
+# AppArmor userns restriction). A misconfigured helper is a launch failure, so
+# wake word could never run there.
+if ! { [[ -L /proc/self/ns/user ]] && unshare --user true; }; then
+  chmod 4755 '/opt/Aria/chrome-sandbox' || true
+else
+  chmod 0755 '/opt/Aria/chrome-sandbox' || true
+fi

@@ -35,6 +35,7 @@ const rendererHtml = [
   'dist/renderer/control-center.html',
   'dist/renderer/orb.html',
   'dist/renderer/chat.html',
+  'dist/renderer/voice.html',
 ];
 for (const file of rendererHtml) {
   if (!existsSync(file)) continue;

@@ -103,6 +103,8 @@ function host(overrides: Partial<IpcHost> = {}): IpcHost {
     quit: () => undefined,
     retryShortcuts: () => undefined,
     wakeWordDetected: () => undefined,
+    voicePcm: () => undefined,
+    voiceStatus: () => undefined,
     emergencyStop: () => ({
       engaged: true,
       stopped: [],
@@ -260,8 +262,20 @@ describe('main-process IPC handlers', () => {
   it('refuses every channel when the sender is not an app frame', () => {
     const registrar = new RecordingRegistrar();
     registerIpcHandlers(registrar, host());
+    // Push channels carry commands *to* a renderer; they have no main-process
+    // handler or listener at all.
+    const pushChannels = [IPC_CHANNELS.voiceCaptureStart, IPC_CHANNELS.voiceCaptureStop];
     for (const channel of Object.values(IPC_CHANNELS)) {
-      if (channel === IPC_CHANNELS.wakeWordDetected) {
+      if (pushChannels.includes(channel)) {
+        expect(registrar.handlers.has(channel)).toBe(false);
+        expect(registrar.listeners.has(channel)).toBe(false);
+        continue;
+      }
+      if (
+        channel === IPC_CHANNELS.wakeWordDetected ||
+        channel === IPC_CHANNELS.voiceCapturePcm ||
+        channel === IPC_CHANNELS.voiceCaptureStatus
+      ) {
         const listener = registrar.listeners.get(channel);
         expect(listener).toBeDefined();
         let delivered = 0;
@@ -269,6 +283,12 @@ describe('main-process IPC handlers', () => {
           registrar,
           host({
             wakeWordDetected: () => {
+              delivered += 1;
+            },
+            voicePcm: () => {
+              delivered += 1;
+            },
+            voiceStatus: () => {
               delivered += 1;
             },
           }),

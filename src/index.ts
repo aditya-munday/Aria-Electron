@@ -135,6 +135,12 @@ export {
   type WakeWordListenerDeps,
 } from './voice/wake-listener.js';
 export { ManualSpeaker, type Speaker } from './voice/playback.js';
+export {
+  RendererMicrophone,
+  type RendererCaptureStatus,
+  type RendererCaptureTransport,
+  type RendererMicrophoneDeps,
+} from './voice/renderer-microphone.js';
 export type {
   AudioDevice,
   CaptureHandle,

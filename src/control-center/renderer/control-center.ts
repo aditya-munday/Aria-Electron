@@ -1298,7 +1298,7 @@ function diagnosticsPanel(doc: Document, state: ControlCenterState): El {
     row(
       doc,
       'Voice engine',
-      d.voiceEngine === 'native' ? 'Native capture bound' : 'Unavailable',
+      d.voiceEngine === 'native' ? 'Renderer capture bound' : 'Unavailable',
       d.voiceEngineReason,
     ),
     row(doc, 'Voice input', d.voiceReady ? 'Ready' : 'Not ready', d.voiceReason),

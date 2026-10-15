@@ -22,7 +22,9 @@ import { patchSettings } from './shell/settings.js';
 import { createAutostartManager } from './shell/autostart.js';
 import { CHAT_SHORTCUT_ACCELERATOR, PUSH_TO_TALK_ACCELERATOR } from './shell/window.js';
 import { createNativeAudio } from './voice/native-audio.js';
+import { RendererMicrophone, type RendererCaptureStatus } from './voice/renderer-microphone.js';
 import { loadVoiceConfig } from './voice/voice-config.js';
+import { IPC_CHANNELS } from './shell/ipc.js';
 import { ControlCenterService, type SettingsSaveResult } from './control-center/control-center-service.js';
 import type { PreviewVoiceResult } from './shell/ipc.js';
 import { verifySignIn, type SignInOutcome } from './control-center/sign-in.js';
@@ -93,9 +95,35 @@ function main(): void {
     frameMs: voiceConfig.vad.frameMs,
     sampleRate: voiceConfig.sampleRate,
   });
+  // The renderer owns the microphone. It captures 16 kHz mono PCM via
+  // getUserMedia and streams it over IPC. Only the native *player* is used from
+  // the native backend (the speaker below); capture never shells out to
+  // `parec`/`arecord`/`pw-record`, so wake word and push-to-talk work on a stock
+  // desktop with none of them installed.
+  const rendererPcmHandlers = new Set<(chunk: Int16Array) => void>();
+  const rendererStatusHandlers = new Set<(status: RendererCaptureStatus) => void>();
+  // Assigned once the shell exists (below); the transport is only called at run
+  // time, after the shell and its hidden voice window are in place.
+  let sendToVoice: (channel: string, ...args: readonly unknown[]) => void = () => undefined;
+  const rendererMic = new RendererMicrophone({
+    transport: {
+      start: (input) => sendToVoice(IPC_CHANNELS.voiceCaptureStart, input),
+      stop: () => sendToVoice(IPC_CHANNELS.voiceCaptureStop),
+      onFrame: (handler) => {
+        rendererPcmHandlers.add(handler);
+        return () => rendererPcmHandlers.delete(handler);
+      },
+      onStatus: (handler) => {
+        rendererStatusHandlers.add(handler);
+        return () => rendererStatusHandlers.delete(handler);
+      },
+    },
+    sampleRate: voiceConfig.sampleRate,
+    frameMs: voiceConfig.vad.frameMs,
+  });
   const runtime = new AriaRuntime({
     statePath: `${userData}/supervision.json`,
-    microphone: audio.microphone,
+    microphone: rendererMic,
     speaker: audio.speaker,
     voiceConfig,
   });
@@ -105,9 +133,7 @@ function main(): void {
     process.stdout.write('[aria] No ARIA_SESSION_TOKEN set; starting signed out.\n');
   }
   process.stdout.write(
-    audio.backend.capture
-      ? `[aria] Audio capture via ${audio.backend.captureCommand}.\n`
-      : '[aria] No command-line audio capture tool found; push-to-talk is inert on this host.\n',
+    '[aria] Microphone capture via the renderer (getUserMedia); no external recorder required.\n',
   );
 
   const voice = runtime.voice;
@@ -148,8 +174,7 @@ function main(): void {
     if (!result.ok) errors.report('settings:autostart', result.reason);
   };
 
-  const microphonePermission = (): PermissionState =>
-    audio.backend.capture ? 'granted' : 'denied';
+  const microphonePermission = (): PermissionState => 'granted';
 
   const environmentSource = (): InteractionEnvironment => ({
     wakeWordEnabled: settings.load().wakeWordEnabled,
@@ -181,6 +206,10 @@ function main(): void {
     pttAllowed: () => microphonePermission() === 'granted',
     onQuit: () => app.quit(),
   });
+  // The hidden voice window owns the microphone; create it before any capture
+  // command can fire (the runtime starts listening on the next line).
+  shell.ensureVoiceWindow();
+  sendToVoice = (channel, ...args) => shell.sendToVoice(channel, ...args);
   settings.subscribe?.((next) => {
     applySettingsToRuntime(next);
     applyAutostart(next);
@@ -211,14 +240,9 @@ function main(): void {
     },
     microphonePermission,
     voiceEngine: () =>
-      voice !== undefined && audio.backend.capture
+      voice !== undefined
         ? { kind: 'native' }
-        : {
-            kind: 'unavailable',
-            reason: audio.backend.capture
-              ? 'The voice runtime is not bound on this build.'
-              : 'No command-line audio capture tool (parec, arecord or pw-record) is installed; voice capture is inert.',
-          },
+        : { kind: 'unavailable', reason: 'The voice runtime is not bound on this build.' },
   });
 
   const orb = new OrbService({
@@ -343,14 +367,20 @@ function main(): void {
     quit: (): void => shell.quit(),
     retryShortcuts: (): void => shell.retryShortcuts(),
     wakeWordDetected: (payload): void => {
-      // The renderer owns the microphone and the VoxRT engine, so the detection
-      // arrives here; run the same activation path as the local listener and
+      // A renderer that runs its own detector (an alternate engine) reports a
+      // detection here; run the same activation path as the local listener and
       // surface the Orb, exactly as an in-process detection would.
       if (voice === undefined) return;
       shell.setOrbVisible(true);
       void voice.activateWakeWord(payload).catch((error: unknown) => {
         errors.report('wake word', error);
       });
+    },
+    voicePcm: (pcm: Int16Array): void => {
+      for (const handler of rendererPcmHandlers) handler(pcm);
+    },
+    voiceStatus: (status: RendererCaptureStatus): void => {
+      for (const handler of rendererStatusHandlers) handler(status);
     },
   });
 

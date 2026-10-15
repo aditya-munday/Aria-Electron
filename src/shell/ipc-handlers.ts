@@ -6,6 +6,8 @@ import { isTrustedSender, type IpcSenderEvent } from './security.js';
 import {
   IPC_CHANNELS,
   isWakeWordPayload,
+  isVoiceCaptureStatusPayload,
+  toVoicePcm,
   type AwaitLoginResult,
   type BeginLoginResult,
   type IpcRegistrar,
@@ -13,6 +15,7 @@ import {
   type SettingsUpdateResult,
   type ShellStatus,
   type SignInResult,
+  type VoiceCaptureStatusPayload,
   type WakeWordDetectionPayload,
 } from './ipc.js';
 
@@ -47,6 +50,10 @@ export interface IpcHost {
   retryShortcuts(): void | Promise<void>;
   /** A wake-word detection reported by a renderer. */
   wakeWordDetected(payload: WakeWordDetectionPayload): void | Promise<void>;
+  /** A 16 kHz mono PCM frame reported by the hidden voice renderer. */
+  voicePcm(pcm: Int16Array): void;
+  /** The hidden voice renderer's capture status. */
+  voiceStatus(status: VoiceCaptureStatusPayload): void;
 }
 
 export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
@@ -161,5 +168,17 @@ export function registerIpcHandlers(ipc: IpcRegistrar, host: IpcHost): void {
     const payload = args[0];
     if (!isWakeWordPayload(payload)) return;
     void host.wakeWordDetected(payload);
+  });
+  ipc.on(IPC_CHANNELS.voiceCapturePcm, (event: unknown, ...args: readonly unknown[]): void => {
+    if (!isTrustedSender(event as IpcSenderEvent)) return;
+    const pcm = toVoicePcm(args[0]);
+    if (pcm === undefined) return;
+    host.voicePcm(pcm);
+  });
+  ipc.on(IPC_CHANNELS.voiceCaptureStatus, (event: unknown, ...args: readonly unknown[]): void => {
+    if (!isTrustedSender(event as IpcSenderEvent)) return;
+    const payload = args[0];
+    if (!isVoiceCaptureStatusPayload(payload)) return;
+    host.voiceStatus(payload);
   });
 }

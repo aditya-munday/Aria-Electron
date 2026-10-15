@@ -5,6 +5,44 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.3] - 2026-10-15
+
+### Fixed
+- The `.deb` sets the `chrome-sandbox` helper mode on install. A custom
+  `afterInstall` script replaces electron-builder's default template wholesale,
+  and the previous script omitted the template's sandbox step, so the helper was
+  left mode 0755. On a host whose kernel refuses an unprivileged user namespace
+  (Debian 13, Ubuntu 24+ with the AppArmor userns restriction) Chromium then
+  aborts at launch — the app never opens, so wake word could never run. The
+  script now mirrors the template (`chmod 4755` when `unshare --user` fails).
+- Wake word ("Hey Assistant") now works in the shipped `.deb` on a stock host.
+  Capture used to require an external command-line recorder
+  (`parec`/`arecord`/`pw-record`), which a plain install does not have, so the
+  wake listener stood down and the microphone was inert. The microphone is now
+  owned by a hidden renderer: `getUserMedia` needs no external tool and works on
+  any Electron host, so the VoxRT detector and every voice session run on real
+  audio with nothing else installed.
+- A capture command that raced the hidden renderer's subscription is no longer
+  lost. The renderer reports `idle` when it loads and the main process re-sends
+  `start` on every `idle` while it wants the microphone, so a start issued before
+  the renderer was ready still begins capture.
+- A `stop` that arrives while the device is opening no longer leaves a stale
+  capture or a pending start that hangs to the timeout: the stale start is
+  abandoned (and its device released) and the pending start fails fast. A partial
+  frame left over from a stopped capture is dropped so it cannot bleed into the
+  next one.
+
+### Added
+- `RendererMicrophone` (`src/voice/renderer-microphone.ts`) drives the hidden
+  renderer over IPC (`aria:voice:capture-{start,stop,pcm,status}`) and presents
+  it to the runtime as an ordinary `Microphone`, so detection, the confidence
+  floor and the cooldown stay in the main process.
+- `VoiceCapture` (`src/voice/renderer/voice.ts`, bundled to
+  `dist/renderer/voice.js`) captures 16 kHz mono PCM in the hidden `voice` window
+  and streams it back; `src/renderer/voice.html` loads it. The window is created
+  hidden by `AriaShell.ensureVoiceWindow()`, never shown, never persisted, and
+  runs with `backgroundThrottling: false`.
+
 ## [0.7.2] - 2026-10-14
 
 ### Fixed

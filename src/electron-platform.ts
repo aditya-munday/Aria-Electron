@@ -37,6 +37,9 @@ const RENDERER_BY_KIND: Record<WindowKind, { file: string; width: number; height
   orb: { file: 'orb.html', width: 320, height: 320 },
   orb_backdrop: { file: 'orb-backdrop.html', width: 900, height: 640 },
   chat: { file: 'chat.html', width: 760, height: 640 },
+  // The voice window is a hidden renderer that owns the microphone: it is never
+  // shown, so its size is nominal.
+  voice: { file: 'voice.html', width: 1, height: 1 },
 };
 
 const PHYSICAL_BY_CODE: Record<string, PhysicalKey> = {
@@ -90,6 +93,15 @@ class ElectronWindowHandle implements WindowHandle {
     return this.destroyed || this.window.isDestroyed();
   }
 
+  /** Load the page without revealing the window. Idempotent. */
+  load(): void {
+    if (this.isDestroyed() || this.loaded) return;
+    this.loaded = true;
+    this.window
+      .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
+      .catch((error: unknown) => this.onError?.(`renderer:${this.kind}`, error));
+  }
+
   show(): void {
     if (this.isDestroyed()) return;
     if (!this.loaded) {
@@ -117,6 +129,10 @@ class ElectronWindowHandle implements WindowHandle {
   close(): void {
     if (this.isDestroyed()) return;
     this.window.close();
+  }
+  send(channel: string, ...args: readonly unknown[]): void {
+    if (this.isDestroyed()) return;
+    this.window.webContents.send(channel, ...args);
   }
   setBounds(bounds: Rect): void {
     if (this.isDestroyed()) return;
@@ -202,7 +218,12 @@ class ElectronWindowFactory implements WindowFactory {
       ...(options.panel === true && process.platform === 'darwin'
         ? { type: 'panel' as const }
         : {}),
-      webPreferences: hardenedWebPreferences(preloadPath),
+      webPreferences: {
+        ...hardenedWebPreferences(preloadPath),
+        // The voice window captures the microphone while hidden; throttling a
+        // backgrounded renderer would stall its audio pipeline.
+        ...(kind === 'voice' ? { backgroundThrottling: false } : {}),
+      },
     });
     if (options.alwaysOnTop === true && options.alwaysOnTopLevel !== undefined) {
       window.setAlwaysOnTop(true, options.alwaysOnTopLevel as never);
@@ -246,6 +267,9 @@ class ElectronWindowFactory implements WindowFactory {
       this.onError,
       options.launchHidden === true,
     );
+    // The hidden voice window must run its renderer (which owns the microphone)
+    // immediately; nothing ever calls show() on it, so load it here.
+    if (kind === 'voice') handle.load();
     // A closed window leaves a dead handle behind; mark it destroyed and tell
     // the shell to drop it so nothing acts on a destroyed BrowserWindow.
     window.on('closed', () => {

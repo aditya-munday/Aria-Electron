@@ -244,6 +244,26 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   `device_unavailable` diagnostic while push-to-talk keeps working. This is why
   the wake listener is gated on real capture capability, not merely on the
   detector being enabled.
+- The shipped app does **not** capture through the command-line recorder. It
+  owns the microphone from a hidden renderer so wake word works on a stock host
+  with no `parec`/`arecord`/`pw-record`: `renderer-microphone.ts`
+  (`RendererMicrophone`) is the `Microphone` the runtime drives, and it speaks to
+  a hidden `voice` window over IPC (`shell/ipc.ts` channels
+  `aria:voice:capture-{start,stop,pcm,status}`; `RendererCaptureTransport` is the
+  seam, faked in tests). The renderer half is `voice/renderer/voice.ts`
+  (`VoiceCapture`, bundled to `dist/renderer/voice.js` and loaded by
+  `src/renderer/voice.html`): `getUserMedia` -> resample to 16 kHz -> chunk into
+  `round(frameMs * sampleRate / 1000)`-sample frames -> `sendVoicePcm`. The
+  main process runs the VoxRT detector and the sessions on those frames, so
+  detection is unchanged. The `voice` window is created by
+  `AriaShell.ensureVoiceWindow()` (`load()`s it, never shows it, keeps it out of
+  the persisted `openWindows`), gets `backgroundThrottling: false` in
+  `electron-platform.ts`, and the app-level `media`/`audioCapture` permission is
+  already granted to app frames in `shell/security.ts`. A start command that
+  races the renderer's subscription is not lost: the renderer reports `idle` on
+  load and `RendererMicrophone` re-sends `start` on every `idle` while it wants
+  capture; a `stop` before the renderer confirms fails the pending start fast and
+  drops any partial frame so it cannot bleed into the next capture.
 - `session.ts` finalizes the utterance on push-to-talk release even when no
   speech was detected (the VAD is off by one at the boundary), and a release
   that lands before the first frame completes the turn instead of hanging.
@@ -693,3 +713,11 @@ log line the user can read. Callers (`control-center-service.ts`,
   process: the user would keep seeing the old UI and the old tray until they
   logged out. Verify a change here by extracting `control.tar.xz` from the built
   deb and reading `postinst`.
+- The same `after-install.sh` also sets the `chrome-sandbox` mode, which the
+  default electron-builder template does but a custom `afterInstall` replaces
+  wholesale. Omitting it left the helper mode 0755; on a host whose kernel will
+  not grant an unprivileged user namespace (Debian 13, Ubuntu 24+ with the
+  AppArmor userns restriction) Chromium then aborts with "The SUID sandbox
+  helper binary was found, but is not configured correctly" and the app never
+  starts — so wake word could never run there. The script now mirrors the
+  template: `chmod 4755` when `unshare --user` fails, `chmod 0755` otherwise.

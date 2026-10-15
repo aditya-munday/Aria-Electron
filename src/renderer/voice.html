@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    />
+    <title>Aria — Voice</title>
+  </head>
+  <body>
+    <!--
+      A hidden renderer that owns the microphone. It is never shown: the main
+      process loads it at startup and drives it over IPC. It captures 16 kHz
+      mono PCM via getUserMedia and streams the frames to the main process,
+      which runs the wake-word detector and the voice sessions. Capturing here
+      (rather than through a native recorder) means the microphone works on any
+      host, with no external tool and no per-distro capture plumbing.
+    -->
+    <script defer src="./voice.js"></script>
+  </body>
+</html>

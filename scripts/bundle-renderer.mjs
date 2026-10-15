@@ -8,6 +8,7 @@ const entries = [
   ['src/control-center/renderer/control-center.ts', 'control-center.js'],
   ['src/orb/renderer/orb.ts', 'orb.js'],
   ['src/chat/renderer/chat.ts', 'chat.js'],
+  ['src/voice/renderer/voice.ts', 'voice.js'],
 ];
 
 for (const [entry, out] of entries) {

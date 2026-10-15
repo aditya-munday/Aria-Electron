@@ -31,6 +31,10 @@ export const IPC_CHANNELS = {
   shellQuit: 'aria:shell:quit',
   shellRetryShortcuts: 'aria:shell:retry-shortcuts',
   wakeWordDetected: 'aria:wake-word:detected',
+  voiceCaptureStart: 'aria:voice:capture-start',
+  voiceCaptureStop: 'aria:voice:capture-stop',
+  voiceCapturePcm: 'aria:voice:capture-pcm',
+  voiceCaptureStatus: 'aria:voice:capture-status',
 } as const;
 
 export interface ShellStatus {
@@ -75,6 +79,18 @@ export interface WakeWordDetectionPayload {
   readonly detectorId: string;
 }
 
+/** A command from the main process telling the renderer to begin capturing. */
+export interface VoiceCaptureStartPayload {
+  readonly sampleRate: number;
+  readonly frameMs: number;
+}
+
+/** A capture status the renderer reports to the main process. */
+export interface VoiceCaptureStatusPayload {
+  readonly state: 'idle' | 'starting' | 'running' | 'error';
+  readonly detail?: string;
+}
+
 export interface AriaBridge {
   status(): Promise<ShellStatus>;
   sendText(text: string): Promise<void>;
@@ -108,6 +124,13 @@ export interface AriaBridge {
   onWakeWord(handler: (payload: WakeWordDetectionPayload) => void): () => void;
   /** Report a local wake-word detection to the main process. */
   reportWakeWord(payload: WakeWordDetectionPayload): void;
+  /** The hidden voice renderer: subscribe to capture start/stop commands. */
+  onVoiceCapture(handler: (payload: VoiceCaptureStartPayload) => void): () => void;
+  onVoiceStop(handler: () => void): () => void;
+  /** The hidden voice renderer: report captured 16 kHz mono PCM to main. */
+  sendVoicePcm(pcm: Int16Array): void;
+  /** The hidden voice renderer: report capture status to main. */
+  reportVoiceStatus(payload: VoiceCaptureStatusPayload): void;
 }
 
 export const BRIDGE_API_KEY = 'aria';
@@ -141,6 +164,10 @@ export const BRIDGE_METHODS = [
   'retryShortcuts',
   'onWakeWord',
   'reportWakeWord',
+  'onVoiceCapture',
+  'onVoiceStop',
+  'sendVoicePcm',
+  'reportVoiceStatus',
 ] as const;
 
 export const FORBIDDEN_BRIDGE_METHODS = [
@@ -228,6 +255,18 @@ export function createAriaBridge(ipc: IpcInvoker): AriaBridge {
     reportWakeWord: (payload: WakeWordDetectionPayload): void => {
       ipc.send(IPC_CHANNELS.wakeWordDetected, payload);
     },
+    onVoiceCapture: (handler: (payload: VoiceCaptureStartPayload) => void): (() => void) =>
+      ipc.on(IPC_CHANNELS.voiceCaptureStart, (payload) => {
+        if (isVoiceCaptureStartPayload(payload)) handler(payload);
+      }),
+    onVoiceStop: (handler: () => void): (() => void) =>
+      ipc.on(IPC_CHANNELS.voiceCaptureStop, () => handler()),
+    sendVoicePcm: (pcm: Int16Array): void => {
+      ipc.send(IPC_CHANNELS.voiceCapturePcm, pcm);
+    },
+    reportVoiceStatus: (payload: VoiceCaptureStatusPayload): void => {
+      ipc.send(IPC_CHANNELS.voiceCaptureStatus, payload);
+    },
   };
 }
 
@@ -241,6 +280,50 @@ export function isWakeWordPayload(value: unknown): value is WakeWordDetectionPay
     Number.isFinite(record['confidence']) &&
     typeof record['detectorId'] === 'string'
   );
+}
+
+/** Validate a capture-start command before the renderer acts on it. */
+export function isVoiceCaptureStartPayload(value: unknown): value is VoiceCaptureStartPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const sampleRate = record['sampleRate'];
+  const frameMs = record['frameMs'];
+  return (
+    typeof sampleRate === 'number' &&
+    Number.isFinite(sampleRate) &&
+    sampleRate > 0 &&
+    typeof frameMs === 'number' &&
+    Number.isFinite(frameMs) &&
+    frameMs > 0
+  );
+}
+
+/** Validate a capture-status report before the main process acts on it. */
+export function isVoiceCaptureStatusPayload(value: unknown): value is VoiceCaptureStatusPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const state = record['state'];
+  if (state !== 'idle' && state !== 'starting' && state !== 'running' && state !== 'error') {
+    return false;
+  }
+  return record['detail'] === undefined || typeof record['detail'] === 'string';
+}
+
+/**
+ * Normalize a PCM frame arriving from the renderer into an `Int16Array`.
+ * Structured clone delivers a typed array, but a plain number array is accepted
+ * too so a serialization change cannot silently drop audio. Returns `undefined`
+ * for anything else.
+ */
+export function toVoicePcm(value: unknown): Int16Array | undefined {
+  if (value instanceof Int16Array) {
+    return value.length > 0 && value.length <= 1_000_000 ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0 || value.length > 1_000_000) return undefined;
+    return Int16Array.from(value as number[]);
+  }
+  return undefined;
 }
 
 export function bridgeKeys(bridge: AriaBridge): readonly string[] {

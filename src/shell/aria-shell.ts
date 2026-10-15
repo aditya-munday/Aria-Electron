@@ -412,6 +412,27 @@ export class AriaShell {
   }
 
   /**
+   * Ensure the hidden voice window exists and is loading. The renderer it hosts
+   * owns the microphone; the shell never shows it. Called before any capture
+   * command so the window is ready to receive `start`.
+   */
+  ensureVoiceWindow(): void {
+    let handle = this.windows.get('voice');
+    if (handle === undefined || handle.isDestroyed()) {
+      if (handle?.isDestroyed()) this.windows.delete('voice');
+      handle = this.createWindow('voice', { startHidden: true, focusable: false, skipTaskbar: true });
+    }
+    handle.load();
+  }
+
+  /** Push a message to the hidden voice renderer. */
+  sendToVoice(channel: string, ...args: readonly unknown[]): void {
+    const handle = this.windows.get('voice');
+    if (handle === undefined || handle.isDestroyed()) return;
+    handle.send(channel, ...args);
+  }
+
+  /**
    * The blur the user actually perceives is a separate full-screen window
    * sitting under the Orb; the Orb itself stays a transparent circle. When the
    * platform offers no real material, the plan says so and nothing is shown,

@@ -1,7 +1,7 @@
 import type { Rect } from './geometry.js';
 import type { ScreenProvider } from './placement.js';
 
-export type WindowKind = 'control_center' | 'orb' | 'orb_backdrop' | 'chat';
+export type WindowKind = 'control_center' | 'orb' | 'orb_backdrop' | 'chat' | 'voice';
 
 export type PhysicalKey = 'f5' | 'a';
 
@@ -26,6 +26,14 @@ export interface WindowHandle {
   focus(): void;
   hide(): void;
   close(): void;
+  /**
+   * Load the page without ever showing the window. Used for the hidden voice
+   * window, which must run its renderer (own the microphone) while staying
+   * off-screen. Distinct from `show()`, which reveals the window.
+   */
+  load(): void;
+  /** Push a message to the renderer on an IPC channel. */
+  send(channel: string, ...args: readonly unknown[]): void;
   setBounds(bounds: Rect): void;
   setIgnoreMouseEvents(ignore: boolean, options?: { readonly forward?: boolean }): void;
   setVisibleOnAllWorkspaces(visible: boolean): void;

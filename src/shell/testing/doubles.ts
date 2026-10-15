@@ -28,6 +28,8 @@ export class FakeWindowHandle implements WindowHandle {
   focused = 0;
   hidden = 0;
   closed = 0;
+  loaded = 0;
+  readonly sent: { channel: string; args: readonly unknown[] }[] = [];
   private destroyed = false;
   private launchHiddenConsumed = false;
 
@@ -49,6 +51,16 @@ export class FakeWindowHandle implements WindowHandle {
   destroy(): void {
     this.destroyed = true;
     this.visible = false;
+  }
+
+  load(): void {
+    if (this.destroyed) return;
+    this.loaded += 1;
+  }
+
+  send(channel: string, ...args: readonly unknown[]): void {
+    if (this.destroyed) return;
+    this.sent.push({ channel, args });
   }
 
   show(): void {

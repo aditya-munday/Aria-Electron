@@ -758,3 +758,55 @@ describe('resident, tray-free lifecycle', () => {
     expect(shell.shortcutStatus().pushToTalk).toBe(true);
   });
 });
+
+describe('hidden voice window', () => {
+  it('creates the voice window hidden and loads it without showing it', () => {
+    const { shell, platform } = build();
+    shell.ensureVoiceWindow();
+    const voice = platform.windows.handle('voice');
+    expect(voice).toBeDefined();
+    expect(voice?.options.startHidden).toBe(true);
+    expect(voice?.visible).toBe(false);
+    expect(voice?.shown).toBe(0);
+    expect(voice?.loaded).toBe(1);
+  });
+
+  it('is idempotent: a second call loads again but does not rebuild', () => {
+    const { shell, platform } = build();
+    shell.ensureVoiceWindow();
+    shell.ensureVoiceWindow();
+    expect(platform.windows.created.filter((w) => w.kind === 'voice')).toHaveLength(1);
+    expect(platform.windows.handle('voice')?.loaded).toBe(2);
+  });
+
+  it('rebuilds a destroyed voice window', () => {
+    const { shell, platform } = build();
+    shell.ensureVoiceWindow();
+    platform.windows.handle('voice')?.destroy();
+    shell.ensureVoiceWindow();
+    expect(platform.windows.created.filter((w) => w.kind === 'voice')).toHaveLength(2);
+  });
+
+  it('sends capture commands to the voice renderer', () => {
+    const { shell, platform } = build();
+    shell.ensureVoiceWindow();
+    shell.sendToVoice('aria:voice:capture-start', { sampleRate: 16_000, frameMs: 20 });
+    expect(platform.windows.handle('voice')?.sent).toEqual([
+      { channel: 'aria:voice:capture-start', args: [{ sampleRate: 16_000, frameMs: 20 }] },
+    ]);
+  });
+
+  it('does not open or persist the voice window in the user session', () => {
+    const { shell, platform, settings } = build();
+    shell.ensureVoiceWindow();
+    expect(shell.isOpen('voice')).toBe(false);
+    expect(shell.openWindows()).not.toContain('voice');
+    expect(settings.load().openWindows).not.toContain('voice');
+    expect(platform.windows.handle('voice')?.visible).toBe(false);
+  });
+
+  it('drops a capture command when no voice window exists', () => {
+    const { shell } = build();
+    expect(() => shell.sendToVoice('aria:voice:capture-stop')).not.toThrow();
+  });
+});
