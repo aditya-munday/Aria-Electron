@@ -6,9 +6,17 @@ describe('loadConfig', () => {
   it('defaults to the Beyonders backend when the environment is empty', () => {
     const config = loadConfig({} as NodeJS.ProcessEnv);
     expect(config.backendBaseUrl).toBe('https://api.adityamunday.codes');
+    expect(config.loginBaseUrl).toBe('https://api.adityamunday.codes');
     expect(config.requestTimeoutMs).toBe(30_000);
     expect(config.model.provider).toBe('groq');
     expect(config.model.id).toBe('groq/llama-3.3-70b-versatile');
+  });
+
+  it('reads the sign-in origin from the environment', () => {
+    const config = loadConfig({
+      ARIA_LOGIN_URL: 'https://accounts.example.test/',
+    } as NodeJS.ProcessEnv);
+    expect(config.loginBaseUrl).toBe('https://accounts.example.test');
   });
 
   it('reads the backend URL and timeout from the environment', () => {

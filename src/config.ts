@@ -12,14 +12,17 @@ export const ARIA_MODEL: AriaModel = {
 
 export interface AriaConfig {
   readonly backendBaseUrl: string;
-  /** Origin serving the device-code sign-in flow; defaults to directioner.com. */
+  /** Origin serving the device-code sign-in flow; defaults to the Aria backend. */
   readonly loginBaseUrl?: string;
   readonly requestTimeoutMs: number;
   readonly model: AriaModel;
 }
 
 const DEFAULT_BACKEND_BASE_URL = 'https://api.adityamunday.codes';
-const DEFAULT_LOGIN_BASE_URL = 'https://directioner.com';
+// The device-code endpoints (`/api/auth/cli/*`) are part of the backend, not the
+// marketing site: the website's own `/cli/login` page relays approvals to this
+// same origin. They share a host today, but they are distinct surfaces.
+const DEFAULT_LOGIN_BASE_URL = 'https://api.adityamunday.codes';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AriaConfig {

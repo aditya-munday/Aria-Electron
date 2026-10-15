@@ -14,14 +14,14 @@ import type { Result } from '../backend/result.js';
 import { fail, ok } from '../backend/result.js';
 import { ariaError } from '../backend/product-errors.js';
 
-/** Default prod origin of the directioner.com web app that serves the flow. */
-export const DIRECTIONER_LOGIN_URL = 'https://directioner.com';
+/** Default prod origin of the Aria backend that serves the flow. */
+export const DEFAULT_LOGIN_URL = 'https://api.adityamunday.codes';
 
 export const DEFAULT_LOGIN_INTERVAL_MS = 5_000;
 export const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface DeviceLoginClientOptions {
-  /** Origin serving `/api/auth/cli/*`; defaults to the directioner.com app. */
+  /** Origin serving `/api/auth/cli/*`; defaults to the Aria backend. */
   readonly baseUrl?: string;
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
@@ -71,7 +71,7 @@ export class DeviceLoginClient {
   private readonly timeoutMs: number;
 
   constructor(options: DeviceLoginClientOptions = {}) {
-    this.base = (options.baseUrl ?? DIRECTIONER_LOGIN_URL).replace(/\/+$/, '');
+    this.base = (options.baseUrl ?? DEFAULT_LOGIN_URL).replace(/\/+$/, '');
     this.doFetch = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }

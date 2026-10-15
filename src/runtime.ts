@@ -53,7 +53,7 @@ export interface AriaRuntimeOptions {
   readonly sessionToken?: string;
   /** Where the durable Beyonders credential lives; defaults to the environment. */
   readonly credentialStore?: CredentialStore;
-  /** The device-code sign-in client; defaults to the directioner.com service. */
+  /** The device-code sign-in client; defaults to the Aria backend service. */
   readonly deviceLoginClient?: DeviceLoginClient;
 }
 

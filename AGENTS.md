@@ -115,6 +115,12 @@ read from the environment: `ARIA_BACKEND_URL` overrides the base URL and
 to disk). `normalizeBaseUrl` rejects a non-http(s) URL or one with embedded
 credentials.
 
+The device-code sign-in flow is served by the same backend: `ARIA_LOGIN_URL`
+overrides its origin (default `https://api.adityamunday.codes`), where
+`/api/auth/cli/{code,status}` live. It is deliberately *not* the marketing site:
+the website's `/cli/login` page only relays approvals to that backend origin, so
+the desktop client and the browser reach the same surface from opposite sides.
+
 The Aria model is fixed: `ARIA_MODEL` is `groq/llama-3.3-70b-versatile`
 (provider `groq`, display name `Llama 3.3 70B (Groq)`). It is exposed on
 `AriaConfig.model` and rendered read-only in the Control Center — there is no

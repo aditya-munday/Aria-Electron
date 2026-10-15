@@ -17,6 +17,14 @@ const CODE = {
 };
 
 describe('DeviceLoginClient.requestCode', () => {
+  it('defaults to the Aria backend origin for the device-code endpoints', async () => {
+    const fetchImpl = vi.fn(async () => json(200, CODE)) as unknown as typeof fetch;
+    const client = new DeviceLoginClient({ fetchImpl });
+    await client.requestCode('fp-1');
+    const call = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe('https://api.adityamunday.codes/api/auth/cli/code');
+  });
+
   it('posts the fingerprint and echoes the server expiry verbatim', async () => {
     const fetchImpl = vi.fn(async () => json(200, CODE)) as unknown as typeof fetch;
     const client = new DeviceLoginClient({ baseUrl: 'https://directioner.com', fetchImpl });
