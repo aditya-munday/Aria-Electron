@@ -31,12 +31,14 @@ import type { VoiceRuntimeConfig } from './voice-config.js';
 import { validateVoiceConfig } from './voice-config.js';
 import {
   createNativeWakeWordDetector,
+  EngineWakeWordDetector,
   WakeWordController,
   type WakeWordDetector,
   type WakeWordStatus,
 } from './wake-word.js';
 import { WakeWordListener } from './wake-listener.js';
 import { createVoxrtDetector } from './voxrt-detector.js';
+import { createWakePhraseEngine } from './wake-phrase-engine.js';
 import { FarEndReference } from './echo-cancellation.js';
 
 export interface VoiceRuntimeDiagnostics {
@@ -575,11 +577,20 @@ export class VoiceRuntime {
       };
     }
     if (deps.wakeWordDetector !== undefined) return deps.wakeWordDetector;
-    // No injected detector: use the VoxRT on-device engine, which ships a
-    // trained "Hey Assistant" model and needs no API key, no model download and
-    // no native build. `ARIA_WAKE_ENGINE` can still point at an alternate engine.
     const engineModule = process.env['ARIA_WAKE_ENGINE']?.trim();
+    // The VoxRT WebAssembly engine is opt-in. Its runtime is native code the
+    // main process cannot trap, so a fault in it (a bad model, an unsupported
+    // CPU, a hostile audio frame) is a hard crash rather than a catchable error.
+    // `ARIA_WAKE_ENGINE=voxrt` selects it deliberately.
+    if (engineModule === 'voxrt') {
+      const modelPath = process.env['ARIA_WAKE_MODEL']?.trim();
+      process.stdout.write('[aria] Wake word: VoxRT WebAssembly engine (opt-in).\n');
+      return createVoxrtDetector(modelPath === undefined || modelPath === '' ? undefined : modelPath);
+    }
+    // Any other named engine module wins: a trained native engine (openWakeWord,
+    // Porcupine, …) can be dropped in through `ARIA_WAKE_ENGINE`.
     if (engineModule !== undefined && engineModule !== '') {
+      process.stdout.write(`[aria] Wake word: native engine module ${engineModule}.\n`);
       return createNativeWakeWordDetector({
         engineModule,
         phrase: deps.config.wakeWord.phrase,
@@ -587,7 +598,13 @@ export class VoiceRuntime {
         sampleRate: deps.config.sampleRate,
       });
     }
-    const modelPath = process.env['ARIA_WAKE_MODEL']?.trim();
-    return createVoxrtDetector(modelPath === undefined || modelPath === '' ? undefined : modelPath);
+    // Default: the dependency-free pure-JavaScript phrase spotter. It runs in
+    // V8's sandbox like any other script, so it can never take the process down.
+    process.stdout.write('[aria] Wake word: in-process JavaScript detector (no native runtime).\n');
+    return new EngineWakeWordDetector(
+      createWakePhraseEngine(deps.config.wakeWord.phrase, deps.config.sampleRate, {
+        frameMs: deps.config.vad.frameMs,
+      }),
+    );
   }
 }

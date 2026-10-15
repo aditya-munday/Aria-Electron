@@ -150,29 +150,30 @@ flight keeps the output it started with.
 The pipeline is wake-listener -> session -> runtime, all local except speech:
 
 - `wake-listener.ts` + `wake-word.ts` — wake-word detection and activation.
-  The default detector is the on-device VoxRT engine (`voxrt-detector.ts`,
-  `createVoxrtDetector`): `@voxrt/wake-word-browser` ships a WebAssembly runtime
-  and a trained `voxrt_wake_word.vxrt` model that spots "Hey Assistant" on
-  16 kHz mono audio with no network, no API key and no native build. Both the
-  renderer (which owns the live microphone stream) and the main process (which
-  can drive the command-line recorder) construct the same adapter over the same
-  model bytes, so the two paths detect identically; a detection reported from a
-  renderer re-enters through `VoiceRuntime.activateWakeWord`, gated on the
-  wake-word setting and the confidence floor. `ARIA_WAKE_ENGINE` still points at
-  an alternate native engine module (`createNativeWakeWordDetector`), and
-  `ARIA_WAKE_MODEL` overrides the model path; a missing package or model fails
-  observably (`device_unavailable`), never silently.
-  `wake-phrase-engine.ts` (`createWakePhraseEngine`) remains a self-contained
-  offline spotter, no longer the default: an energy/activity segmenter feeds a
+  The default detector is the dependency-free JavaScript phrase spotter
+  (`wake-phrase-engine.ts`, `createWakePhraseEngine`). It runs in the main
+  process, so the engine must never be native code: a WebAssembly or native
+  fault there is a SIGSEGV the JS layer cannot trap, and the process dies before
+  any window appears. The engine is an energy/activity segmenter feeding a
   spectral DTW match against the wake phrase. Each frame is reduced to formant
   (F1/F2), tonal↔noisy and band-split features; the phrase templates are built
   by rendering the phrase through `formant-synth.ts` and the engine's own
   featurizer, so template and audio share one feature space. A segment must be
-  the right length, voiced-dominant and spectrally varied, then match a
-  speaking-rate template (ensemble 0.6–1.4x) below `matchThreshold`. The
+  the right length, voiced-dominant (`minVoicedFraction`, low enough to admit
+  the fricative-heavy default "Hey Assistant") and spectrally varied, then match
+  a speaking-rate template (ensemble 0.6–1.4x) below `matchThreshold`. The
   segmenter tracks the ambient level adaptively (`adaptNoiseFloor`): it falls
   quickly toward a quieter frame and rises slowly, so a loud room does not read
   as permanent activity and the segment still closes.
+  The on-device VoxRT engine (`voxrt-detector.ts`, `createVoxrtDetector`) is
+  opt-in, selected with `ARIA_WAKE_ENGINE=voxrt`: `@voxrt/wake-word-browser`
+  ships a WebAssembly runtime and a trained `voxrt_wake_word.vxrt` model that
+  spots "Hey Assistant" on 16 kHz mono audio with no network, no API key and no
+  native build — but its native runtime lives in the main process, so a fault in
+  it takes the process down. `ARIA_WAKE_ENGINE` also points at an alternate
+  native engine module (`createNativeWakeWordDetector`), and `ARIA_WAKE_MODEL`
+  overrides the model path; a missing package or model fails observably
+  (`device_unavailable`), never silently.
   `wake-word.ts` wraps a detector in `EngineWakeWordDetector`.
   `DEFAULT_WAKE_WORD.enabled` stays `false` at the runtime layer because
   product-level activation comes from shell settings

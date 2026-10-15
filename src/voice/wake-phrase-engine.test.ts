@@ -37,6 +37,19 @@ describe('WakePhraseEngine detection', () => {
     expect(score.confidence).toBeLessThanOrEqual(1);
   });
 
+  it('detects the shipped default phrase "hey assistant"', () => {
+    // The default phrase mixes fricatives with vowels; a voiced-fraction gate
+    // tuned only for vowel-heavy phrases silently rejects it.
+    for (const rate of [0.8, 1, 1.25]) {
+      const score = engine('hey assistant').score(recording('hey assistant', rate));
+      expect(score.matched, `rate ${rate}`).toBe(true);
+    }
+  });
+
+  it('does not treat the default phrase as a false accept for another', () => {
+    expect(engine('hey aria').score(recording('hey assistant', 1)).matched).toBe(false);
+  });
+
   it('detects the phrase across a range of speaking rates', () => {
     for (const rate of [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4]) {
       const score = engine('hey aria').score(recording('hey aria', rate));

@@ -47,7 +47,7 @@ export const DEFAULT_WAKE_PHRASE_ENGINE: Omit<WakePhraseEngineConfig, 'phrase' |
   activityMarginDb: 6,
   segmentGapMs: 300,
   matchThreshold: 0.45,
-  minVoicedFraction: 0.3,
+  minVoicedFraction: 0.15,
   minVariation: 0.02,
 };
 

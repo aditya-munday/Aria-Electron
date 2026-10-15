@@ -148,6 +148,19 @@ describe('VoiceRuntime wake word', () => {
     await waitFor(() => built.microphone.openCount === 1, 'capture open');
   });
 
+  it('defaults to the dependency-free JavaScript detector, never the native VoxRT engine', async () => {
+    const built = build({
+      config: config({ wakeWord: { ...DEFAULT_VOICE_CONFIG.wakeWord, enabled: true } }),
+    });
+    await built.runtime.start();
+    await waitFor(() => built.runtime.diagnostics().wakeWordStatus === 'ready', 'detector ready');
+    const diag = built.runtime.diagnostics();
+    // The native VoxRT runtime runs in the main process where a fault is fatal,
+    // so the default must be the in-process JavaScript spotter.
+    expect(diag.wakeWordModel).toContain('hey assistant');
+    expect(diag.wakeWordModel).not.toContain('voxrt');
+  });
+
   it('activates a session from a local detection and emits an activation event', async () => {
     const detector = new FakeWakeWordDetector({
       id: 'local-detector',

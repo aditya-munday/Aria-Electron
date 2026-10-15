@@ -5,6 +5,24 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.6] - 2026-10-15
+
+### Fixed
+- The app no longer crashes at launch on a host with a working microphone.
+  Wake-word detection was on by default and its engine, the VoxRT WebAssembly
+  runtime, ran in the *main* process. Native code there cannot be trapped: a
+  fault in it (an unsupported CPU feature, a bad model, a hostile audio frame)
+  killed the whole process with SIGSEGV before any window appeared — with or
+  without the GPU, which is why 0.7.5's software fallback did not help. The
+  default detector is now the dependency-free JavaScript phrase spotter
+  (`wake-phrase-engine.ts`), which runs in V8's sandbox and can never take the
+  process down. VoxRT is still available, but only opt-in, via
+  `ARIA_WAKE_ENGINE=voxrt`.
+- The JavaScript detector now recognises the shipped default phrase
+  ("Hey Assistant"). Its voiced-fraction gate was tuned for vowel-heavy phrases
+  and rejected the fricative-heavy default, so the wake word would have matched
+  nothing even when the engine loaded cleanly.
+
 ## [0.7.5] - 2026-10-15
 
 ### Fixed
