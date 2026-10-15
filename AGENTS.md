@@ -46,6 +46,19 @@ the AI-Engineer task executor.
   namespaces work — and `--allow-unconfigured-sandbox` overrides that. On a host
   where Chromium's user-namespace sandbox is blocked, the SUID helper is what
   makes the sandbox engage, so it must be 4755.
+- `src/shell/gpu-policy.ts` decides Chromium's GPU path before `app.whenReady`.
+  A host whose GPU stack is half-present (a Mesa driver that will not load, a
+  container with no usable render node) makes Chromium's GPU init fail and the
+  process SIGSEGV at startup, before any window — the crash is a launch failure,
+  not a blank Orb. Hardware acceleration is enabled only when a readable
+  `/dev/dri` render node exists; otherwise the app calls
+  `disableHardwareAcceleration()` and renders in software (the Orb degrades to
+  its CSS fallback). A GPU-mode run is marked on disk (`gpu-crash.json` in
+  userData) and the mark is cleared only on a clean quit, so a crash makes the
+  next launch back off to software on its own. `ARIA_ENABLE_GPU` /
+  `ARIA_DISABLE_GPU` override the probe; `ARIA_ENABLE_GPU` also overrides the
+  crash backoff. `src/shell/gpu-policy.test.ts` covers the probe, the backoff
+  and the marker.
 - `.github/workflows/release.yml` runs on `aria-v*` tags: a `gate` job runs
   `npm run ci`, then `package` builds the `.deb`, smoke-tests the install, and
   attaches the `.deb` plus its `.sha256` to the GitHub release. The release page

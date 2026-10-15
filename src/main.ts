@@ -17,6 +17,7 @@ import { planOrbBackdrop } from './orb/backdrop.js';
 import { createVoiceInteractionRuntime } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
+import { createGpuCrashMarker, decideGpu, nodeGpuProbeDeps, probeGpu } from './shell/gpu-policy.js';
 import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
 import { createAutostartManager } from './shell/autostart.js';
@@ -54,9 +55,37 @@ if (!gotLock) {
   app.enableSandbox();
   // Features with no use here and a history of trouble: the built-in PDF
   // viewer, Chromium's spellcheck downloader, and the HTTP cache a remote
-  // response could be recovered from.
-  app.commandLine.appendSwitch('disable-features', 'PdfOopif,Spellcheck,NetworkServiceInProcess');
+  // response could be recovered from. Hardware video decode is also off: the
+  // app decodes no video, and VA-API init is the step that failed immediately
+  // before a reported GPU-stack launch crash (`vaInitialize failed`), so leaving
+  // it off removes a crash surface for no loss.
+  app.commandLine.appendSwitch(
+    'disable-features',
+    'PdfOopif,Spellcheck,NetworkServiceInProcess,VaapiVideoDecoder,VaapiVideoEncoder',
+  );
   app.commandLine.appendSwitch('disable-http-cache');
+  app.commandLine.appendSwitch('disable-accelerated-video-decode');
+
+  // Decide the GPU path before Chromium initialises it. On a host whose GPU
+  // stack is half-present Chromium's GPU init fails and the process segfaults
+  // before any window appears, so acceleration is enabled only when a usable
+  // render node exists, and a run that crashed with it on backs off next launch.
+  const gpuMarker = createGpuCrashMarker(join(app.getPath('userData'), 'gpu-crash.json'));
+  const gpu = decideGpu(
+    probeGpu(process.platform, process.env, nodeGpuProbeDeps),
+    { crashes: gpuMarker.read() },
+    process.env,
+  );
+  if (gpu.enabled) {
+    // Armed now and cleared only on a clean quit, so a crash leaves the marker
+    // behind for the next launch to see.
+    gpuMarker.arm();
+    app.on('will-quit', () => gpuMarker.clear());
+  } else {
+    app.disableHardwareAcceleration();
+  }
+  process.stdout.write(`[aria] Rendering with the ${gpu.enabled ? 'GPU' : 'software'} path (${gpu.reason}).\n`);
+
   app.on('second-instance', () => {
     shellRef?.open('control_center');
   });

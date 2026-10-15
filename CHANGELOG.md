@@ -5,6 +5,18 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.5] - 2026-10-15
+
+### Fixed
+- The app no longer crashes at launch on a host whose GPU stack is
+  half-present. Chromium's GPU initialisation failed (`vaInitialize failed`,
+  `MESA-LOADER: failed to open dri`) and the process died with SIGSEGV before
+  any window appeared. Hardware acceleration is now enabled only when a readable
+  DRM render node exists; otherwise the app renders in software. A run that
+  crashed while using the GPU is recorded on disk and the next launch backs off
+  to software on its own, so an affected machine recovers without a rebuild.
+  `ARIA_ENABLE_GPU` / `ARIA_DISABLE_GPU` override the decision.
+
 ## [0.7.4] - 2026-10-15
 
 ### Fixed
