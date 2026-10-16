@@ -5,6 +5,28 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [0.7.7] - 2026-10-16
+
+### Fixed
+- The wake word and push-to-talk no longer stop working after a single
+  transient microphone error. The hidden voice renderer reports a capture
+  error whenever `getUserMedia` throws once — a busy device, a dismissed
+  permission prompt, or a hiccup while the audio graph starts. The microphone
+  adapter latched that error into a permanent `denied` permission and an empty
+  device list, and both capture paths check permission before they open the
+  stream, so after one such error the wake-word listener and every
+  push-to-talk session aborted with `permission_denied` and never retried.
+  With both features enabled by default, this presented as the wake word
+  simply not working. A capture error is now treated as transient: the adapter
+  reports permission as granted (the app-level `media` permission is already
+  granted to the app's own frames) and lets the capture attempt itself report a
+  genuinely unavailable device.
+- A wake-word error no longer lingers once listening recovers. The Orb rendered
+  the last capture error as an error presence, so a listener that recovered
+  after a device appeared or permission was granted still showed a failure that
+  no longer existed. The runtime now clears a stale capture error when the
+  listener starts successfully.
+
 ## [0.7.6] - 2026-10-15
 
 ### Fixed
