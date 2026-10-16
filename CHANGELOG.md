@@ -26,6 +26,19 @@ All notable changes to Aria-Electron are recorded here. The format follows
   after a device appeared or permission was granted still showed a failure that
   no longer existed. The runtime now clears a stale capture error when the
   listener starts successfully.
+- Device-code sign-in now mirrors the Directioner CLI's wire contract exactly
+  and reports the backend's own failure instead of a generic one. The
+  `/api/auth/cli/*` endpoints are unversioned and the client no longer sends an
+  `Authorization` header on them; `expiresAt` is echoed to the status endpoint
+  byte-for-byte (it is the HMAC input the server verifies) and the poll deadline
+  is taken from the server's `expiresInMs` duration, so a skewed client clock
+  cannot cut a valid code short. A `503` from an unconfigured deployment is now
+  surfaced verbatim, with its request id, as "sign-in is not available" rather
+  than being collapsed into a retry loop; `410` is reported as an expired code,
+  and `429` is backed off with jitter, honouring `Retry-After`. The device
+  fingerprint is a persisted installation id (not a host-derived hash that
+  drifts), so a login approved in the browser is no longer lost when the value
+  changes mid-flow.
 
 ## [0.7.6] - 2026-10-15
 

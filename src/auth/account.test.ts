@@ -105,6 +105,44 @@ describe('AccountManager', () => {
     expect(result.error.kind).toBe('unauthenticated');
   });
 
+  it('reports an expired code so the user can restart sign-in', async () => {
+    const { client } = fakeClient({ poll: { status: 'expired' } });
+    const manager = new AccountManager({ store: fakeStore() as never, client, fingerprintId: 'fp-1' });
+    await manager.beginLogin();
+    const result = await manager.awaitLogin();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe('expired_code');
+  });
+
+  it('reports a rate-limited poll as retryable', async () => {
+    const { client } = fakeClient({ poll: { status: 'rate_limited', retryAfterMs: 4_000 } });
+    const manager = new AccountManager({ store: fakeStore() as never, client, fingerprintId: 'fp-1' });
+    await manager.beginLogin();
+    const result = await manager.awaitLogin();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe('rate_limited');
+  });
+
+  it('keeps the backend message when sign-in is unavailable', async () => {
+    const { client } = fakeClient({
+      poll: {
+        status: 'unavailable',
+        message: 'Device sign-in is not available: CLI_AUTH_HMAC_SECRET is not set.',
+      },
+    });
+    const manager = new AccountManager({ store: fakeStore() as never, client, fingerprintId: 'fp-1' });
+    await manager.beginLogin();
+    const result = await manager.awaitLogin();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe('sign_in_unavailable');
+    expect(result.error.message).toBe(
+      'Device sign-in is not available: CLI_AUTH_HMAC_SECRET is not set.',
+    );
+  });
+
   it('clear forgets the credential', async () => {
     const store = fakeStore({ authToken: 'tok-9' });
     const manager = new AccountManager({ store: store as never, fingerprintId: 'fp-1' });

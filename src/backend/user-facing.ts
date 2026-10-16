@@ -15,6 +15,8 @@ const USER_FACING: Readonly<Record<AriaErrorKind, string>> = {
   malformed: 'Aria received an unexpected response.',
   too_large: 'That request was too large.',
   transport: 'Aria could not connect. Check your network and try again.',
+  expired_code: 'That sign-in code expired. Start sign-in again.',
+  sign_in_unavailable: 'Sign-in is not available right now. Try again later.',
 };
 
 export function userFacingMessage(kind: AriaErrorKind): string {

@@ -14,11 +14,12 @@ import { ariaError } from '../backend/product-errors.js';
 import { CredentialStore, type StoredCredential } from './credential-store.js';
 import {
   DeviceLoginClient,
+  LOGIN_EXPIRED_MESSAGE,
   type DeviceLoginClientOptions,
   type LoginPollResult,
   type LoginUser,
 } from './device-login.js';
-import { deviceFingerprintId } from './fingerprint.js';
+import { loadOrCreateFingerprintId } from './fingerprint.js';
 
 export interface BeginLoginResult {
   readonly loginUrl: string;
@@ -54,7 +55,10 @@ export class AccountManager {
   constructor(deps: AccountManagerDeps = {}) {
     this.store = deps.store ?? CredentialStore.default();
     this.client = deps.client ?? new DeviceLoginClient(deps.clientOptions ?? {});
-    this.fingerprintId = deps.fingerprintId ?? deviceFingerprintId();
+    // Prefer the persisted installation id so it survives a hostname change or
+    // a rebuilt container; `loadOrCreateFingerprintId` falls back to the host
+    // hash only when no id can be written.
+    this.fingerprintId = deps.fingerprintId ?? loadOrCreateFingerprintId();
     this.sleep = deps.sleep;
     this.now = deps.now;
   }
@@ -113,12 +117,33 @@ export class AccountManager {
     if (result.status === 'timeout') {
       return fail(ariaError('timeout', 'Sign-in timed out. Please try again.'));
     }
+    if (result.status === 'expired') {
+      return fail(ariaError('expired_code', LOGIN_EXPIRED_MESSAGE));
+    }
+    if (result.status === 'rate_limited') {
+      return fail(
+        ariaError('rate_limited', 'Too many sign-in attempts. Wait a moment and start sign-in again.'),
+      );
+    }
+    if (result.status === 'unavailable') {
+      // The backend's own message names the missing configuration; keep it.
+      return fail(ariaError('sign_in_unavailable', result.message));
+    }
     return fail(ariaError('unauthenticated', 'Sign-in was cancelled.'));
   }
 
   /** Stop an in-flight poll; the waiting `awaitLogin` resolves as cancelled. */
   cancelLogin(): void {
-    if (this.pending !== undefined) this.pending.cancelled = true;
+    if (this.pending !== undefined) {
+      const pending = this.pending;
+      // Withdraw the pending code so the browser's approval cannot bind a token
+      // to a code Aria has already abandoned. Best-effort: the result is unused.
+      void this.client.logout({
+        fingerprintId: pending.fingerprintId,
+        fingerprintHash: pending.fingerprintHash,
+      });
+      pending.cancelled = true;
+    }
   }
 
   /** Persist a completed login. */

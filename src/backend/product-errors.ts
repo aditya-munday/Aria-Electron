@@ -26,7 +26,16 @@ export type AriaErrorKind =
   | 'timeout'
   | 'malformed'
   | 'too_large'
-  | 'transport';
+  | 'transport'
+  /** A device-code expired or was withdrawn; sign-in must restart. */
+  | 'expired_code'
+  /**
+   * The sign-in service is deployed but not configured (a device-code
+   * deployment gap), or otherwise cannot serve sign-in. Distinct from a generic
+   * outage so the caller can say "sign-in is not available right now" and stop
+   * rather than retry in a tight loop.
+   */
+  | 'sign_in_unavailable';
 
 /**
  * The recovery a caller should attempt, derived from the kind rather than
@@ -55,6 +64,8 @@ const ERROR_RECOVERY: Record<AriaErrorKind, AriaErrorRecovery> = {
   malformed: 'report',
   too_large: 'report',
   transport: 'reconcile',
+  expired_code: 'authenticate',
+  sign_in_unavailable: 'stop',
 };
 
 export function recoveryForError(kind: AriaErrorKind): AriaErrorRecovery {
@@ -123,6 +134,9 @@ export function kindForStatus(status: number): AriaErrorKind {
       return 'not_found';
     case 409:
       return 'conflict';
+    case 410:
+      // The device code expired or was withdrawn; the sign-in restarts.
+      return 'expired_code';
     case 413:
       return 'too_large';
     case 422:
