@@ -141,6 +141,36 @@ describe('RendererMicrophone', () => {
     expect(await mic.captureCapableDevices()).toHaveLength(1);
   });
 
+  it('does not latch a transient capture error into a permanent denial', async () => {
+    const transport = new FakeTransport();
+    const mic = await openMic(transport);
+    const starting = mic.start();
+    transport.emitStatus({ state: 'error', detail: 'NotAllowedError: Permission denied' });
+    await expect(starting).rejects.toSatisfy(isVoiceError);
+    // A renderer capture error is transient: it must not report the microphone
+    // as permanently denied or absent. If it does, every later capture — a
+    // wake-word session and push-to-talk alike — aborts with permission_denied
+    // before it can retry, which is the latch that disabled push-to-talk.
+    expect(await mic.permission()).toBe('granted');
+    expect(await mic.listDevices()).toHaveLength(1);
+  });
+
+  it('recovers capture after a transient error when the renderer starts again', async () => {
+    const transport = new FakeTransport();
+    const mic = await openMic(transport);
+    const first = mic.start();
+    transport.emitStatus({ state: 'error', detail: 'device busy' });
+    await expect(first).rejects.toSatisfy(isVoiceError);
+
+    const frames: Float64Array[] = [];
+    mic.onFrame((frame) => frames.push(frame));
+    const second = mic.start();
+    transport.emitStatus({ state: 'running' });
+    await expect(second).resolves.toBeUndefined();
+    transport.emitPcm(new Int16Array(320));
+    expect(frames).toHaveLength(1);
+  });
+
   it('fails a pending start when stop arrives before the renderer confirms', async () => {
     const transport = new FakeTransport();
     const mic = await openMic(transport);

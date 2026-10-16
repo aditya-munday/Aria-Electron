@@ -148,6 +148,26 @@ describe('VoiceRuntime wake word', () => {
     await waitFor(() => built.microphone.openCount === 1, 'capture open');
   });
 
+  it('clears a stale wake-word error once listening recovers', async () => {
+    const microphone = new FakeMicrophone({ permission: 'denied' });
+    const built = build({
+      config: config({ wakeWord: { ...DEFAULT_VOICE_CONFIG.wakeWord, enabled: true } }),
+      microphone,
+      detector: new FakeWakeWordDetector({ id: 'local' }),
+    });
+    await built.runtime.setWakeWordEnabled(true);
+    expect(built.runtime.diagnostics().lastError?.kind).toBe('permission_denied');
+    expect(built.runtime.diagnostics().listening).toBe(false);
+
+    // Permission is granted later (the user accepts the prompt): listening must
+    // recover and the earlier error must not linger, or the Orb would keep
+    // showing a failure that no longer exists.
+    microphone.setPermission('granted');
+    await built.runtime.setWakeWordEnabled(true);
+    expect(built.runtime.diagnostics().listening).toBe(true);
+    expect(built.runtime.diagnostics().lastError).toBeUndefined();
+  });
+
   it('defaults to the dependency-free JavaScript detector, never the native VoxRT engine', async () => {
     const built = build({
       config: config({ wakeWord: { ...DEFAULT_VOICE_CONFIG.wakeWord, enabled: true } }),
