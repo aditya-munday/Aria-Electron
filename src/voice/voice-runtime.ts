@@ -251,6 +251,7 @@ export class VoiceRuntime {
       return;
     }
     await this.wakeListener.start();
+    if (this.wakeListener.isListening()) this.clearCaptureError();
   }
 
   /**
@@ -298,12 +299,33 @@ export class VoiceRuntime {
         this.lastError =
           this.wakeListener.failure() ??
           new VoiceError('device_unavailable', 'Wake-word listening could not start.');
+      } else {
+        this.clearCaptureError();
       }
     }
   }
 
   setPushToTalkMode(mode: PushToTalkMode): void {
     this.pushToTalk.setMode(mode);
+  }
+
+  /**
+   * Drop a stale capture error once the microphone is healthy again. The error
+   * channel is sticky (the Orb renders `lastError` as an error presence), so a
+   * listener that recovers after a device appeared or permission was granted
+   * must clear the error it left behind, or the Orb would claim a failure that
+   * no longer exists. Only capture errors are cleared: a configuration error
+   * from a different subsystem is not this path's to forget.
+   */
+  private clearCaptureError(): void {
+    const kind = this.lastError?.kind;
+    if (
+      kind === 'permission_denied' ||
+      kind === 'capture_failed' ||
+      kind === 'device_unavailable'
+    ) {
+      this.lastError = undefined;
+    }
   }
 
   /** An in-flight session keeps its output; the next activation picks up the new value. */

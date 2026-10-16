@@ -141,11 +141,16 @@ export class RendererMicrophone implements Microphone, CaptureHandle {
 
   /**
    * The renderer owns the real permission prompt; the app-level `media`
-   * permission is already granted to its own frames, so this reports granted
-   * until the renderer reports a hard failure, at which point it is denied.
+   * permission is already granted to its own frames. This reports granted
+   * unconditionally: a capture error is transient (the device was busy, or the
+   * OS prompt was dismissed) and must not be latched into a permanent denial.
+   * Latching it here aborts every later capture before it can retry — the
+   * wake-word session and push-to-talk alike — so a single renderer error would
+   * disable the microphone for the rest of the run. A genuinely unavailable
+   * device is reported by the capture attempt itself, not by this probe.
    */
   async permission(): Promise<MicrophonePermission> {
-    return this.status.state === 'error' ? 'denied' : 'granted';
+    return 'granted';
   }
 
   async requestPermission(): Promise<MicrophonePermission> {
@@ -153,7 +158,7 @@ export class RendererMicrophone implements Microphone, CaptureHandle {
   }
 
   async listDevices(): Promise<readonly AudioDevice[]> {
-    return this.status.state === 'error' ? [] : [DEFAULT_DEVICE];
+    return [DEFAULT_DEVICE];
   }
 
   async captureCapableDevices(): Promise<readonly AudioDevice[]> {
