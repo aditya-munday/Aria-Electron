@@ -117,9 +117,29 @@ credentials.
 
 The device-code sign-in flow is served by the same backend: `ARIA_LOGIN_URL`
 overrides its origin (default `https://api.adityamunday.codes`), where
-`/api/auth/cli/{code,status}` live. It is deliberately *not* the marketing site:
-the website's `/cli/login` page only relays approvals to that backend origin, so
-the desktop client and the browser reach the same surface from opposite sides.
+`/api/auth/cli/{code,status,logout}` live. It is deliberately *not* the
+marketing site: the website's `/cli/login` page only relays approvals to that
+backend origin, so the desktop client and the browser reach the same surface
+from opposite sides.
+
+The device-code client (`src/auth/device-login.ts`) must mirror the Directioner
+CLI's wire contract exactly (reference: `Directioner-CLI/cli/src/utils/beyonders-api.ts`
+and `cli/src/login/login-flow.ts`): unversioned `/api/auth/cli/*` paths, **no**
+`Authorization` header on these calls, and `expiresAt` echoed to the status
+endpoint byte-for-byte (the server verifies it as the HMAC input — never
+recompute it from the client clock). The poll deadline comes from the server's
+`expiresInMs` duration, not `expiresAt`. A `503` from an unconfigured deployment
+is surfaced verbatim as `sign_in_unavailable` (with its request id) and stops,
+rather than being retried or collapsed into a generic failure; `410` is
+`expired_code`; `429` is backed off with jitter honouring `Retry-After`. The
+device fingerprint is a persisted installation id (`loadOrCreateFingerprintId`,
+path from `ARIA_FINGERPRINT_PATH`/`ARIA_CONFIG_DIR`), not a host-derived hash,
+so an approved login is not lost when the value drifts.
+
+The live backend currently answers every `/api/auth/cli/*` call with
+`503 SERVICE_UNAVAILABLE` ("CLI_AUTH_HMAC_SECRET is not set"): the routes are
+deployed but the signing secret is missing. That is a backend deployment gap,
+not a client bug, and the client is expected to report it, not to hide it.
 
 The Aria model is fixed: `ARIA_MODEL` is `groq/llama-3.3-70b-versatile`
 (provider `groq`, display name `Llama 3.3 70B (Groq)`). It is exposed on
