@@ -24,7 +24,9 @@ export const ACCENT_THEMES: readonly AccentTheme[] = ['aurora', 'mint', 'amber',
 
 export const DEFAULT_SETTINGS: ShellSettings = {
   openWindows: ['control_center'],
-  wakeWordEnabled: true,
+  // Wake word and autostart are opt-in: a fresh install must not open the
+  // microphone or run in the background before the user consents.
+  wakeWordEnabled: false,
   pushToTalkEnabled: true,
   pushToTalkMode: 'hold',
   chatShortcutEnabled: true,
@@ -32,7 +34,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   // The Orb is a transient presence by default: it appears for a voice turn and
   // dismisses itself after the turn goes quiet. `showOrb` pins it permanently.
   showOrb: false,
-  startOnLogin: true,
+  startOnLogin: false,
   accent: 'aurora',
   speakResponses: true,
   speechRate: 1,

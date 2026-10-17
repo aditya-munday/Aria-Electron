@@ -94,6 +94,8 @@ npm test
 | `ARIA_FINGERPRINT_PATH` | Overrides the stored machine-fingerprint file | `~/.config/aria` |
 | `ARIA_ENABLE_GPU` / `ARIA_DISABLE_GPU` | Force the Chromium GPU path on or off (otherwise probed from `/dev/dri`) | probed |
 | `ARIA_WAKE_ENGINE` | Selects an alternate wake-word engine module (e.g. `voxrt`) | in-process |
+| `ARIA_GRAPHICS` | Graphics acceleration: `auto` \| `on` \| `off` | `auto` |
+| `ARIA_OZONE` | Ozone platform hint (`auto`, `wayland`, `x11`) | session-derived |
 
 The `ARIA_SESSION_TOKEN` the user supplies is held in memory and never written
 to disk. A successful device-code sign-in is different: it writes one durable

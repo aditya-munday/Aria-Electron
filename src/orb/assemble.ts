@@ -50,7 +50,7 @@ export function resolvePresence(sources: OrbSources): OrbPresenceView {
   const taskView = taskPresence(task, now);
   if (taskView !== undefined) return taskView;
 
-  if (diagnostics.listening) {
+  if (diagnostics.listening && diagnostics.wakeWordEnabled) {
     return view('listening', now, { detail: 'Listening for the wake word.' });
   }
 

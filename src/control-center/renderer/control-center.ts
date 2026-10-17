@@ -615,7 +615,7 @@ function ariaConfigPanel(doc: Document, state: ControlCenterState): El {
 
   const config = card(doc, 'Assistant configuration', 'span-2');
   config.append(
-    row(doc, 'Model', state.ariaConfig.model.displayName, 'Fixed for this release.'),
+    row(doc, 'Model', state.ariaConfig.model.displayName, 'Reported by this client build; the service does not advertise its model.'),
     row(doc, 'Request timeout', `${state.ariaConfig.requestTimeoutMs} ms`),
     row(
       doc,

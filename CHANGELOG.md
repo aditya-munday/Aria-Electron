@@ -17,13 +17,26 @@ All notable changes to Aria-Electron are recorded here. The format follows
 - `normalizeBaseUrl` rejects plaintext `http` to any host but loopback, so a
   bearer token cannot be sent in the clear.
 - Runtime and toolchain dependencies are pinned to exact versions.
+- The wake word and start-on-login are now opt-in (both default off): a fresh
+  install opens no microphone and writes no autostart entry before consent.
 
 ### Changed
+- Push-to-talk no longer looks like it "asks for the wake word". The resting Orb
+  advertised wake listening even with the wake word off; it now shows the
+  wake-listening presence only while detection is enabled, and the Control
+  Center states plainly that the global accelerator is a tap (`Super+Alt+T`).
+- Graphics acceleration probes render nodes `renderD128`-`renderD135`, card
+  nodes and NVIDIA control nodes, honours the `ARIA_GRAPHICS=auto|on|off`
+  setting, detects the X11/Wayland session and sets the Ozone platform hint, and
+  logs Chromium's GPU feature status at startup.
+- The Assistant configuration "Model" row now says the model is client-reported
+  (the service does not advertise one) instead of claiming it is fixed.
 - Corrected the configuration docs: `ARIA_SESSION_TOKEN` is held in memory and
   never written to disk, but a device-code sign-in does persist one owner-only
   (`0600`) credential at `~/.config/aria/credentials.json`. The README table now
   lists `ARIA_LOGIN_URL`, `ARIA_CONFIG_DIR`, `ARIA_FINGERPRINT_PATH`,
-  `ARIA_ENABLE_GPU`/`ARIA_DISABLE_GPU` and `ARIA_WAKE_ENGINE`.
+  `ARIA_ENABLE_GPU`/`ARIA_DISABLE_GPU`, `ARIA_WAKE_ENGINE`, `ARIA_GRAPHICS` and
+  `ARIA_OZONE`.
 - Aligned the documented push-to-talk vocabulary and typography with the code
   (`Super+Alt+T` global tap, focused `F5` hold; `Inter`), and the test baseline.
 

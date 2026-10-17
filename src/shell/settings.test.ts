@@ -16,6 +16,11 @@ describe('shell settings', () => {
     expect(DEFAULT_SETTINGS.showOrb).toBe(false);
   });
 
+  it('keeps the microphone and autostart off until the user opts in', () => {
+    expect(DEFAULT_SETTINGS.wakeWordEnabled).toBe(false);
+    expect(DEFAULT_SETTINGS.startOnLogin).toBe(false);
+  });
+
   it('falls back to defaults for a non-object payload', () => {
     expect(normalizeSettings(null)).toEqual({ ...DEFAULT_SETTINGS });
     expect(normalizeSettings('nope')).toEqual({ ...DEFAULT_SETTINGS });

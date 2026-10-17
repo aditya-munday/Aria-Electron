@@ -150,4 +150,11 @@ describe('orb presence resolution', () => {
   it('stamps the presence with the supplied clock', () => {
     expect(resolvePresence(sources()).updatedAt).toBe(NOW);
   });
+
+  it('does not advertise wake listening when detection is disabled', () => {
+    const view = resolvePresence(
+      sources({ diagnostics: { listening: true, sessionState: 'idle', wakeWordEnabled: false } }),
+    );
+    expect(view.presence).toBe('idle');
+  });
 });

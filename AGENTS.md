@@ -123,7 +123,10 @@ read from the environment: `ARIA_BACKEND_URL` overrides the base URL and
 `ARIA_SESSION_TOKEN` seeds the in-memory session token at startup (never written
 to disk). `normalizeBaseUrl` rejects a non-http(s) URL, one with embedded
 credentials, or plaintext `http` to anything but a loopback host (a bearer token
-must not travel in the clear). A device-code sign-in separately persists one
+must not travel in the clear). Graphics: `ARIA_GRAPHICS=auto|on|off` selects the
+acceleration policy, `ARIA_OZONE` overrides the Ozone platform hint, and the
+session type (`XDG_SESSION_TYPE`, then `WAYLAND_DISPLAY`/`DISPLAY`) is detected
+to pick it. A device-code sign-in separately persists one
 durable credential to `~/.config/aria/credentials.json` (owner-only `0600`); the
 `ARIA_SESSION_TOKEN` seed is the only token held purely in memory.
 
@@ -587,7 +590,7 @@ than a second hand-drawn SVG, so the logo has one source of truth. That needs
 `img-src 'self'` in the `control-center.html` / `chat.html` CSP; the orb window
 ships no image and keeps `default-src 'none'` with no `img-src`.
 
-Test baseline: 881 tests / 86 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 894 tests / 86 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

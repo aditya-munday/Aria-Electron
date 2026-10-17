@@ -83,7 +83,9 @@ indirectly (the dist tree is present and `tsc` is clean).
 
 - Wake word and start-on-login default on (always-on mic + autostart, no consent).
 - Fix: first-run onboarding; both opt-in; visible capture indicator. Status:
-  **Phase 4**.
+  **fixed (Phase 4)**: both now default off; the Orb only advertises wake
+  listening while detection is enabled. A first-run onboarding wizard is
+  deferred (documented in AGENTS/README).
 
 ### S7 [Med] Doc/config drift — CONFIRMED
 
@@ -92,7 +94,7 @@ indirectly (the dist tree is present and `tsc` is clean).
 - Push-to-talk drift (see S4).
 - CHANGELOG dates out of order: `0.5.0`/`0.4.0` dated 2026-10-11 appear *after*
   `0.3.0` dated 2026-10-13 (`CHANGELOG.md:204,237,269`).
-- Stale baseline: `AGENTS.md:586` "793 tests / 79 files" vs the real 876/86.
+- Stale baseline: `AGENTS.md:586` "793 tests / 79 files" vs the real 894/86.
 - External refs the repo does not contain: `AGENTS.md:503,513,567` cite
   "All-Knowledge §…". Status: **docs fixed (Phase 1/5)**.
 
@@ -135,7 +137,9 @@ indirectly (the dist tree is present and `tsc` is clean).
 - No Wayland/`XDG_SESSION_TYPE`/Ozone handling anywhere (`grep` returns nothing).
   Fix: detect session type, set the Ozone hint, use the XDG GlobalShortcuts
   portal where available, honest "shortcut unavailable on this session" state.
-  Status: **Phase 3/4**.
+  Status: **partly fixed (Phase 3)**: `detectSession` + `ozonePlatformArgs` set
+  the Wayland Ozone hint and the session is logged; the XDG GlobalShortcuts
+  portal is deferred (P2).
 
 ### S14 [Low-Med] Backend URL safety — CONFIRMED
 
@@ -147,15 +151,19 @@ indirectly (the dist tree is present and `tsc` is clean).
 ### S15 [Low] GPU policy — CONFIRMED
 
 - `src/shell/gpu-policy.ts:36` probes only `/dev/dri/renderD128`/`card0`; misses
-  valid NVIDIA/hybrid setups, no user control/visibility. Status: **Phase 3**.
+  valid NVIDIA/hybrid setups, no user control/visibility. Status: **fixed
+  (Phase 3)**: probes renderD128-135, card0-3 and the NVIDIA control nodes;
+  `ARIA_GRAPHICS=auto|on|off` gives user control; `getGPUFeatureStatus()` is
+  logged at startup.
 
 ### S16 [Low] Model display — CONFIRMED
 
 - `ARIA_MODEL` is hardcoded (`src/config.ts:7`) and rendered read-only; if the
   backend changes models the UI can lie. `capabilities()` exists
   (`src/backend/aria-client.ts:163`) but the displayed model is not sourced from
-  it. Fix: source the display from capabilities, label unknown when absent.
-  Status: **Phase 4**.
+  it. The capabilities contract (`capabilitiesSchema`) has no model field to
+  source it from, so the row now states the model is client-reported rather
+  than claiming it is fixed. Status: **fixed (Phase 4, honest label)**.
 
 ### S17 [Low] Licensing/compliance — CONFIRMED
 
@@ -199,7 +207,26 @@ indirectly (the dist tree is present and `tsc` is clean).
 
 - `ARIA_LOGIN_URL`, `ARIA_CONFIG_DIR`, `ARIA_FINGERPRINT_PATH`, `ARIA_ENABLE_GPU`/
   `ARIA_DISABLE_GPU`, `ARIA_WAKE_ENGINE` are read in code but missing from the
-  README table. Status: **Phase 5**.
+  README table. Status: **fixed (Phase 1)** (table expanded; `ARIA_GRAPHICS`
+  and `ARIA_OZONE` added in Phase 3).
+
+### A6 [Med] Push-to-talk can appear to "ask for the wake word"
+
+- Reported as "PTT still prompts for wake word". Code review of the two capture
+  paths (`interaction-router.ts:242` vs `:281`, `voice-runtime.ts:399`) shows
+  push-to-talk never consults wake-word detection; the *resting* Orb did,
+  unconditionally: `orb/assemble.ts:53` rendered "Listening for the wake word."
+  whenever `diagnostics.listening` was true, even with detection disabled, and
+  the Control Center's static "Push to talk" row read `Hold · Super+Alt+T`.
+- Root causes of the confusing prompt: (1) the resting Orb advertised wake
+  listening while the wake word was off; (2) `listening` is true while a PTT
+  session captures, so during a PTT turn the Orb said it was listening for the
+  wake word; (3) the global accelerator is a *tap* (Super+Alt+T) in `toggle`
+  mode, not a hold, so holding it and releasing produced nothing and the user
+  fell back to the wake word.
+- Fix (Phase 4): the Orb only shows the wake-listening presence when
+  `wakeWordEnabled` is true; with the new opt-in default it rests at "idle".
+  Status: **fixed (Phase 4)**.
 
 ## Severity roll-up
 
