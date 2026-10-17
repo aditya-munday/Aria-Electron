@@ -86,9 +86,17 @@ npm test
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `ARIA_BACKEND_URL` | Backend base URL (both `/api/v1` and `/v1`) | `https://api.adityamunday.codes` |
+| `ARIA_BACKEND_URL` | Backend base URL (both `/api/v1` and `/v1`); https unless loopback | `https://api.adityamunday.codes` |
+| `ARIA_LOGIN_URL` | Origin serving the device-code sign-in endpoints `/api/auth/cli/*` | `https://api.adityamunday.codes` |
 | `ARIA_REQUEST_TIMEOUT_MS` | Per-request timeout for unary calls | `30000` |
 | `ARIA_SESSION_TOKEN` | Seeds the in-memory session token at startup (never written to disk) | unset |
+| `ARIA_CONFIG_DIR` | Overrides the config directory holding `credentials.json` | `~/.config/aria` |
+| `ARIA_FINGERPRINT_PATH` | Overrides the stored machine-fingerprint file | `~/.config/aria` |
+| `ARIA_ENABLE_GPU` / `ARIA_DISABLE_GPU` | Force the Chromium GPU path on or off (otherwise probed from `/dev/dri`) | probed |
+| `ARIA_WAKE_ENGINE` | Selects an alternate wake-word engine module (e.g. `voxrt`) | in-process |
 
-Aria carries only a short-lived user session token, held in memory and never
-written to disk. It holds no provider keys and no privileged local socket.
+The `ARIA_SESSION_TOKEN` the user supplies is held in memory and never written
+to disk. A successful device-code sign-in is different: it writes one durable
+account credential to `~/.config/aria/credentials.json`, owner-only (`0600`), in
+the Directioner CLI's own shape so an existing CLI login is reused. Aria holds
+no provider keys and no privileged local socket.

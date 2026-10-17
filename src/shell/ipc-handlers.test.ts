@@ -19,12 +19,12 @@ class RecordingRegistrar implements IpcRegistrar {
     if (handler === undefined) throw new Error(`no handler for ${channel}`);
     // Mirror ipcMain.handle's (event, ...args) arity so a mis-read argument fails here.
     // The event carries an app frame url: the real handlers refuse any other sender.
-    return handler({ senderFrame: { url: 'file:///app/chat.html' } }, ...args);
+    return handler({ senderFrame: { url: 'app://aria/chat.html' } }, ...args);
   }
   emit(channel: string, ...args: readonly unknown[]): void {
     const listener = this.listeners.get(channel);
     if (listener === undefined) throw new Error(`no listener for ${channel}`);
-    listener({ senderFrame: { url: 'file:///app/chat.html' } }, ...args);
+    listener({ senderFrame: { url: 'app://aria/chat.html' } }, ...args);
   }
 }
 

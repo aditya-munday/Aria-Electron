@@ -1,6 +1,7 @@
-import { app, ipcMain, screen, session, shell as electronShell } from 'electron';
+import { app, ipcMain, protocol, screen, session, shell as electronShell } from 'electron';
 
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from './config.js';
 import { createElectronPlatform } from './electron-platform.js';
@@ -8,6 +9,8 @@ import {
   applySessionHardening,
   applyWebContentsHardening,
   clearSessionStorage,
+  registerAppSchemePrivileges,
+  serveAppScheme,
 } from './shell/security.js';
 import { InteractionController } from './interaction/interaction-controller.js';
 import type { InteractionRuntime } from './interaction/interaction-controller.js';
@@ -53,6 +56,10 @@ if (!gotLock) {
   // A privileged renderer must never run unsandboxed: this default applies to
   // every window, including one created without explicit webPreferences.
   app.enableSandbox();
+  // The renderer pages are served from the privileged `app://` scheme so the
+  // `grantFileProtocolExtraPrivileges` fuse can stay off; the scheme must be
+  // declared before the app is ready, and its handler installed once it is.
+  registerAppSchemePrivileges(protocol);
   // Features with no use here and a history of trouble: the built-in PDF
   // viewer, Chromium's spellcheck downloader, and the HTTP cache a remote
   // response could be recovered from. Hardware video decode is also off: the
@@ -94,6 +101,7 @@ if (!gotLock) {
 
 function main(): void {
   const userData = app.getPath('userData');
+  serveAppScheme(protocol, join(dirname(fileURLToPath(import.meta.url)), 'renderer'));
   const settings = createFileSettingsStore(userData);
   const config = loadConfig();
   // A login launch passes `--hidden`: preload the Control Center but keep it off screen.

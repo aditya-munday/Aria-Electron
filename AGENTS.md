@@ -32,7 +32,8 @@ the AI-Engineer task executor.
 - `npm run ci` = `npm run typecheck && npm run test && npm run build && npm run security:check`.
 - `npm run security:check` (`scripts/security-check.mjs`) fails on an Electron
   downgrade below the supported floor, a high/critical production-dependency
-  advisory, or a weakened renderer CSP. Electron ships inside the `.deb` but is a
+  advisory, a weakened renderer CSP, or a flipped Electron fuse. Electron ships
+  inside the `.deb` but is a
   devDependency, so `npm audit --omit=dev` never sees it and the floor is what
   guards it. The floor is bumped whenever the runtime is upgraded.
 - `npm run build` = `tsc -p tsconfig.build.json` plus the renderer copy/bundle.
@@ -120,8 +121,11 @@ the AI-Engineer task executor.
 The backend base URL is `https://api.adityamunday.codes` by default. Config is
 read from the environment: `ARIA_BACKEND_URL` overrides the base URL and
 `ARIA_SESSION_TOKEN` seeds the in-memory session token at startup (never written
-to disk). `normalizeBaseUrl` rejects a non-http(s) URL or one with embedded
-credentials.
+to disk). `normalizeBaseUrl` rejects a non-http(s) URL, one with embedded
+credentials, or plaintext `http` to anything but a loopback host (a bearer token
+must not travel in the clear). A device-code sign-in separately persists one
+durable credential to `~/.config/aria/credentials.json` (owner-only `0600`); the
+`ARIA_SESSION_TOKEN` seed is the only token held purely in memory.
 
 The device-code sign-in flow is served by the same backend: `ARIA_LOGIN_URL`
 overrides its origin (default `https://api.adityamunday.codes`), where
@@ -353,9 +357,9 @@ dependency — callers ask the router what to do.
 
 Rules the router enforces, all with tests:
 - App launch → Control Center, `input: 'none'`, no capture/STT/orchestration.
-- Push-to-talk (hold the `F5` key) → Orb, capture starts immediately; never
+- Push-to-talk → Orb, capture starts immediately; never
   consults wake-word detection, so it works with the detector disabled. Needs
-  microphone permission. The global accelerator is `Win + Alt + T`
+  microphone permission. The global accelerator is `Super+Alt+T`
   (`PUSH_TO_TALK_ACCELERATOR = 'Super+Alt+T'`), the single source the shell and
   the Control Center both read; a global grab reports key-down only, so
   the shell treats each press per the mode (`hold` pairs it with a release).
@@ -379,7 +383,7 @@ Rules the router enforces, all with tests:
   failure) stops advertising "Stop listening" and the next tap is a fresh press.
 - Wake word → Orb, capture only after activation, only while detection is
   enabled and the mic is permitted; a disabled detector never captures.
-- `Win + Alt + A` (accelerator `Super+Alt+A`) → chat window, no capture.
+- `Super+Alt+A` (accelerator `Super+Alt+A`) → chat window, no capture.
 - Typed text → chat, straight to orchestration, STT bypassed. Chat is
   text-to-text: a typed turn never speaks and never raises the Orb, so the chat
   surface stays a chat surface. Speech output belongs only to a voice turn
@@ -525,10 +529,10 @@ The Electron foundation hosts the existing runtime; it does not reimplement it.
   tab is a real summary (identity, voice/language/speech, wake word, push-to-talk,
   accent) with quick actions that patch settings. Bundled by
   `scripts/bundle-renderer.mjs` with
-  esbuild into a deferred classic script, because Chromium refuses `file://`
-  ES-module imports.
-- Typography: `src/renderer/theme.css` self-hosts two variable fonts — `Space
-  Grotesk` (display) and `Public Sans` (body), each split into latin /
+  esbuild into a deferred classic script, because Chromium refuses ES-module
+  imports from a `file://`-style document.
+- Typography: `src/renderer/theme.css` self-hosts the `Inter` variable font (display and
+  body), each split into latin /
   latin-ext subsets with `unicode-range` — so the UI reads as a deliberate,
   non-generic product rather than a default sans stack. There is no network
   font fetch at runtime; the `.woff2` files ship in the renderer bundle.
@@ -583,7 +587,7 @@ than a second hand-drawn SVG, so the logo has one source of truth. That needs
 `img-src 'self'` in the `control-center.html` / `chat.html` CSP; the orb window
 ships no image and keeps `default-src 'none'` with no `img-src`.
 
-Test baseline: 793 tests / 79 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 881 tests / 86 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.
@@ -742,7 +746,11 @@ log line the user can read. Callers (`control-center-service.ts`,
   `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are enabled.
   `loadBrowserProcessSpecificV8Snapshot` is left off on purpose — Electron's
   prebuilt Linux binary ships no browser-specific snapshot, so enabling it makes
-  the app abort at boot with "Error loading V8 startup snapshot file".
+  the app abort at boot with "Error loading V8 startup snapshot file". Because
+  `grantFileProtocolExtraPrivileges` is off, the renderer pages are served from
+  the privileged `app://aria` scheme (`registerAppSchemePrivileges` before ready,
+  `serveAppScheme` after) rather than `file://`; `security-check.mjs` fails if any
+  fuse is flipped back.
 - The shipped asar must carry no reverse-engineering surface. `tsconfig.json`
   builds with `sourceMap: false`; `tsconfig.build.json` excludes tests and the
   preload; `scripts/clean-dist.mjs` wipes `dist` before every build;

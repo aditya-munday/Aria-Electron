@@ -1,13 +1,133 @@
 /**
  * The renderer hardening policy, in one place.
  *
- * Aria loads only its own local pages, but a desktop shell is a privileged
- * process: the renderer must be treated as untrusted regardless. Every window is
- * created with the preferences below and every webContents is wired through
- * {@link applyWebContentsHardening}, so navigation, popups, permissions,
- * webviews and devtools are all denied at the process boundary rather than left
- * to the renderer's own discipline.
+ * Aria loads only its own local pages from a privileged `app://` scheme, but a
+ * desktop shell is a privileged process: the renderer must be treated as
+ * untrusted regardless. Every window is created with the preferences below and
+ * every webContents is wired through {@link applyWebContentsHardening}, so
+ * navigation, popups, permissions, webviews and devtools are all denied at the
+ * process boundary rather than left to the renderer's own discipline.
  */
+
+import { readFileSync, statSync } from 'node:fs';
+import { join, normalize, sep } from 'node:path';
+
+/** The scheme the app's own renderer pages are served from. */
+export const APP_SCHEME = 'app';
+
+/** The single host the app scheme answers on; any other host is not an app page. */
+export const APP_HOST = 'aria';
+
+/** The origin every app renderer page shares. */
+export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
+
+/** The `app://aria/<file>` URL for a renderer page. */
+export function appPageUrl(file: string): string {
+  return `${APP_ORIGIN}/${file}`;
+}
+
+export interface AppProtocolRequest {
+  readonly url: string;
+}
+
+export interface AppProtocolHost {
+  registerSchemesAsPrivileged(schemes: readonly unknown[]): void;
+  handle(scheme: string, handler: (request: AppProtocolRequest) => Response | Promise<Response>): void;
+}
+
+/** The scheme privileges a secure, fetch-capable, standard app scheme needs. */
+export const APP_SCHEME_PRIVILEGES: readonly {
+  readonly scheme: string;
+  readonly privileges: Readonly<Record<string, boolean>>;
+}[] = [
+  {
+    scheme: APP_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      codeCache: true,
+    },
+  },
+];
+
+const CONTENT_TYPES: Readonly<Record<string, string>> = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.woff2': 'font/woff2',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+};
+
+function contentTypeFor(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return (dot >= 0 ? CONTENT_TYPES[path.slice(dot).toLowerCase()] : undefined) ?? 'application/octet-stream';
+}
+
+function notFound(): Response {
+  return new Response(null, { status: 404 });
+}
+
+/**
+ * Resolve an `app://aria/<file>` request to a file inside `rendererRoot`.
+ *
+ * The URL is re-parsed and only the pathname is used, so a host other than
+ * `aria` (e.g. `app://evil/…`) or a traversal (`../`) resolves outside the root
+ * and is rejected. `normalize` collapses `..` before the prefix check, and the
+ * `root + sep` guard stops a sibling like `/root-evil` from passing.
+ */
+export function resolveAppAsset(rendererRoot: string, rawUrl: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== `${APP_SCHEME}:` || parsed.hostname !== APP_HOST) return undefined;
+  const decoded = decodeURIComponent(parsed.pathname);
+  if (decoded.includes('\0')) return undefined;
+  const root = normalize(rendererRoot);
+  const target = normalize(join(root, decoded));
+  if (target !== root && !target.startsWith(root + sep)) return undefined;
+  return target;
+}
+
+/**
+ * Declare the privileged app scheme. Must run before the app is ready.
+ */
+export function registerAppSchemePrivileges(host: AppProtocolHost): void {
+  host.registerSchemesAsPrivileged(APP_SCHEME_PRIVILEGES);
+}
+
+/**
+ * Serve the renderer directory from the app scheme. Runs once the app is ready,
+ * so the pages load from `app://aria/…` instead of `file://` and the
+ * `grantFileProtocolExtraPrivileges` fuse can stay off.
+ */
+export function serveAppScheme(host: AppProtocolHost, rendererRoot: string): void {
+  host.handle(APP_SCHEME, async (request) => {
+    const target = resolveAppAsset(rendererRoot, request.url);
+    if (target === undefined) return notFound();
+    try {
+      const stat = statSync(target);
+      if (!stat.isFile()) return notFound();
+      const body = readFileSync(target);
+      return new Response(body, {
+        status: 200,
+        headers: {
+          'content-type': contentTypeFor(target),
+          'content-length': String(stat.size),
+        },
+      });
+    } catch {
+      return notFound();
+    }
+  });
+}
 
 export interface RendererWindowSecurity {
   readonly contextIsolation: true;
@@ -66,9 +186,9 @@ export function isPermissionAllowed(permission: string): boolean {
   return ALLOWED_PERMISSIONS.includes(permission);
 }
 
-/** Whether a URL is one of the app's own local pages. */
+/** Whether a URL is one of the app's own pages, served from the `app://` origin. */
 export function isAppUrl(url: string): boolean {
-  return url.startsWith('file://');
+  return url === APP_ORIGIN || url.startsWith(`${APP_ORIGIN}/`);
 }
 
 export interface IpcSenderEvent {
@@ -162,7 +282,7 @@ export const REMOTE_REQUEST_FILTER: { readonly urls: readonly string[] } = {
 /**
  * Apply the whole navigation/popup/webview policy to one webContents.
  *
- * - Any navigation away from the app's own `file://` pages is cancelled.
+ * - Any navigation away from the app's own `app://` pages is cancelled.
  * - Any popup is denied, with no shell fallback.
  * - A `<webview>` is denied outright: Aria embeds no remote content.
  */

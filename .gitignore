@@ -7,3 +7,6 @@ coverage/
 *.tmp
 
 release/
+
+# Bundled wake-word model artifact (licensing tracked in THIRD_PARTY_NOTICES.md)
+wakewordmodel/

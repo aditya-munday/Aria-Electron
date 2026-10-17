@@ -1,0 +1,12 @@
+# LICENSE
+
+Copyright (c) the Aria / Beyonders authors. All rights reserved.
+
+This repository does not yet carry a chosen open-source license. Until one is
+added, the source is **all rights reserved**: do not redistribute or reuse it
+outside the project. The intent is to adopt a permissive license (for example
+Apache-2.0, to match the bundled wake-word model); that decision is pending the
+project owner. This file is a placeholder, not a grant.
+
+Third-party components carry their own licenses — see
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).

@@ -7,7 +7,7 @@ import {
   screen,
 } from 'electron';
 
-import { applyWebContentsHardening, hardenedWebPreferences } from './shell/security.js';
+import { applyWebContentsHardening, appPageUrl, hardenedWebPreferences } from './shell/security.js';
 import type { Rect } from './shell/geometry.js';
 import type { ScreenInfo, ScreenProvider } from './shell/placement.js';
 import type {
@@ -29,7 +29,7 @@ export interface ElectronPlatformOptions {
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
-const rendererPath = (file: string): string => join(here, 'renderer', file);
+const rendererUrl = (file: string): string => appPageUrl(file);
 const preloadPath = join(here, 'preload.cjs');
 
 const RENDERER_BY_KIND: Record<WindowKind, { file: string; width: number; height: number }> = {
@@ -98,7 +98,7 @@ class ElectronWindowHandle implements WindowHandle {
     if (this.isDestroyed() || this.loaded) return;
     this.loaded = true;
     this.window
-      .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
+      .loadURL(rendererUrl(RENDERER_BY_KIND[this.kind].file))
       .catch((error: unknown) => this.onError?.(`renderer:${this.kind}`, error));
   }
 
@@ -106,7 +106,7 @@ class ElectronWindowHandle implements WindowHandle {
     if (this.isDestroyed()) return;
     if (!this.loaded) {
       this.window
-        .loadFile(rendererPath(RENDERER_BY_KIND[this.kind].file))
+        .loadURL(rendererUrl(RENDERER_BY_KIND[this.kind].file))
         .catch((error: unknown) => this.onError?.(`renderer:${this.kind}`, error));
       this.loaded = true;
       // Load for real so the Control Center is ready, but leave it hidden: a

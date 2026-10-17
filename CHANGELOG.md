@@ -5,6 +5,32 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
+## [Unreleased]
+
+### Security
+- The renderer pages are served from a privileged, secure `app://aria` scheme
+  instead of `file://`, so Electron's `grantFileProtocolExtraPrivileges` fuse is
+  now off (it was on, contradicting the documented hardening). `isAppUrl` only
+  trusts the app's own origin, and the protocol handler refuses a foreign host or
+  a path that escapes the renderer root. `scripts/security-check.mjs` now fails
+  if any required fuse is flipped, so this cannot silently regress.
+- `normalizeBaseUrl` rejects plaintext `http` to any host but loopback, so a
+  bearer token cannot be sent in the clear.
+- Runtime and toolchain dependencies are pinned to exact versions.
+
+### Changed
+- Corrected the configuration docs: `ARIA_SESSION_TOKEN` is held in memory and
+  never written to disk, but a device-code sign-in does persist one owner-only
+  (`0600`) credential at `~/.config/aria/credentials.json`. The README table now
+  lists `ARIA_LOGIN_URL`, `ARIA_CONFIG_DIR`, `ARIA_FINGERPRINT_PATH`,
+  `ARIA_ENABLE_GPU`/`ARIA_DISABLE_GPU` and `ARIA_WAKE_ENGINE`.
+- Aligned the documented push-to-talk vocabulary and typography with the code
+  (`Super+Alt+T` global tap, focused `F5` hold; `Inter`), and the test baseline.
+
+### Added
+- `AUDIT.md` (Phase 0 deep audit), `LICENSE` (placeholder) and
+  `THIRD_PARTY_NOTICES.md`; `wakewordmodel/` is now gitignored.
+
 ## [0.7.7] - 2026-10-16
 
 ### Fixed
@@ -266,7 +292,7 @@ All notable changes to Aria-Electron are recorded here. The format follows
 - README gains release and latest-version badges.
 - `AGENTS.md` test baseline updated to 722 tests / 72 files.
 
-## [0.3.0] - 2026-10-13
+## [0.3.0] - 2026-10-10
 
 ### Fixed
 - The tray push-to-talk control now drives the same `activatePushToTalk` path

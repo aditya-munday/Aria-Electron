@@ -9,9 +9,12 @@ import {
   isAppUrl,
   isPermissionAllowed,
   isTrustedSender,
+  registerAppSchemePrivileges,
   REMOTE_REQUEST_FILTER,
   REMOTE_SCHEMES,
   RENDERER_WEB_PREFERENCES,
+  resolveAppAsset,
+  serveAppScheme,
   type HardenedSession,
   type HardenedWebContents,
   type NavigationEvent,
@@ -195,19 +198,85 @@ describe('permission policy', () => {
 });
 
 describe('url classification', () => {
-  it('only treats local file pages as app urls', () => {
-    expect(isAppUrl('file:///opt/Aria/resources/app.asar/dist/renderer/chat.html')).toBe(true);
+  it('only treats app:// pages as app urls', () => {
+    expect(isAppUrl('app://aria/chat.html')).toBe(true);
+    expect(isAppUrl('app://aria/')).toBe(true);
+    expect(isAppUrl('file:///opt/Aria/resources/app.asar/dist/renderer/chat.html')).toBe(false);
+    expect(isAppUrl('app://evil/chat.html')).toBe(false);
+    expect(isAppUrl('app://aria.evil.example/chat.html')).toBe(false);
     expect(isAppUrl('https://evil.example')).toBe(false);
     expect(isAppUrl('data:text/html,<script>1</script>')).toBe(false);
     expect(isAppUrl('javascript:alert(1)')).toBe(false);
   });
 
   it('trusts an ipc sender only from an app frame', () => {
-    expect(isTrustedSender({ senderFrame: { url: 'file:///app/chat.html' } })).toBe(true);
+    expect(isTrustedSender({ senderFrame: { url: 'app://aria/chat.html' } })).toBe(true);
+    expect(isTrustedSender({ senderFrame: { url: 'file:///app/chat.html' } })).toBe(false);
     expect(isTrustedSender({ senderFrame: { url: 'https://evil.example' } })).toBe(false);
     expect(isTrustedSender({ senderFrame: { url: '' } })).toBe(false);
     expect(isTrustedSender({ senderFrame: null })).toBe(false);
     expect(isTrustedSender({})).toBe(false);
+  });
+});
+
+describe('app scheme assets', () => {
+  it('resolves an app page under the renderer root', () => {
+    expect(resolveAppAsset('/opt/Aria/dist/renderer', 'app://aria/chat.html')).toBe(
+      '/opt/Aria/dist/renderer/chat.html',
+    );
+    expect(resolveAppAsset('/opt/Aria/dist/renderer', 'app://aria/fonts/Inter.woff2')).toBe(
+      '/opt/Aria/dist/renderer/fonts/Inter.woff2',
+    );
+  });
+
+  it('never resolves outside the renderer root', () => {
+    const root = '/opt/Aria/dist/renderer';
+    const attempts = [
+      'app://evil/chat.html',
+      'file:///opt/Aria/dist/renderer/chat.html',
+      'app://aria/../secret',
+      'app://aria/%2e%2e/secret',
+      'app://aria/../../etc/passwd',
+      'app://aria/%2e%2e%2f%2e%2e%2fetc/passwd',
+      'app://aria/%2fetc%2fpasswd',
+      'not a url',
+    ];
+    for (const raw of attempts) {
+      const resolved = resolveAppAsset(root, raw);
+      if (resolved !== undefined) {
+        expect(resolved === root || resolved.startsWith(`${root}/`)).toBe(true);
+      }
+    }
+    expect(resolveAppAsset(root, 'app://evil/chat.html')).toBeUndefined();
+    expect(resolveAppAsset(root, 'file:///opt/Aria/dist/renderer/chat.html')).toBeUndefined();
+    expect(resolveAppAsset(root, 'app://aria/%2e%2e%2f%2e%2e%2fetc/passwd')).toBeUndefined();
+    expect(resolveAppAsset(root, 'not a url')).toBeUndefined();
+  });
+
+  it('registers the scheme and serves a real file', async () => {
+    const registered: readonly unknown[] = [];
+    let handler: ((request: { url: string }) => Promise<Response>) | undefined;
+    const host = {
+      registerSchemesAsPrivileged: (schemes: readonly unknown[]) => {
+        (registered as unknown[]).push(schemes);
+      },
+      handle: (_scheme: string, h: (request: { url: string }) => Promise<Response>) => {
+        handler = h;
+      },
+    };
+    registerAppSchemePrivileges(host);
+    serveAppScheme(host, 'src/renderer');
+    expect(registered).toHaveLength(1);
+    expect(JSON.stringify(registered[0])).toContain('app');
+    expect(handler).toBeDefined();
+    const served = await handler?.({ url: 'app://aria/chat.html' });
+    expect(served?.status).toBe(200);
+    expect(served?.headers.get('content-type')).toBe('text/html');
+    expect((await served?.text()) ?? '').toContain('<title>');
+    const missing = await handler?.({ url: 'app://aria/does-not-exist.html' });
+    expect(missing?.status).toBe(404);
+    const foreign = await handler?.({ url: 'app://evil/chat.html' });
+    expect(foreign?.status).toBe(404);
   });
 });
 
@@ -216,20 +285,20 @@ describe('navigation and popups', () => {
     const contents = hardened();
     expect(contents.prevented('https://evil.example')).toBe(true);
     expect(contents.prevented('data:text/html,1')).toBe(true);
-    expect(contents.prevented('file:///opt/Aria/resources/app.asar/dist/renderer/chat.html')).toBe(false);
+    expect(contents.prevented('app://aria/chat.html')).toBe(false);
   });
 
   it('cancels a cross-origin redirect', () => {
     const contents = hardened();
     expect(contents.prevented('https://evil.example', 'redirect')).toBe(true);
-    expect(contents.prevented('file:///app/chat.html', 'redirect')).toBe(false);
+    expect(contents.prevented('app://aria/chat.html', 'redirect')).toBe(false);
   });
 
   it('denies every popup, even to an app page', () => {
     const contents = hardened();
     expect(contents.windowOpen).toHaveLength(1);
     expect(contents.windowOpen[0]?.({ url: 'https://evil.example' })).toEqual({ action: 'deny' });
-    expect(contents.windowOpen[0]?.({ url: 'file:///app/chat.html' })).toEqual({ action: 'deny' });
+    expect(contents.windowOpen[0]?.({ url: 'app://aria/chat.html' })).toEqual({ action: 'deny' });
   });
 
   it('denies a webview attach', () => {
@@ -241,13 +310,13 @@ describe('permission handlers', () => {
   it('grants the microphone only to a main frame on an app page', () => {
     const session = hardenedSession();
     expect(
-      session.requestGranted('media', { isMainFrame: true, requestingUrl: 'file:///app/chat.html' }),
+      session.requestGranted('media', { isMainFrame: true, requestingUrl: 'app://aria/chat.html' }),
     ).toBe(true);
     expect(
       session.requestGranted('media', { isMainFrame: true, requestingUrl: 'https://evil.example/' }),
     ).toBe(false);
     expect(
-      session.requestGranted('media', { isMainFrame: false, requestingUrl: 'file:///app/chat.html' }),
+      session.requestGranted('media', { isMainFrame: false, requestingUrl: 'app://aria/chat.html' }),
     ).toBe(false);
   });
 
@@ -260,9 +329,9 @@ describe('permission handlers', () => {
 
   it('denies a microphone check from a non-app origin', () => {
     const session = hardenedSession();
-    expect(session.checkGranted('media', 'file:///app/orb.html')).toBe(true);
+    expect(session.checkGranted('media', 'app://aria/orb.html')).toBe(true);
     expect(session.checkGranted('media', 'https://evil.example')).toBe(false);
-    expect(session.checkGranted('geolocation', 'file:///app/orb.html')).toBe(false);
+    expect(session.checkGranted('geolocation', 'app://aria/orb.html')).toBe(false);
   });
 
   it('denies device and screen-capture access outright', () => {

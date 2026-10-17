@@ -48,6 +48,8 @@ export function loadSessionToken(env: NodeJS.ProcessEnv = process.env): string |
   return raw !== undefined && raw !== '' ? raw : undefined;
 }
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
 export function normalizeBaseUrl(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, '');
   const parsed = new URL(trimmed);
@@ -56,6 +58,11 @@ export function normalizeBaseUrl(url: string): string {
   }
   if (parsed.username !== '' || parsed.password !== '') {
     throw new Error('Backend URL must not embed credentials.');
+  }
+  // A bearer token travels over this URL, so plaintext is only tolerated to a
+  // loopback host; anything else would send the token in the clear.
+  if (parsed.protocol === 'http:' && !LOOPBACK_HOSTS.has(parsed.hostname)) {
+    throw new Error('Backend URL must use https unless it targets loopback.');
   }
   return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
 }

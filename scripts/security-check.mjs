@@ -3,7 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 
 // Security regressions this gate refuses to let through: a downgraded Electron,
-// a production dependency advisory, or a weakened renderer CSP.
+// a production dependency advisory, a weakened renderer CSP, or a flipped
+// Electron fuse. The renderer pages load from the privileged `app://` scheme, so
+// `grantFileProtocolExtraPrivileges` must stay off.
 
 // Electron is a devDependency but it ships inside the .deb, so `npm audit
 // --omit=dev` never sees it. This floor is bumped whenever the runtime is
@@ -23,6 +25,25 @@ if (compareMajor(electronPkg.version) < MIN_ELECTRON_MAJOR) {
   failures.push(
     `electron ${electronPkg.version} is below the supported floor ${MIN_ELECTRON_MAJOR}.x`,
   );
+}
+
+// Every fuse must hold its required value. A regression here is a silent
+// weakening of the sandbox, so the build fails rather than trusting a comment.
+const REQUIRED_FUSES = {
+  runAsNode: false,
+  enableCookieEncryption: true,
+  enableNodeOptionsEnvironmentVariable: false,
+  enableNodeCliInspectArguments: false,
+  enableEmbeddedAsarIntegrityValidation: true,
+  onlyLoadAppFromAsar: true,
+  grantFileProtocolExtraPrivileges: false,
+};
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const fuses = pkg.build?.electronFuses ?? {};
+for (const [fuse, expected] of Object.entries(REQUIRED_FUSES)) {
+  if (fuses[fuse] !== expected) {
+    failures.push(`electron fuse ${fuse} must be ${expected} (found ${String(fuses[fuse])})`);
+  }
 }
 
 try {

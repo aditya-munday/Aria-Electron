@@ -56,4 +56,14 @@ describe('normalizeBaseUrl', () => {
       /must not embed credentials/,
     );
   });
+
+  it('rejects plaintext http to a remote host', () => {
+    expect(() => normalizeBaseUrl('http://example.test')).toThrow(/must use https/);
+    expect(() => normalizeBaseUrl('http://api.adityamunday.codes')).toThrow(/must use https/);
+  });
+
+  it('allows plaintext http to loopback', () => {
+    expect(normalizeBaseUrl('http://localhost:8787')).toBe('http://localhost:8787');
+    expect(normalizeBaseUrl('http://127.0.0.1:8787/')).toBe('http://127.0.0.1:8787');
+  });
 });
