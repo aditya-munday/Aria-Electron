@@ -18,6 +18,8 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      # `ci` runs the preflight checklist (version consistency, docs, notices)
+      # before the release is allowed to package.
       - run: npm run ci
 
   package:

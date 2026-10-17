@@ -5,7 +5,7 @@ All notable changes to Aria-Electron are recorded here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries before
 `0.3.0` predate this file and are tracked only by tag.
 
-## [Unreleased]
+## [0.8.0] - 2026-10-17
 
 ### Added
 - The **Python voice sidecar** (`sidecar/`, package `aria-voice 0.8.0`):
@@ -23,6 +23,9 @@ All notable changes to Aria-Electron are recorded here. The format follows
   `docs/WAKE_WORD.md` (shipped wake defaults, measured false-accept target,
   calibration). A `ci.yml` workflow runs the TypeScript and Python gates,
   including `bench/eval_wake.py` as a false-accept regression gate.
+- `scripts/preflight.mjs`, a pre-release checklist that fails the release if the
+  version drifts between `package.json`, the sidecar and the changelog, or if the
+  licence, notices or docs are missing. It runs from `npm run ci`.
 - The sidecar is packaged into the Debian package as a self-contained
   PyInstaller executable (`scripts/build-sidecar.mjs`, `sidecar/aria-voice.spec`)
   and staged under `resources/sidecar/aria-voice/`. `verify:package` checks it
@@ -39,6 +42,9 @@ All notable changes to Aria-Electron are recorded here. The format follows
 - `normalizeBaseUrl` rejects plaintext `http` to any host but loopback, so a
   bearer token cannot be sent in the clear.
 - Runtime and toolchain dependencies are pinned to exact versions.
+- The packaged sidecar executable is now verified against its recorded SHA-256
+  before it is spawned; a mismatch disables the wake word (push-to-talk still
+  works) rather than running an unverified binary.
 - The wake word and start-on-login are now opt-in (both default off): a fresh
   install opens no microphone and writes no autostart entry before consent.
 

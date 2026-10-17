@@ -169,13 +169,34 @@ indirectly (the dist tree is present and `tsc` is clean).
 
 - No `LICENSE`, no `THIRD_PARTY_NOTICES` in the repo root. Fix: add a clearly
   marked license placeholder (not an invented license) and notices for fonts,
-  the VoxRT model, and npm deps. Status: **Phase 1/5**.
+  the VoxRT model, and npm deps. Status: **fixed (Phase 5)** — `LICENSE`
+  placeholder and `THIRD_PARTY_NOTICES.md` exist; the notices now cover the
+  sidecar's Python dependencies (verified against each wheel's metadata) and the
+  bundled openWakeWord models, whose CC BY-NC-SA 4.0 non-commercial license is
+  recorded explicitly.
 
 ### S18 [Low] Release hygiene — CONFIRMED
 
 - Six 0.7.x releases in three days (`CHANGELOG.md:8,43,61,73,87,125,…`); no
   pre-release checklist script (`scripts/` has only build/security/smoke
-  helpers); the release workflow does not run a voice smoke. Status: **Phase 5**.
+  helpers); the release workflow does not run a voice smoke. Fix: add
+  `scripts/preflight.mjs` (version consistency across `package.json`, the
+  sidecar and CHANGELOG; presence of the licence, notices and docs), run it from
+  `npm run ci` and from the release `gate` job. Status: **fixed (Phase 5)**;
+  the end-to-end voice smoke (a loopback-fed WAV asserting one wake) remains
+  open — it needs a virtual audio device in CI, tracked as a residual item.
+
+### A8 [Med] The sidecar binary is not verified at runtime
+
+- `scripts/build-sidecar.mjs` records `aria-voice.sha256` and
+  `verify-package.mjs` checks it at build time, but nothing in `src/` verified
+  the packaged executable before spawning it — a tampered or truncated
+  `resources/sidecar/aria-voice/aria-voice` would still run. Fix:
+  `verifySidecarChecksum` in `src/voice/sidecar-path.ts` hashes the packaged
+  binary against the recorded checksum before it is spawned; a mismatch is a
+  typed error. `resolveDetector` catches it and falls back to a `failed`
+  detector (wake word off, push-to-talk still works) instead of crashing the
+  app. Status: **fixed (Phase 5)**.
 
 ## Additional findings (own)
 

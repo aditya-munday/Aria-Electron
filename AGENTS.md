@@ -604,7 +604,7 @@ than a second hand-drawn SVG, so the logo has one source of truth. That needs
 `img-src 'self'` in the `control-center.html` / `chat.html` CSP; the orb window
 ships no image and keeps `default-src 'none'` with no `img-src`.
 
-Test baseline: 894 tests / 86 files. `src/shell/testing/doubles.ts` holds
+Test baseline: 930 tests / 90 files. `src/shell/testing/doubles.ts` holds
 `FakePlatform`, `FakeWindowFactory`, `FakeWindowHandle`, `FakeScreenProvider`,
 `FakeKeyListener`, `FakeShortcutRegistration`, `FakeShellRuntime`,
 `FakeVoiceRuntime`.

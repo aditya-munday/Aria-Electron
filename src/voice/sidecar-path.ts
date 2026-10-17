@@ -11,7 +11,8 @@
  * visible rather than a mysterious "sidecar did not start".
  */
 
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface SidecarCommand {
@@ -28,9 +29,39 @@ export interface ResolveSidecarOptions {
   readonly repoRoot?: string;
   /** Whether a path exists; injected for tests. */
   readonly exists?: (path: string) => boolean;
+  /** Reads a file as bytes; injected for tests. */
+  readonly readFile?: (path: string) => Buffer;
 }
 
 const SIDECAR_BINARY_NAME = 'aria-voice';
+
+/**
+ * Verify a staged sidecar against the checksum recorded next to it.
+ *
+ * The build stages `aria-voice.sha256` beside the binary; a packaged app
+ * verifies it before spawn so a tampered or truncated resource is refused
+ * rather than executed. When no checksum is recorded (a dev/unstaged build)
+ * there is nothing to check and the call is a no-op, never a silent pass over a
+ * mismatch that was actually recorded.
+ */
+export function verifySidecarChecksum(
+  binaryPath: string,
+  readFile: (path: string) => Buffer = readFileSync,
+): void {
+  let recorded: string;
+  try {
+    recorded = (readFile(`${binaryPath}.sha256`).toString('utf8').trim().split(/\s+/)[0]) ?? '';
+  } catch {
+    return;
+  }
+  if (recorded === '') return;
+  const digest = createHash('sha256').update(readFile(binaryPath)).digest('hex');
+  if (digest !== recorded) {
+    throw new Error(
+      `The voice sidecar failed its checksum check (expected ${recorded}, got ${digest}).`,
+    );
+  }
+}
 
 /**
  * Resolve how to launch the sidecar.
@@ -61,7 +92,13 @@ export function resolveSidecarCommand(options: ResolveSidecarOptions = {}): Side
       SIDECAR_BINARY_NAME,
       SIDECAR_BINARY_NAME,
     );
-    if (exists(packaged)) return { command: packaged, args: [] };
+    if (exists(packaged)) {
+      // The packaged binary is the one that runs unattended; verify it against
+      // the build-time checksum before it is spawned.
+      if (options.readFile !== undefined) verifySidecarChecksum(packaged, options.readFile);
+      else verifySidecarChecksum(packaged);
+      return { command: packaged, args: [] };
+    }
   }
 
   const repoRoot = options.repoRoot;

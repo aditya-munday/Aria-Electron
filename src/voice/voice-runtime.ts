@@ -600,6 +600,7 @@ export class VoiceRuntime {
         close: async () => undefined,
       };
     }
+
     if (deps.wakeWordDetector !== undefined) return deps.wakeWordDetector;
     const engineModule = process.env['ARIA_WAKE_ENGINE']?.trim();
     // The VoxRT WebAssembly engine is opt-in. Its runtime is native code the
@@ -614,21 +615,29 @@ export class VoiceRuntime {
     // The Python sidecar owns the microphone and the wake model in its own
     // process, so a native/model fault there cannot take down the app.
     if (engineModule === 'sidecar') {
-      process.stdout.write('[aria] Wake word: Python voice sidecar.\n');
-      const sidecar = resolveSidecarCommand({
-        ...(process.resourcesPath !== undefined ? { resourcesPath: process.resourcesPath } : {}),
-        repoRoot: process.cwd(),
-      });
-      const modelDir = process.env['ARIA_WAKE_MODEL_DIR']?.trim();
-      const compute = process.env['ARIA_COMPUTE']?.trim();
-      return createSidecarWakeWordDetector({
-        command: sidecar.command,
-        args: sidecar.args,
-        threshold: deps.config.wakeWord.minConfidence,
-        cooldownMs: deps.config.wakeWord.cooldownMs,
-        ...(modelDir !== undefined && modelDir !== '' ? { wakeModelDir: modelDir } : {}),
-        ...(compute !== undefined && compute !== '' ? { compute } : {}),
-      });
+      try {
+        process.stdout.write('[aria] Wake word: Python voice sidecar.\n');
+        const sidecar = resolveSidecarCommand({
+          ...(process.resourcesPath !== undefined ? { resourcesPath: process.resourcesPath } : {}),
+          repoRoot: process.cwd(),
+        });
+        const modelDir = process.env['ARIA_WAKE_MODEL_DIR']?.trim();
+        const compute = process.env['ARIA_COMPUTE']?.trim();
+        return createSidecarWakeWordDetector({
+          command: sidecar.command,
+          args: sidecar.args,
+          threshold: deps.config.wakeWord.minConfidence,
+          cooldownMs: deps.config.wakeWord.cooldownMs,
+          ...(modelDir !== undefined && modelDir !== '' ? { wakeModelDir: modelDir } : {}),
+          ...(compute !== undefined && compute !== '' ? { compute } : {}),
+        });
+      } catch (error) {
+        // A missing, unverified or tampered sidecar must not take down the app.
+        // The wake word is off and push-to-talk (renderer capture) still works.
+        const reason = error instanceof Error ? error.message : 'the voice sidecar is unavailable';
+        process.stdout.write(`[aria] Wake word: sidecar unavailable (${reason}).\n`);
+        return createFailedWakeWordDetector('sidecar', reason);
+      }
     }
     // Any other named engine module wins: a trained native engine (openWakeWord,
     // Porcupine, …) can be dropped in through `ARIA_WAKE_ENGINE`.
@@ -650,4 +659,22 @@ export class VoiceRuntime {
       }),
     );
   }
+}
+
+/**
+ * A detector that is permanently `failed` with a reason. Used when a requested
+ * engine cannot be constructed (a missing sidecar binary, a failed checksum), so
+ * the runtime reports the truth instead of constructing nothing or crashing.
+ */
+function createFailedWakeWordDetector(id: string, reason: string): WakeWordDetector {
+  return {
+    id,
+    status: () => 'failed',
+    model: () => undefined,
+    failure: () => reason,
+    init: async () => undefined,
+    push: () => undefined,
+    reset: () => undefined,
+    close: async () => undefined,
+  };
 }

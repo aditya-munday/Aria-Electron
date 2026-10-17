@@ -1,6 +1,11 @@
+import { createHash } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 
-import { resolveSidecarCommand } from './sidecar-path.js';
+import { resolveSidecarCommand, verifySidecarChecksum } from './sidecar-path.js';
+
+const BINARY = Buffer.from('frozen-sidecar-bytes');
+const DIGEST = createHash('sha256').update(BINARY).digest('hex');
 
 describe('resolveSidecarCommand', () => {
   it('prefers an explicit ARIA_SIDECAR_PATH that exists', () => {
@@ -43,5 +48,53 @@ describe('resolveSidecarCommand', () => {
     expect(() => resolveSidecarCommand({ env: {}, exists: () => false })).toThrow(
       /not available/,
     );
+  });
+
+  it('verifies the packaged binary checksum before returning it', () => {
+    const resolved = resolveSidecarCommand({
+      env: {},
+      resourcesPath: '/app/resources',
+      exists: (path) => path === '/app/resources/sidecar/aria-voice/aria-voice',
+      readFile: (path) => (path.endsWith('.sha256') ? Buffer.from(`${DIGEST}  aria-voice\n`) : BINARY),
+    });
+    expect(resolved.command).toBe('/app/resources/sidecar/aria-voice/aria-voice');
+  });
+
+  it('refuses a packaged binary whose bytes do not match the checksum', () => {
+    expect(() =>
+      resolveSidecarCommand({
+        env: {},
+        resourcesPath: '/app/resources',
+        exists: (path) => path === '/app/resources/sidecar/aria-voice/aria-voice',
+        readFile: (path) =>
+          path.endsWith('.sha256') ? Buffer.from(`${DIGEST}  aria-voice\n`) : Buffer.from('tampered'),
+      }),
+    ).toThrow(/checksum check/);
+  });
+});
+
+describe('verifySidecarChecksum', () => {
+  it('is a no-op when no checksum file was staged', () => {
+    expect(() =>
+      verifySidecarChecksum('/app/aria-voice', () => {
+        throw new Error('ENOENT');
+      }),
+    ).not.toThrow();
+  });
+
+  it('passes when the digest matches', () => {
+    expect(() =>
+      verifySidecarChecksum('/app/aria-voice', (path) =>
+        path.endsWith('.sha256') ? Buffer.from(`${DIGEST}\n`) : BINARY,
+      ),
+    ).not.toThrow();
+  });
+
+  it('throws when the digest does not match', () => {
+    expect(() =>
+      verifySidecarChecksum('/app/aria-voice', (path) =>
+        path.endsWith('.sha256') ? Buffer.from(`${DIGEST}\n`) : Buffer.from('other'),
+      ),
+    ).toThrow(/failed its checksum/);
   });
 });

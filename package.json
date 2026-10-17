@@ -11,12 +11,13 @@
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run typecheck && npm run test && npm run build && npm run security:check",
+    "ci": "npm run typecheck && npm run test && npm run build && npm run security:check && npm run preflight",
     "security:check": "node scripts/security-check.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "build:sidecar": "node scripts/build-sidecar.mjs",
     "pack:deb": "npm run build && npm run build:sidecar && electron-builder --linux deb --x64 --publish never",
-    "smoke:deb": "npm run pack:deb && npm run security:check && npm run verify:package && node scripts/smoke-deb.mjs"
+    "smoke:deb": "npm run pack:deb && npm run security:check && npm run verify:package && node scripts/smoke-deb.mjs",
+    "preflight": "node scripts/preflight.mjs"
   },
   "engines": {
     "node": ">=20"

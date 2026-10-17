@@ -24,6 +24,46 @@ in-process detector. Its code is not invoked on the default path.
 The model is a data artifact consumed by the VoxRT engine. It is not part of the
 default build and is not committed to this repository.
 
+## Voice sidecar (bundled executable)
+
+The packaged `.deb` ships the Python voice sidecar as a self-contained
+executable under `resources/sidecar/aria-voice/` (see `docs/VOICE_SIDECAR.md`).
+Its runtime dependencies are:
+
+| Component | Version | License |
+| --- | --- | --- |
+| openWakeWord | 0.4.0 | Apache-2.0 |
+| onnxruntime | 1.31.0 | MIT |
+| numpy | 2.5.4 | BSD-3-Clause |
+| scipy | 1.18.1 | BSD-3-Clause |
+| sounddevice | 0.5.6 | MIT |
+| soxr | 1.1.0 | LGPL-2.1-or-later |
+| pydantic | 2.14.1 | MIT |
+
+`soxr` is LGPL-2.1-or-later; it is bundled as a dynamically loaded extension
+module, which keeps it separately replaceable as the LGPL requires.
+
+### Bundled wake models
+
+The sidecar bundles openWakeWord's pre-trained models (the melspectrogram and
+embedding backbones plus the selectable wake models). openWakeWord's *code* is
+Apache-2.0, but its pre-trained *models* are licensed
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) because of
+restrictive training data, i.e. **non-commercial**. This restricts commercial
+redistribution of the shipped wake models.
+
+| Artifact | Location | License |
+| --- | --- | --- |
+| `melspectrogram.onnx`, `embedding_model.onnx` | bundled in the sidecar | CC BY-NC-SA 4.0 |
+| `alexa_v0.1.onnx`, `hey_jarvis_v0.1.onnx`, `timer_v0.1.onnx`, … | bundled in the sidecar | CC BY-NC-SA 4.0 |
+| `silero_vad.onnx` (Silero VAD) | bundled in the sidecar | MIT |
+
+"Alexa" is a third-party trademark; it is presented as a selectable model name
+only. The intended product wake word is a custom-trained "Hey Aria" model
+(`docs/WAKE_WORD.md`). For commercial use, train or import a model under a
+permissive license via openWakeWord's training pipeline; the registry accepts a
+custom `.onnx` with no code change.
+
 ## Fonts
 
 | Component | Location | License |
