@@ -15,6 +15,17 @@ if command -v pkill >/dev/null 2>&1; then
   # rename the main process, but its command line still starts with the path.
   pkill -x aria-desktop 2>/dev/null || true
   pkill -f '/opt/${sanitizedProductName}/${executable}' 2>/dev/null || true
+  # The voice sidecar is a separate process the app spawns; an upgrade must not
+  # leave the old one holding the microphone. Match its installed path only.
+  pkill -f '/opt/${sanitizedProductName}/resources/sidecar/aria-voice/' 2>/dev/null || true
+fi
+
+# 1b. The sidecar ships as an extra resource; keep it executable and owned by
+#     root so it cannot be replaced by an unprivileged user.
+SIDECAR_BIN='/opt/${sanitizedProductName}/resources/sidecar/aria-voice/aria-voice'
+if [ -f "$SIDECAR_BIN" ]; then
+  chmod 0755 "$SIDECAR_BIN" || true
+  chown root:root "$SIDECAR_BIN" 2>/dev/null || true
 fi
 
 # 2. Put the launcher on PATH. From electron-builder's default template.

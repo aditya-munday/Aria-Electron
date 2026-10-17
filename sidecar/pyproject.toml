@@ -25,6 +25,9 @@ dev = [
     "pytest==9.1.1",
     "ruff==0.17.1",
 ]
+build = [
+    "pyinstaller==6.16.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/aria_voice"]

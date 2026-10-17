@@ -24,9 +24,9 @@ describe('resolveSidecarCommand', () => {
     const resolved = resolveSidecarCommand({
       env: {},
       resourcesPath: '/app/resources',
-      exists: (path) => path === '/app/resources/sidecar/aria-voice',
+      exists: (path) => path === '/app/resources/sidecar/aria-voice/aria-voice',
     });
-    expect(resolved.command).toBe('/app/resources/sidecar/aria-voice');
+    expect(resolved.command).toBe('/app/resources/sidecar/aria-voice/aria-voice');
   });
 
   it('falls back to the repo uv environment in development', () => {

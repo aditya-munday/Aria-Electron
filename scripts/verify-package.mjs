@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // A packaged build must not ship the material that makes reverse engineering
@@ -25,6 +26,24 @@ const preload = listing.filter((p) => /preload\.cjs$/.test(p));
 if (preload.length !== 1) {
   process.stderr.write(`verify-package: expected exactly one bundled preload, found ${preload.length}\n`);
   process.exit(1);
+}
+
+// The voice sidecar ships outside the asar as an extra resource. When it is
+// present it must be executable and match the checksum recorded at build time;
+// a build that skips the sidecar (no `uv`) leaves it absent, which the app
+// reports truthfully rather than shipping a broken binary.
+const sidecarBinary = 'release/linux-unpacked/resources/sidecar/aria-voice/aria-voice';
+if (existsSync(sidecarBinary)) {
+  const digest = createHash('sha256').update(readFileSync(sidecarBinary)).digest('hex');
+  const sumFile = 'release/linux-unpacked/resources/sidecar/aria-voice/aria-voice.sha256';
+  const expected = existsSync(sumFile) ? readFileSync(sumFile, 'utf8').trim().split(/\s+/)[0] : '';
+  if (expected === '' || digest !== expected) {
+    process.stderr.write(
+      `verify-package: sidecar checksum mismatch (packaged ${digest.slice(0, 12)}…, expected ${expected.slice(0, 12)}…)\n`,
+    );
+    process.exit(1);
+  }
+  process.stdout.write('verify-package: sidecar present and checksum verified\n');
 }
 
 process.stdout.write(`verify-package: ok (${listing.length} entries, no maps, no declarations)\n`);

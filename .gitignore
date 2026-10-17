@@ -8,5 +8,8 @@ coverage/
 
 release/
 
+# Staged sidecar executable (built by scripts/build-sidecar.mjs)
+build/sidecar/
+
 # Bundled wake-word model artifact (licensing tracked in THIRD_PARTY_NOTICES.md)
 wakewordmodel/

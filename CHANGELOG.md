@@ -23,6 +23,11 @@ All notable changes to Aria-Electron are recorded here. The format follows
   `docs/WAKE_WORD.md` (shipped wake defaults, measured false-accept target,
   calibration). A `ci.yml` workflow runs the TypeScript and Python gates,
   including `bench/eval_wake.py` as a false-accept regression gate.
+- The sidecar is packaged into the Debian package as a self-contained
+  PyInstaller executable (`scripts/build-sidecar.mjs`, `sidecar/aria-voice.spec`)
+  and staged under `resources/sidecar/aria-voice/`. `verify:package` checks it
+  against the recorded checksum, and the postinst makes it root-owned and
+  executable and stops a stale instance on upgrade.
 
 ### Security
 - The renderer pages are served from a privileged, secure `app://aria` scheme

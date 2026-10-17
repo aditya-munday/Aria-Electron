@@ -29,9 +29,15 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+      - uses: astral-sh/setup-uv@v6
       - run: npm ci
       - run: npm run ci
+      # `pack:deb` builds the sidecar as an extra resource. `required` makes a
+      # missing toolchain fail the release rather than silently producing a
+      # package with no sidecar.
       - run: npm run pack:deb
+        env:
+          ARIA_BUILD_SIDECAR: required
       - run: npm run security:check
       - run: npm run verify:package
       - name: Locate package

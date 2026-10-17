@@ -53,7 +53,14 @@ export function resolveSidecarCommand(options: ResolveSidecarOptions = {}): Side
   }
 
   if (options.resourcesPath !== undefined) {
-    const packaged = join(options.resourcesPath, 'sidecar', SIDECAR_BINARY_NAME);
+    // electron-builder stages the one-dir bundle as `resources/sidecar/aria-voice/`,
+    // so the executable is the same-named file inside it.
+    const packaged = join(
+      options.resourcesPath,
+      'sidecar',
+      SIDECAR_BINARY_NAME,
+      SIDECAR_BINARY_NAME,
+    );
     if (exists(packaged)) return { command: packaged, args: [] };
   }
 
