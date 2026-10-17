@@ -228,6 +228,23 @@ indirectly (the dist tree is present and `tsc` is clean).
   `wakeWordEnabled` is true; with the new opt-in default it rests at "idle".
   Status: **fixed (Phase 4)**.
 
+### A7 [High] Beyonders device-code sign-in fails: backend config, client contract OK
+
+- Reported as "device-code sign-in fails". The client contract is correct and
+  preserved exactly: `DEFAULT_LOGIN_URL = https://api.adityamunday.codes`
+  (`src/auth/device-login.ts:25`), configurable via `ARIA_LOGIN_URL`, and the
+  endpoints are unversioned under `/api/auth/cli/*` (`/code`, `/status`,
+  `/logout`). A real run of the built client (`dist/auth/device-login.js`)
+  against production returned, verbatim:
+  `503 { error: { code: SERVICE_UNAVAILABLE, message: "Device sign-in is not
+  available: CLI_AUTH_HMAC_SECRET is not set; no device-token signing key is
+  configured." } }`, which the client classifies as `sign_in_unavailable` and
+  surfaces with the backend message and `requestId` — correct behaviour.
+- Root cause is server-side: the deployment is missing `CLI_AUTH_HMAC_SECRET`.
+  Per the task contract the backend is not changed; the fix is to set that
+  secret and restart the auth service. Status: **client verified; backend
+  config required (out of scope)**.
+
 ## Severity roll-up
 
 - **P0/P1 (fix in Phase 1):** S1, S2 (docs), S4 (docs), S11 (pin), S14, A1, A3, A4.
