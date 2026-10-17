@@ -93,7 +93,11 @@ npm test
 | `ARIA_CONFIG_DIR` | Overrides the config directory holding `credentials.json` | `~/.config/aria` |
 | `ARIA_FINGERPRINT_PATH` | Overrides the stored machine-fingerprint file | `~/.config/aria` |
 | `ARIA_ENABLE_GPU` / `ARIA_DISABLE_GPU` | Force the Chromium GPU path on or off (otherwise probed from `/dev/dri`) | probed |
-| `ARIA_WAKE_ENGINE` | Selects an alternate wake-word engine module (e.g. `voxrt`) | in-process |
+| `ARIA_WAKE_ENGINE` | Wake-word engine: `sidecar` (Python/openWakeWord), `voxrt` (WASM), or a native module name; unset = in-process JS | in-process |
+| `ARIA_SIDECAR_PATH` | Absolute path to the `aria-voice` sidecar binary | packaged/dev |
+| `ARIA_WAKE_MODEL_DIR` | Directory of user wake models (validated before load) | bundled |
+| `ARIA_COMPUTE` | Sidecar compute provider: `auto` \| `cpu` \| `cuda` \| `rocm` \| `directml` \| `openvino` | `auto` |
+| `ARIA_LOG_LEVEL` | Sidecar log level: `debug` \| `info` \| `warn` \| `error` | `info` |
 | `ARIA_GRAPHICS` | Graphics acceleration: `auto` \| `on` \| `off` | `auto` |
 | `ARIA_OZONE` | Ozone platform hint (`auto`, `wayland`, `x11`) | session-derived |
 
@@ -102,3 +106,38 @@ to disk. A successful device-code sign-in is different: it writes one durable
 account credential to `~/.config/aria/credentials.json`, owner-only (`0600`), in
 the Directioner CLI's own shape so an existing CLI login is reused. Aria holds
 no provider keys and no privileged local socket.
+
+## Voice
+
+Wake-word detection and voice-activity detection run entirely locally. The
+default engine is the dependency-free JavaScript phrase spotter, so a fresh
+install needs no extra packages. A stronger, isolated engine is available: the
+Python voice sidecar (`sidecar/`, openWakeWord + Silero VAD) runs in its own
+process so a model or native fault cannot take the app down.
+
+```sh
+# Run the Python sidecar engine instead of the in-process detector.
+cd sidecar && uv sync && cd ..
+ARIA_WAKE_ENGINE=sidecar npm start
+```
+
+- `docs/VOICE_SIDECAR.md` — the sidecar process contract, wire protocol, compute
+  providers and environment.
+- `docs/WAKE_WORD.md` — the shipped wake defaults, the measured false-accept
+  target, and how to calibrate a threshold for a room.
+
+## Troubleshooting the wake word
+
+- **No wake word at all** — check the microphone permission (Control Center →
+  Voice) and that a capture-capable device is selected. On a host with no
+  microphone the listener honestly stands down; push-to-talk still works.
+- **Wake word fires too often / too rarely** — run calibration
+  (`docs/WAKE_WORD.md`); the threshold trades false accepts for misses.
+- **`ARIA_WAKE_ENGINE=sidecar` does not start** — run `cd sidecar && uv sync`
+  first, or set `ARIA_SIDECAR_PATH` to the `aria-voice` binary. The failure is
+  reported with a reason, never silently.
+- **GPU not used** — the models are tiny and CPU is usually as fast; set
+  `ARIA_COMPUTE=cuda` (or `rocm`/`directml`) to force a provider. Diagnostics
+  shows the chosen provider.
+- **Logs** — sidecar diagnostics go to stderr as JSON lines; set
+  `ARIA_LOG_LEVEL=debug` for detail.

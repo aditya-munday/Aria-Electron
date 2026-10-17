@@ -7,6 +7,23 @@ All notable changes to Aria-Electron are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The **Python voice sidecar** (`sidecar/`, package `aria-voice 0.8.0`):
+  openWakeWord wake detection and Silero VAD in a separate process, so a
+  native/model fault cannot take down the app (the 0.7.6 crash mode). Framed
+  stdio protocol, bounded frame reader, model validation, compute-provider
+  auto-selection, and a calibration helper. Opt-in via
+  `ARIA_WAKE_ENGINE=sidecar`; the dependency-free JS detector stays the default.
+- The Electron integration for the sidecar: `sidecar-supervisor.ts` (ready
+  handshake, protocol-version check, bounded-backoff restart, clean shutdown),
+  `sidecar-wake-detector.ts` (the `WakeWordEngine` adapter), `sidecar-protocol.ts`
+  (the TS mirror of the wire protocol, every event validated with zod), and
+  `sidecar-path.ts` (executable resolution).
+- `docs/VOICE_SIDECAR.md` (process contract and wire protocol) and
+  `docs/WAKE_WORD.md` (shipped wake defaults, measured false-accept target,
+  calibration). A `ci.yml` workflow runs the TypeScript and Python gates,
+  including `bench/eval_wake.py` as a false-accept regression gate.
+
 ### Security
 - The renderer pages are served from a privileged, secure `app://aria` scheme
   instead of `file://`, so Electron's `grantFileProtocolExtraPrivileges` fuse is

@@ -222,6 +222,20 @@ The pipeline is wake-listener -> session -> runtime, all local except speech:
   shared by the phrase engine's templates and the test fixture
   (`testing/fake-audio.ts` `speakPhrase`), so a fixture and a template cannot
   drift apart.
+- **Python voice sidecar** (`sidecar/`, selected with `ARIA_WAKE_ENGINE=sidecar`)
+  — the real wake word (openWakeWord) and Silero VAD run in a separate Python
+  process, so a native/model fault there cannot take down the app (the 0.7.6
+  crash mode). `sidecar-supervisor.ts` owns the process: a `ready` handshake
+  with a protocol-version check, bounded exponential-backoff restart, clean
+  shutdown on quit, and event fan-out. `sidecar-wake-detector.ts` adapts the
+  supervisor to the `WakeWordEngine` seam; capture and the model live in the
+  child, so `process()` drains wake events rather than taking frames.
+  `sidecar-protocol.ts` is the TS mirror of the framed stdio protocol and
+  validates every event with zod — the sidecar's stdout is untrusted input.
+  `sidecar-path.ts` resolves the executable (`ARIA_SIDECAR_PATH`, the packaged
+  binary under `resources/sidecar/`, or the repo `uv` env). See
+  `docs/VOICE_SIDECAR.md` and `docs/WAKE_WORD.md`. The dependency-free JS
+  detector stays the default; the sidecar is opt-in.
 - `vad.ts`, `segmenter.ts`, `ring-buffer.ts`, `noise-reduction.ts` — audio
   front end. `push-to-talk.ts` bypasses wake-word detection entirely.
 - `echo-cancellation.ts` — `EchoCanceller` (cascaded NLMS adaptive filter with
