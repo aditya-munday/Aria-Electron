@@ -10,6 +10,14 @@ Repository memory for agents working in this repo. Keep it current.
   locking requirement, or a deliberate trade-off) — and even then, keep it to
   the one line that states the thing the code cannot. Do not restate the code,
   narrate a change, or describe non-local behavior.
+- **This repository is the only writable target.** Never create, edit, move, or
+  delete anything under the sibling checkouts `Beyonders-Backend`,
+  `Beyonders-Frontend`, `Directioner-Platform-Backend`, `Directioner-CLI`, or
+  anywhere else in the OS. They are read-only references: read them to confirm a
+  contract, never modify them. A backend gap is reported to the owner, not
+  patched here. (The live backend 503s on `/api/auth/cli/*` because
+  `CLI_AUTH_HMAC_SECRET` is not set on that deployment; that is a deployment
+  change the owner makes, out of scope for this repo.)
 
 ## What this is
 
