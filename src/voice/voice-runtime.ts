@@ -39,6 +39,8 @@ import {
 import { WakeWordListener } from './wake-listener.js';
 import { createVoxrtDetector } from './voxrt-detector.js';
 import { createWakePhraseEngine } from './wake-phrase-engine.js';
+import { createSidecarWakeWordDetector } from './sidecar-wake-detector.js';
+import { resolveSidecarCommand } from './sidecar-path.js';
 import { FarEndReference } from './echo-cancellation.js';
 
 export interface VoiceRuntimeDiagnostics {
@@ -608,6 +610,25 @@ export class VoiceRuntime {
       const modelPath = process.env['ARIA_WAKE_MODEL']?.trim();
       process.stdout.write('[aria] Wake word: VoxRT WebAssembly engine (opt-in).\n');
       return createVoxrtDetector(modelPath === undefined || modelPath === '' ? undefined : modelPath);
+    }
+    // The Python sidecar owns the microphone and the wake model in its own
+    // process, so a native/model fault there cannot take down the app.
+    if (engineModule === 'sidecar') {
+      process.stdout.write('[aria] Wake word: Python voice sidecar.\n');
+      const sidecar = resolveSidecarCommand({
+        ...(process.resourcesPath !== undefined ? { resourcesPath: process.resourcesPath } : {}),
+        repoRoot: process.cwd(),
+      });
+      const modelDir = process.env['ARIA_WAKE_MODEL_DIR']?.trim();
+      const compute = process.env['ARIA_COMPUTE']?.trim();
+      return createSidecarWakeWordDetector({
+        command: sidecar.command,
+        args: sidecar.args,
+        threshold: deps.config.wakeWord.minConfidence,
+        cooldownMs: deps.config.wakeWord.cooldownMs,
+        ...(modelDir !== undefined && modelDir !== '' ? { wakeModelDir: modelDir } : {}),
+        ...(compute !== undefined && compute !== '' ? { compute } : {}),
+      });
     }
     // Any other named engine module wins: a trained native engine (openWakeWord,
     // Porcupine, …) can be dropped in through `ARIA_WAKE_ENGINE`.

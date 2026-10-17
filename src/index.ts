@@ -130,6 +130,29 @@ export {
   type WakeWordStatus,
 } from './voice/wake-word.js';
 export {
+  SidecarSupervisor,
+  type SidecarStatus,
+  type SidecarSupervisorOptions,
+} from './voice/sidecar-supervisor.js';
+export {
+  SidecarWakeEngine,
+  createSidecarWakeWordDetector,
+  DEFAULT_SIDECAR_WAKE_MODELS,
+  type SidecarWakeDetectorOptions,
+} from './voice/sidecar-wake-detector.js';
+export {
+  SIDECAR_PROTOCOL_VERSION,
+  SidecarFrameReader,
+  parseSidecarEvent,
+  encodeJsonFrame,
+  encodeAudioFrame,
+  sidecarEventSchema,
+  type SidecarEvent,
+  type SidecarCommand,
+  type SidecarCommandType,
+} from './voice/sidecar-protocol.js';
+export { resolveSidecarCommand, type SidecarCommand as SidecarLaunch } from './voice/sidecar-path.js';
+export {
   WakeWordListener,
   type WakeListenerState,
   type WakeWordListenerDeps,
