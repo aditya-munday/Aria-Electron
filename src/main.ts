@@ -20,7 +20,15 @@ import { planOrbBackdrop } from './orb/backdrop.js';
 import { createVoiceInteractionRuntime } from './shell/interaction-runtime.js';
 import { registerIpcHandlers } from './shell/ipc-handlers.js';
 import { createFileSettingsStore } from './shell/settings-file.js';
-import { createGpuCrashMarker, decideGpu, nodeGpuProbeDeps, probeGpu } from './shell/gpu-policy.js';
+import {
+  createGpuCrashMarker,
+  decideGpu,
+  detectSession,
+  nodeGpuProbeDeps,
+  ozonePlatformArgs,
+  probeGpu,
+  summarizeGpuFeatureStatus,
+} from './shell/gpu-policy.js';
 import { ErrorReporter } from './shell/error-reporting.js';
 import { patchSettings } from './shell/settings.js';
 import { createAutostartManager } from './shell/autostart.js';
@@ -72,6 +80,11 @@ if (!gotLock) {
   );
   app.commandLine.appendSwitch('disable-http-cache');
   app.commandLine.appendSwitch('disable-accelerated-video-decode');
+  // On a Wayland session ask Chromium for the native backend; it still falls
+  // back to X11 when no compositor is reachable.
+  for (const arg of ozonePlatformArgs(process.platform, process.env)) {
+    app.commandLine.appendSwitch(arg.replace(/^--/, ''));
+  }
 
   // Decide the GPU path before Chromium initialises it. On a host whose GPU
   // stack is half-present Chromium's GPU init fails and the process segfaults
@@ -92,6 +105,9 @@ if (!gotLock) {
     app.disableHardwareAcceleration();
   }
   process.stdout.write(`[aria] Rendering with the ${gpu.enabled ? 'GPU' : 'software'} path (${gpu.reason}).\n`);
+  process.stdout.write(
+    `[aria] Display session: ${detectSession(process.platform, process.env)}.\n`,
+  );
 
   app.on('second-instance', () => {
     shellRef?.open('control_center');
@@ -102,6 +118,9 @@ if (!gotLock) {
 function main(): void {
   const userData = app.getPath('userData');
   serveAppScheme(protocol, join(dirname(fileURLToPath(import.meta.url)), 'renderer'));
+  process.stdout.write(
+    `[aria] GPU features: ${summarizeGpuFeatureStatus(app.getGPUFeatureStatus())}.\n`,
+  );
   const settings = createFileSettingsStore(userData);
   const config = loadConfig();
   // A login launch passes `--hidden`: preload the Control Center but keep it off screen.

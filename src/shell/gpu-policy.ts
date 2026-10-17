@@ -30,35 +30,86 @@ function truthy(value: string | undefined): boolean {
   return value === '1' || value?.toLowerCase() === 'true';
 }
 
-/** The DRM nodes a Chromium GPU process needs to initialise a renderer. */
-const DRM_NODES = ['/dev/dri/renderD128', '/dev/dri/card0'] as const;
+/** The `ARIA_GRAPHICS` tri-state, mirroring the "Graphics acceleration" setting. */
+export type GraphicsMode = 'auto' | 'on' | 'off';
+
+export function graphicsMode(env: NodeJS.ProcessEnv): GraphicsMode {
+  const raw = env['ARIA_GRAPHICS']?.trim().toLowerCase();
+  if (raw === 'on' || raw === 'always' || raw === 'true' || raw === '1') return 'on';
+  if (raw === 'off' || raw === 'never' || raw === 'false' || raw === '0') return 'off';
+  return 'auto';
+}
+
+/** The display session, which decides the Ozone platform hint. */
+export type GpuSession = 'x11' | 'wayland' | 'unknown';
+
+export function detectSession(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): GpuSession {
+  if (platform !== 'linux') return 'unknown';
+  const type = env['XDG_SESSION_TYPE']?.trim().toLowerCase();
+  if (type === 'wayland') return 'wayland';
+  if (type === 'x11') return 'x11';
+  // A Wayland display wins over `DISPLAY`, which XWayland also sets.
+  if ((env['WAYLAND_DISPLAY'] ?? '').trim() !== '') return 'wayland';
+  if ((env['DISPLAY'] ?? '').trim() !== '') return 'x11';
+  return 'unknown';
+}
+
+const DRM_RENDER_NODES = Array.from({ length: 8 }, (_, i) => `/dev/dri/renderD${128 + i}`);
+const DRM_CARD_NODES = Array.from({ length: 4 }, (_, i) => `/dev/dri/card${i}`);
+const NVIDIA_NODES = ['/dev/nvidia0', '/dev/nvidiactl'] as const;
 
 /**
- * Whether the host can run Chromium's GPU path. Anything other than a readable
- * DRM node is treated as "no", because the alternative is the startup crash.
+ * Whether the host can run Chromium's GPU path. A readable render node, a
+ * usable card node, or NVIDIA's control nodes all count; anything else is "no",
+ * because the alternative is the startup crash.
  */
 export function probeGpu(
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv,
   deps: GpuProbeDeps,
 ): GpuDecision {
-  // An explicit override always wins, so a user can trade stability for the GPU
-  // (or the reverse) without a rebuild.
-  if (truthy(env.ARIA_DISABLE_GPU)) {
-    return { enabled: false, reason: 'ARIA_DISABLE_GPU is set' };
+  if (truthy(env['ARIA_DISABLE_GPU']) || graphicsMode(env) === 'off') {
+    return { enabled: false, reason: 'graphics acceleration is disabled' };
   }
-  if (truthy(env.ARIA_ENABLE_GPU)) {
-    return { enabled: true, reason: 'ARIA_ENABLE_GPU is set' };
+  if (truthy(env['ARIA_ENABLE_GPU']) || graphicsMode(env) === 'on') {
+    return { enabled: true, reason: 'graphics acceleration is forced on' };
   }
   if (platform !== 'linux') {
     return { enabled: true, reason: `hardware acceleration is the default on ${platform}` };
   }
-  const node = DRM_NODES.find((candidate) => deps.exists(candidate) && deps.readable(candidate));
-  if (node === undefined) {
-    return { enabled: false, reason: 'no readable DRM render node (/dev/dri)' };
-  }
-  return { enabled: true, reason: `DRM render node ${node}` };
+  const usable = (nodes: readonly string[]): string | undefined =>
+    nodes.find((candidate) => deps.exists(candidate) && deps.readable(candidate));
+  const render = usable(DRM_RENDER_NODES);
+  if (render !== undefined) return { enabled: true, reason: `DRM render node ${render}` };
+  const card = usable(DRM_CARD_NODES);
+  if (card !== undefined) return { enabled: true, reason: `DRM card node ${card}` };
+  const nvidia = usable(NVIDIA_NODES);
+  if (nvidia !== undefined) return { enabled: true, reason: `NVIDIA control node ${nvidia}` };
+  return { enabled: false, reason: 'no readable DRM render node (/dev/dri) or NVIDIA node' };
 }
+
+/**
+ * The Ozone command-line switches for the session: the native Wayland backend
+ * when one is present (it still falls back to X11), nothing on X11. `ARIA_OZONE`
+ * overrides the hint.
+ */
+export function ozonePlatformArgs(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] {
+  if (platform !== 'linux') return [];
+  const forced = env['ARIA_OZONE']?.trim();
+  if (forced !== undefined && forced !== '') return [`--ozone-platform-hint=${forced}`];
+  if (detectSession(platform, env) === 'wayland') return ['--ozone-platform-hint=auto'];
+  return [];
+}
+
+/** A one-line summary of Chromium's post-init GPU feature status, for logs. */
+export function summarizeGpuFeatureStatus(status: object | undefined): string {
+  if (status === undefined) return 'gpu feature status unavailable';
+  const parts = Object.entries(status)
+    .filter(([key]) => key !== 'gpu_compositing' && key !== 'multiple_raster_threads')
+    .map(([key, value]) => `${key}=${String(value)}`);
+  return parts.length > 0 ? parts.join(', ') : 'gpu feature status empty';
+}
+
 
 export interface GpuCrashState {
   /** Consecutive prior runs that died while using the GPU path. */
